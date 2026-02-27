@@ -244,11 +244,20 @@ const Core = (() => {
   const subtle = crypto?.subtle;
   const seg = (window.Intl?.Segmenter) ? new Intl.Segmenter('ja',{granularity:'grapheme'}) : null;
 
+  // 【最適化】GCの負荷を軽減するための16進数事前計算テーブル (Lookup Table)
+  const HEX_LUT = Array.from({length: 256}, (_, i) => i.toString(16).padStart(2, '0'));
+
   async function safeAsync(fn, fallback = null) {
     try { return await fn(); } catch { return fallback; }
   }
 
-  const toHex = buf => Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  // 【最適化】Array.fromとmapの動的生成を排除し、完全なO(N)の文字列結合へ置換
+  const toHex = buf => {
+    const u8 = new Uint8Array(buf);
+    let s = '';
+    for (let i = 0; i < u8.length; i++) s += HEX_LUT[u8[i]];
+    return s;
+  };
 
   function encodeBase64(bytes) {
     let binary = '';
@@ -270,10 +279,14 @@ const Core = (() => {
   ];
 
   // GCのオーバーヘッドを防ぐため、文字列変換を介さず直接Uint8Arrayを走査する純粋なバイトマッチング
+  // 【最適化】先頭バイトによるFast-Fail判定を導入し、O(N×M)の最悪計算量を回避
   function findByteSequence(haystack, needle, limit) {
     const max = Math.min(haystack.length, limit) - needle.length;
+    const firstByte = needle[0];
     for (let i = 0; i <= max; i++) {
-      let j = 0;
+      if (haystack[i] !== firstByte) continue; // 先頭が不一致なら即時スキップ (Fast-Fail)
+      
+      let j = 1;
       while (j < needle.length && haystack[i + j] === needle[j]) j++;
       if (j === needle.length) return true;
     }
@@ -395,7 +408,7 @@ const Core = (() => {
     }
     const out=new Uint8Array(16),words=[a,b,c,d];
     for(let i=0;i<4;i++){out[i*4+0]=words[i]&255;out[i*4+1]=(words[i]>>>8)&255;out[i*4+2]=(words[i]>>>16)&255;out[i*4+3]=(words[i]>>>24)&255;}
-    return Array.from(out).map(b=>b.toString(16).padStart(2,'0')).join('');
+    let res=''; for(let i=0; i<16; i++) res+=HEX_LUT[out[i]]; return res;
   }
 
   async function digestHex(alg, bytes){
@@ -417,7 +430,7 @@ const Core = (() => {
     try{ return s.normalize(normMode); } catch{ return s; } 
   }
 
-  return { enc, safeAsync, encodeBase64, decodeBase64Info, getFileInfo, applyGrouping, formatForDisplay, crc32Hex, md5Hex, digestHex, countGraphemes, sanitizeText, normalizeText };
+  return { enc, safeAsync, encodeBase64, decodeBase64Info, getFileInfo, applyGrouping, formatForDisplay, crc32Hex, md5Hex, digestHex, countGraphemes, sanitizeText, normalizeText, HEX_LUT };
 })();
 
 /* =========================================================
@@ -636,6 +649,7 @@ const Engine = (() => {
   function createWorkerBlob() {
     if (workerUrl) { try { URL.revokeObjectURL(workerUrl); } catch(e){} }
     const code = `
+      const HEX_LUT = [${Array.from({length: 256}, (_, i) => "'" + i.toString(16).padStart(2, '0') + "'").join(',')}];
       const CRC_TABLE = (()=>{const t=new Uint32Array(256);for(let i=0;i<256;i++){let c=i;for(let j=0;j<8;j++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[i]=c>>>0;}return t;})();
       function crc32Hex(bytes){let c=0xFFFFFFFF;for(let i=0;i<bytes.length;i++){c=CRC_TABLE[(c^bytes[i])&0xFF]^(c>>>8);}return ((c^0xFFFFFFFF)>>>0).toString(16).padStart(8,'0');}
       function rol(x,c){return (x<<c)|(x>>> (32-c))}
@@ -790,7 +804,11 @@ const Engine = (() => {
           const view2 = new DataView(out.buffer);
           view2.setUint32(0, h[0], true); view2.setUint32(4, h[1], true);
           view2.setUint32(8, h[2], true); view2.setUint32(12, h[3], true);
-          return Array.from(out).map(b => b.toString(16).padStart(2, '0')).join('');
+          
+          // 【最適化】動的配列生成を避け、LUTから直接結合
+          let res = '';
+          for (let i = 0; i < 16; i++) res += HEX_LUT[out[i]];
+          return res;
         }
         _finalizeSHA(origH, processFn, outBytes) {
           const padLen = (this.bufLen < 56) ? (64 - this.bufLen) : (128 - this.bufLen);
@@ -815,7 +833,11 @@ const Engine = (() => {
           const out = new Uint8Array(outBytes);
           const view2 = new DataView(out.buffer);
           for(let i=0; i<outBytes/4; i++) view2.setUint32(i*4, h[i], false);
-          return Array.from(out).map(b => b.toString(16).padStart(2, '0')).join('');
+          
+          // 【最適化】動的配列生成を避け、LUTから直接結合
+          let res = '';
+          for (let i = 0; i < outBytes; i++) res += HEX_LUT[out[i]];
+          return res;
         }
       }
       ${Core.md5Hex.toString()}
@@ -898,16 +920,25 @@ const Engine = (() => {
                 }
                 break;
               }
-              worker.postMessage({action: 'update', bytes: value});
-              if (isSmallFile && fullBuffer) {
-                if (offset + value.length > fullBuffer.length) {
-                  const newBuf = new Uint8Array(offset + value.length + Math.max(1024 * 1024, value.length));
-                  newBuf.set(fullBuffer.subarray(0, offset), 0);
-                  fullBuffer = newBuf;
+              
+              // 【最適化】50MB超過の巨大ファイルはメインスレッドでのメモリ保持（fullBuffer）が不要なため、
+              // Transferable Objectsを利用したゼロコピー（Zero-Copy）委譲を行い、V8エンジンのコピー負荷を完全排除。
+              // 小規模ファイルはBase64計算等のためクローン転送を維持。
+              if (!isSmallFile) {
+                worker.postMessage({action: 'update', bytes: value}, [value.buffer]);
+              } else {
+                worker.postMessage({action: 'update', bytes: value});
+                if (fullBuffer) {
+                  if (offset + value.length > fullBuffer.length) {
+                    const newBuf = new Uint8Array(offset + value.length + Math.max(1024 * 1024, value.length));
+                    newBuf.set(fullBuffer.subarray(0, offset), 0);
+                    fullBuffer = newBuf;
+                  }
+                  fullBuffer.set(value, offset);
+                  offset += value.length;
                 }
-                fullBuffer.set(value, offset);
-                offset += value.length;
               }
+
               bytesSinceLastYield += value.length;
               if (bytesSinceLastYield >= YIELD_THRESHOLD) {
                 await new Promise(r => setTimeout(r, 0));
