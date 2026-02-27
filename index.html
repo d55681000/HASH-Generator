@@ -259,26 +259,63 @@ const Core = (() => {
     return btoa(binary);
   }
 
+  /* --- 拡張機能: ZIP系コンテナのディープインスペクション（ゼロアロケーション/バイトシーク） --- */
+  const ZIP_SIGS = [
+    { seq: [119, 111, 114, 100, 47], ext: 'docx', mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }, // "word/"
+    { seq: [120, 108, 47], ext: 'xlsx', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },           // "xl/"
+    { seq: [112, 112, 116, 47], ext: 'pptx', mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' }, // "ppt/"
+    { seq: [65, 110, 100, 114, 111, 105, 100, 77, 97, 110, 105, 102, 101, 115, 116, 46, 120, 109, 108], ext: 'apk', mime: 'application/vnd.android.package-archive' }, // "AndroidManifest.xml"
+    { seq: [77, 69, 84, 65, 45, 73, 78, 70, 47], ext: 'jar', mime: 'application/java-archive' },                               // "META-INF/"
+    { seq: [109, 105, 109, 101, 116, 121, 112, 101, 97, 112, 112, 108, 105, 99, 97, 116, 105, 111, 110, 47, 101, 112, 117, 98, 43, 122, 105, 112], ext: 'epub', mime: 'application/epub+zip' } // "mimetypeapplication/epub+zip"
+  ];
+
+  // GCのオーバーヘッドを防ぐため、文字列変換を介さず直接Uint8Arrayを走査する純粋なバイトマッチング
+  function findByteSequence(haystack, needle, limit) {
+    const max = Math.min(haystack.length, limit) - needle.length;
+    for (let i = 0; i <= max; i++) {
+      let j = 0;
+      while (j < needle.length && haystack[i + j] === needle[j]) j++;
+      if (j === needle.length) return true;
+    }
+    return false;
+  }
+
   function getFileInfo(bytes) {
     if (bytes.length >= 4) {
       const h = Array.from(bytes.subarray(0, 8)).map(b=>b.toString(16).padStart(2,'0')).join('');
+      
+      // 第一段階：マジックナンバーによる高速判定 (Fast Path)
       if (h.startsWith('89504e47')) return {ext: 'png', mime: 'image/png'};
       if (h.startsWith('ffd8ff')) return {ext: 'jpg', mime: 'image/jpeg'};
       if (h.startsWith('47494638')) return {ext: 'gif', mime: 'image/gif'};
       if (h.startsWith('25504446')) return {ext: 'pdf', mime: 'application/pdf'};
-      if (h.startsWith('504b0304')) return {ext: 'zip', mime: 'application/zip'};
       if (h.startsWith('52617221')) return {ext: 'rar', mime: 'application/x-rar-compressed'};
       if (h.startsWith('00000100')) return {ext: 'ico', mime: 'image/x-icon'};
       if (h.startsWith('494433')) return {ext: 'mp3', mime: 'audio/mpeg'};
       if (h.startsWith('1a45dfa3')) return {ext: 'webm', mime: 'video/webm'};
       if (h.startsWith('4f676753')) return {ext: 'ogg', mime: 'audio/ogg'};
+      
+      // 第二段階：RIFFコンテナの深度判定
       if (bytes.length >= 12 && h.startsWith('52494646')) {
         const t = String.fromCharCode(...bytes.subarray(8, 12));
         if(t === 'WEBP') return {ext: 'webp', mime: 'image/webp'};
         if(t === 'WAVE') return {ext: 'wav', mime: 'audio/wav'};
         if(t === 'AVI ') return {ext: 'avi', mime: 'video/x-msvideo'};
       }
+
+      // 第三段階：ZIP系コンテナの階層的深度走査
+      if (h.startsWith('504b0304')) {
+        // V8エンジンの最適化閾値とI/Oブロックサイズに準拠し、上限を64KB(65536)に設定
+        const SCAN_LIMIT = 65536; 
+        for (let i = 0; i < ZIP_SIGS.length; i++) {
+          if (findByteSequence(bytes, ZIP_SIGS[i].seq, SCAN_LIMIT)) {
+            return {ext: ZIP_SIGS[i].ext, mime: ZIP_SIGS[i].mime};
+          }
+        }
+        return {ext: 'zip', mime: 'application/zip'};
+      }
     }
+    // デフォルトのフォールバック
     return {ext: 'bin', mime: 'application/octet-stream'};
   }
 
@@ -349,7 +386,7 @@ const Core = (() => {
       a=gg(a,b,c,d,x[i+13],5,0xa9e3e905); d=gg(d,a,b,c,x[i+2],9,0xfcefa3f8); c=gg(c,d,a,b,x[i+7],14,0x676f02d9); b=gg(b,c,d,a,x[i+12],20,0x8d2a4c8a);
       a=hh(a,b,c,d,x[i+5],4,0xfffa3942); d=hh(d,a,b,c,x[i+8],11,0x8771f681); c=hh(c,d,a,b,x[i+11],16,0x6d9d6122); b=hh(b,c,d,a,x[i+14],23,0xfde5380c);
       a=hh(a,b,c,d,x[i+1],4,0xa4beea44); d=hh(d,a,b,c,x[i+4],11,0x4bdecfa9); c=hh(c,d,a,b,x[i+7],16,0xf6bb4b60); b=hh(b,c,d,a,x[i+10],23,0xbebfbc70);
-      a=hh(a,b,c,d,x[i+13],4,0x289b7ec6); d=hh(d,a,b,c,x[i+0],11,0xeaa127fa); c=hh(c,d,a,b,x[i+3],16,0xd4ef3085); b=hh(b,c,d,a,x[6],23,0x04881d05);
+      a=hh(a,b,c,d,x[i+13],4,0x289b7ec6); d=hh(d,a,b,c,x[i+0],11,0xeaa127fa); c=hh(c,d,a,b,x[3],16,0xd4ef3085); b=hh(b,c,d,a,x[6],23,0x04881d05);
       a=hh(a,b,c,d,x[i+9],4,0xd9d4d039); d=hh(d,a,b,c,x[i+12],11,0xe6db99e5); c=hh(c,d,a,b,x[i+15],16,0x1fa27cf8); b=hh(b,c,d,a,x[i+2],23,0xc4ac5665);
       a=ii(a,b,c,d,x[i+0],6,0xf4292244); d=ii(d,a,b,c,x[i+7],10,0x432aff97); c=ii(c,d,a,b,x[i+14],15,0xab9423a7); b=ii(b,c,d,a,x[i+5],21,0xfc93a039);
       a=ii(a,b,c,d,x[i+12],6,0x655b59c3); d=ii(d,a,b,c,x[i+3],10,0x8f0ccc92); c=ii(c,d,a,b,x[i+10],15,0xffeff47d); b=ii(b,c,d,a,x[i+1],21,0x85845dd1);
