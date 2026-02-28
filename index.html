@@ -141,13 +141,13 @@
   <main class="container" role="main">
     <section class="input-wrap" id="drop-zone">
       <textarea id="in" placeholder="ここに入力、またはファイルをドロップして計算します"></textarea>
-      <div id="meta" class="hint">文字数 0｜正規化: NFC｜HEX: lower｜区切り: 連結｜ステータス: 待機</div>
+      <div id="meta" class="hint">文字数 0｜正規化: NFC｜HEX: lowercase｜区切り: 連結｜ステータス: 待機</div>
       <input type="file" id="f-hidden" />
     </section>
     <div class="toolbar">
       <span class="hint">オプション:</span>
       <button id="norm" class="link" aria-label="正規化の切替">正規化: NFC</button><span class="sep hint">/</span>
-      <button id="hexcase" class="link" aria-label="HEX大小の切替">HEX: lower</button>
+      <button id="hexcase" class="link" aria-label="HEX大小の切替">HEX: lowercase</button>
       <span class="sep hint">/</span>
       <button id="b64EncToggle" class="link" aria-label="Base64エンコードの切替">B64 Enc: オフ</button>
       <span class="sep hint">/</span>
@@ -1278,7 +1278,7 @@ const UI = (() => {
     const countLabel = isFile ? 'ファイル' : '文字数';
     const countUnit = isFile ? ' bytes' : '';
     const groupLabel = AppState.grouping ? `${AppState.grouping}字` : '連結';
-    const hexLabel = AppState.hexUpper ? 'upper' : 'lower';
+    const hexLabel = AppState.hexUpper ? 'UPPERCASE' : 'lowercase';
     els.metaEl.textContent = `${countLabel} ${count}${countUnit}｜正規化: ${normLabel}｜HEX: ${hexLabel}｜区切り: ${groupLabel}｜ステータス: ${statusText}`;
   }
 
@@ -1475,9 +1475,9 @@ const UI = (() => {
 
     els.hexBtn.addEventListener('click', () => {
       AppState.hexUpper = !AppState.hexUpper;
-      els.hexBtn.textContent = `HEX: ${AppState.hexUpper ? 'upper' : 'lower'}`;
+      els.hexBtn.textContent = `HEX: ${AppState.hexUpper ? 'UPPERCASE' : 'lowercase'}`;
       reformatAll();
-      els.metaEl.textContent = els.metaEl.textContent.replace(/HEX:\s*(upper|lower)/, `HEX: ${AppState.hexUpper ? 'upper' : 'lower'}`);
+      els.metaEl.textContent = els.metaEl.textContent.replace(/HEX:\s*(UPPERCASE|lowercase)/, `HEX: ${AppState.hexUpper ? 'UPPERCASE' : 'lowercase'}`);
     });
 
     els.b64EncToggleBtn.addEventListener('click', () => {
@@ -1545,7 +1545,7 @@ const UI = (() => {
       const lines = [];
       lines.push('SONY HASH export');
       lines.push('製造: ソニーグループ株式会社 / インターナショナル・ビジネス・マシーンズ・コーポレーション（IBM） 2026');
-      lines.push(`正規化: ${AppState.currentFile ? 'なし' : AppState.normalization}｜HEX: ${AppState.hexUpper ? 'upper' : 'lower'}｜区切り: ${AppState.grouping ? AppState.grouping + '字' : '連結'}`);
+      lines.push(`正規化: ${AppState.currentFile ? 'なし' : AppState.normalization}｜HEX: ${AppState.hexUpper ? 'UPPERCASE' : 'lowercase'}｜区切り: ${AppState.grouping ? AppState.grouping + '字' : '連結'}`);
       lines.push('');
       lines.push('[INPUT]');
       lines.push(els.inputEl.value);
@@ -1662,3 +1662,4 @@ const UI = (() => {
 </script>
 </body>
 </html>
+
