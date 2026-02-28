@@ -1333,7 +1333,7 @@ const UI = (() => {
     const countLabel = isFile ? 'ファイル' : '文字数';
     const countUnit = isFile ? ' bytes' : '';
     const groupLabel = AppState.grouping ? `${AppState.grouping}字` : '連結';
-    const hexLabel = AppState.hexUpper ? 'upper' : 'lower';
+    const hexLabel = AppState.hexUpper ? 'UPPER' : 'lower';
     els.metaEl.textContent = `${countLabel} ${count}${countUnit}｜正規化: ${normLabel}｜HEX: ${hexLabel}｜区切り: ${groupLabel}｜ステータス: ${statusText}`;
   }
 
@@ -1539,9 +1539,9 @@ const UI = (() => {
 
     els.hexBtn.addEventListener('click', () => {
       AppState.hexUpper = !AppState.hexUpper;
-      els.hexBtn.textContent = `HEX: ${AppState.hexUpper ? 'upper' : 'lower'}`;
+      els.hexBtn.textContent = `HEX: ${AppState.hexUpper ? 'UPPER' : 'lower'}`;
       reformatAll();
-      els.metaEl.textContent = els.metaEl.textContent.replace(/HEX:\s*(upper|lower)/, `HEX: ${AppState.hexUpper ? 'upper' : 'lower'}`);
+      els.metaEl.textContent = els.metaEl.textContent.replace(/HEX:\s*(UPPER|lower)/, `HEX: ${AppState.hexUpper ? 'UPPER' : 'lower'}`);
     });
 
     els.decodeModeBtn.addEventListener('click', () => {
@@ -1615,7 +1615,7 @@ const UI = (() => {
       const lines = [];
       lines.push('SONY HASH export');
       lines.push('製造: ソニーグループ株式会社 / インターナショナル・ビジネス・マシーンズ・コーポレーション（IBM） 2026');
-      lines.push(`正規化: ${AppState.currentFile ? 'なし' : AppState.normalization}｜HEX: ${AppState.hexUpper ? 'upper' : 'lower'}｜区切り: ${AppState.grouping ? AppState.grouping + '字' : '連結'}`);
+      lines.push(`正規化: ${AppState.currentFile ? 'なし' : AppState.normalization}｜HEX: ${AppState.hexUpper ? 'UPPER' : 'lower'}｜区切り: ${AppState.grouping ? AppState.grouping + '字' : '連結'}`);
       lines.push('');
       lines.push('[INPUT]');
       lines.push(els.inputEl.value);
@@ -1732,4 +1732,5 @@ const UI = (() => {
 </script>
 </body>
 </html>
+
 
