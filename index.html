@@ -1546,7 +1546,7 @@ const UI = (() => {
 
     els.decodeModeBtn.addEventListener('click', () => {
       AppState.decodeLenient = !AppState.decodeLenient;
-      els.decodeModeBtn.textContent = `デコード: ${AppState.decodeLenient ? '柔軟 (自動修復)' : '厳密'}`;
+      els.decodeModeBtn.textContent = `デコード: ${AppState.decodeLenient ? '非厳密' : '厳密'}`;
       scheduleUpdate();
     });
 
@@ -1732,3 +1732,4 @@ const UI = (() => {
 </script>
 </body>
 </html>
+
