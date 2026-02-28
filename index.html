@@ -149,13 +149,13 @@
       <button id="norm" class="link" aria-label="正規化の切替">正規化: NFC</button><span class="sep hint">/</span>
       <button id="hexcase" class="link" aria-label="HEX大小の切替">HEX: lower</button>
       <span class="sep hint">/</span>
-      <button id="b64EncToggle" class="link" aria-label="Base64エンコードの切替">B64 Enc: オフ</button>
+      <button id="Base64EncToggle" class="link" aria-label="Base64エンコードの切替">Base64 Enc: オフ</button>
       <span class="sep hint">/</span>
-      <button id="b64DecToggle" class="link" aria-label="Base64デコードの切替">B64 Dec: オフ</button>
+      <button id="Base64DecToggle" class="link" aria-label="Base64デコードの切替">Base64 Dec: オフ</button>
       <span class="sep hint">/</span>
-      <button id="b85EncToggle" class="link" aria-label="Base85エンコードの切替">B85 Enc: オフ</button>
+      <button id="Base85EncToggle" class="link" aria-label="Base85エンコードの切替">Base85 Enc: オフ</button>
       <span class="sep hint">/</span>
-      <button id="b85DecToggle" class="link" aria-label="Base85デコードの切替">B85 Dec: オフ</button>
+      <button id="Base85DecToggle" class="link" aria-label="Base85デコードの切替">Base85 Dec: オフ</button>
       <span class="sep hint">/</span>
       <label for="grouping" class="hint">区切り:</label>
       <select id="grouping" class="link" style="text-decoration:none">
@@ -189,10 +189,10 @@
       <div class="row"><div class="label">SHA-384</div> <div id="SHA-384" class="value" data-alg="SHA-384" tabindex="0">入力待ち</div></div>
       <div class="row"><div class="label">SHA-512</div> <div id="SHA-512" class="value" data-alg="SHA-512" tabindex="0">入力待ち</div></div>
       <div class="row"><div class="label">CRC32</div>   <div id="CRC32"   class="value" data-alg="CRC32" tabindex="0">入力待ち</div></div>
-      <div class="row" id="row-b64-enc" style="display:none;"><div class="label">Base64 Enc</div> <div id="Base64-Enc" class="value" data-alg="Base64 Enc" tabindex="0">入力待ち</div></div>
-      <div class="row" id="row-b64-dec" style="display:none;"><div class="label">Base64 Dec</div> <div id="Base64-Dec" class="value" data-alg="Base64 Dec" tabindex="0">入力待ち</div></div>
-      <div class="row" id="row-b85-enc" style="display:none;"><div class="label">Base85 Enc</div> <div id="Base85-Enc" class="value" data-alg="Base85 Enc" tabindex="0">入力待ち</div></div>
-      <div class="row" id="row-b85-dec" style="display:none;"><div class="label">Base85 Dec</div> <div id="Base85-Dec" class="value" data-alg="Base85 Dec" tabindex="0">入力待ち</div></div>
+      <div class="row" id="row-Base64-enc" style="display:none;"><div class="label">Base64 Enc</div> <div id="Base64-Enc" class="value" data-alg="Base64 Enc" tabindex="0">入力待ち</div></div>
+      <div class="row" id="row-Base64-dec" style="display:none;"><div class="label">Base64 Dec</div> <div id="Base64-Dec" class="value" data-alg="Base64 Dec" tabindex="0">入力待ち</div></div>
+      <div class="row" id="row-Base85-enc" style="display:none;"><div class="label">Base85 Enc</div> <div id="Base85-Enc" class="value" data-alg="Base85 Enc" tabindex="0">入力待ち</div></div>
+      <div class="row" id="row-Base85-dec" style="display:none;"><div class="label">Base85 Dec</div> <div id="Base85-Dec" class="value" data-alg="Base85 Dec" tabindex="0">入力待ち</div></div>
     </section>
   </main>
   <aside id="sys" class="sys">
@@ -231,10 +231,10 @@ const AppState = {
   normalization: 'NFC',
   hexUpper: false,
   grouping: 0,
-  b64Encode: false,
-  b64Decode: false,
-  b85Encode: false,
-  b85Decode: false,
+  Base64Encode: false,
+  Base64Decode: false,
+  Base85Encode: false,
+  Base85Decode: false,
   currentFile: null,
   seq: 0,
   geoEnabled: false,
@@ -982,8 +982,8 @@ const Engine = (() => {
           const errRes = {'MD5':'ワーカーエラー', 'SHA-1':'ワーカーエラー', 'SHA-256':'ワーカーエラー', 'CRC32':'ワーカーエラー'};
           if (isSmallFile) {
             errRes['SHA-384'] = 'ワーカーエラー'; errRes['SHA-512'] = 'ワーカーエラー';
-            if (AppState.b64Encode) errRes['Base64-Enc'] = 'ワーカーエラー';
-            if (AppState.b85Encode) errRes['Base85-Enc'] = 'ワーカーエラー';
+            if (AppState.Base64Encode) errRes['Base64-Enc'] = 'ワーカーエラー';
+            if (AppState.Base85Encode) errRes['Base85-Enc'] = 'ワーカーエラー';
           }
           onUpdate(errRes);
           checkDone();
@@ -1015,8 +1015,8 @@ const Engine = (() => {
                 worker.postMessage({action: 'finalize'});
                 if (isSmallFile && fullBuffer) {
                   const finalBuffer = (offset === fullBuffer.length) ? fullBuffer : fullBuffer.subarray(0, offset);
-                  if (AppState.b64Encode) onUpdate({'Base64-Enc': Core.encodeBase64(finalBuffer)});
-                  if (AppState.b85Encode) {
+                  if (AppState.Base64Encode) onUpdate({'Base64-Enc': Core.encodeBase64(finalBuffer)});
+                  if (AppState.Base85Encode) {
                     Base85Engine.encode(finalBuffer).then(res => {
                       if (curSeq === AppState.seq) {
                         if (res.type === 'error') onUpdate({'Base85-Enc': 'エラー'});
@@ -1059,8 +1059,8 @@ const Engine = (() => {
             const errRes = {'MD5':'読込エラー', 'SHA-1':'読込エラー', 'SHA-256':'読込エラー', 'CRC32':'読込エラー'};
             if (isSmallFile) {
               errRes['SHA-384'] = '読込エラー'; errRes['SHA-512'] = '読込エラー';
-              if (AppState.b64Encode) errRes['Base64-Enc'] = '読込エラー';
-              if (AppState.b85Encode) errRes['Base85-Enc'] = '読込エラー';
+              if (AppState.Base64Encode) errRes['Base64-Enc'] = '読込エラー';
+              if (AppState.Base85Encode) errRes['Base85-Enc'] = '読込エラー';
             }
             onUpdate(errRes);
             checkDone();
@@ -1075,8 +1075,8 @@ const Engine = (() => {
           if (curSeq !== AppState.seq) return;
           const bytes = new Uint8Array(e.target.result);
           onUpdate({'MD5': Core.md5Hex(bytes), 'CRC32': Core.crc32Hex(bytes)});
-          if (AppState.b64Encode) onUpdate({'Base64-Enc': Core.encodeBase64(bytes)});
-          if (AppState.b85Encode) {
+          if (AppState.Base64Encode) onUpdate({'Base64-Enc': Core.encodeBase64(bytes)});
+          if (AppState.Base85Encode) {
             Base85Engine.encode(bytes).then(res => {
               if (curSeq === AppState.seq) {
                 if(res.type === 'error') onUpdate({'Base85-Enc': 'エラー'});
@@ -1108,8 +1108,8 @@ const Engine = (() => {
   }
 
   async function hashText(bytesToHash, curSeq, onUpdate) {
-    if (AppState.b64Encode) onUpdate({'Base64-Enc': Core.encodeBase64(bytesToHash)});
-    if (AppState.b85Encode) {
+    if (AppState.Base64Encode) onUpdate({'Base64-Enc': Core.encodeBase64(bytesToHash)});
+    if (AppState.Base85Encode) {
       Base85Engine.encode(bytesToHash).then(res => {
         if (curSeq === AppState.seq) {
           if(res.type === 'error') onUpdate({'Base85-Enc': 'エラー'});
@@ -1191,14 +1191,14 @@ const UI = (() => {
     els.dropZone = document.getElementById('drop-zone');
     els.fileInput = document.getElementById('f-hidden');
     els.fileTrigger = document.getElementById('f-trigger');
-    els.b64EncToggleBtn = document.getElementById('b64EncToggle');
-    els.b64DecToggleBtn = document.getElementById('b64DecToggle');
-    els.rowB64Enc = document.getElementById('row-b64-enc');
-    els.rowB64Dec = document.getElementById('row-b64-dec');
-    els.b85EncToggleBtn = document.getElementById('b85EncToggle');
-    els.b85DecToggleBtn = document.getElementById('b85DecToggle');
-    els.rowB85Enc = document.getElementById('row-b85-enc');
-    els.rowB85Dec = document.getElementById('row-b85-dec');
+    els.Base64EncToggleBtn = document.getElementById('Base64EncToggle');
+    els.Base64DecToggleBtn = document.getElementById('Base64DecToggle');
+    els.rowBase64Enc = document.getElementById('row-Base64-enc');
+    els.rowBase64Dec = document.getElementById('row-Base64-dec');
+    els.Base85EncToggleBtn = document.getElementById('Base85EncToggle');
+    els.Base85DecToggleBtn = document.getElementById('Base85DecToggle');
+    els.rowBase85Enc = document.getElementById('row-Base85-enc');
+    els.rowBase85Dec = document.getElementById('row-Base85-dec');
     els.sysEl = document.getElementById('sys');
   }
 
@@ -1317,7 +1317,7 @@ const UI = (() => {
     const curSeq = AppState.seq;
     updateMeta(displayCount, isFile, '計算中');
 
-    if (AppState.b64Decode && !isFile) {
+    if (AppState.Base64Decode && !isFile) {
       const decInfo = Core.decodeBase64Info(raw);
       if (decInfo.type === 'empty') renderResults({'Base64-Dec': ''});
       else if (decInfo.type === 'error') renderResults({'Base64-Dec': 'デコード不可'});
@@ -1325,7 +1325,7 @@ const UI = (() => {
       else renderResults({'Base64-Dec': decInfo.value});
     }
 
-    if (AppState.b85Decode && !isFile) {
+    if (AppState.Base85Decode && !isFile) {
       if(!raw.trim()) {
         renderResults({'Base85-Dec': ''});
       } else {
@@ -1342,18 +1342,18 @@ const UI = (() => {
     if (isFile) {
       const isSmallFile = AppState.currentFile.size <= 50 * 1024 * 1024;
       const initRes = {'MD5': '計算中…', 'SHA-1': '計算中…', 'SHA-256': '計算中…', 'CRC32': '計算中…'};
-      if (AppState.b64Decode) initRes['Base64-Dec'] = 'ファイル非対応';
-      if (AppState.b85Decode) initRes['Base85-Dec'] = 'ファイル非対応';
+      if (AppState.Base64Decode) initRes['Base64-Dec'] = 'ファイル非対応';
+      if (AppState.Base85Decode) initRes['Base85-Dec'] = 'ファイル非対応';
       
       if (!isSmallFile) {
         initRes['SHA-384'] = 'サイズ超過 (MD5/SHA1/256/CRC32のみ)';
         initRes['SHA-512'] = 'サイズ超過 (MD5/SHA1/256/CRC32のみ)';
-        if(AppState.b64Encode) initRes['Base64-Enc'] = 'サイズ超過 (50MB以下のみ)';
-        if(AppState.b85Encode) initRes['Base85-Enc'] = 'サイズ超過 (50MB以下のみ)';
+        if(AppState.Base64Encode) initRes['Base64-Enc'] = 'サイズ超過 (50MB以下のみ)';
+        if(AppState.Base85Encode) initRes['Base85-Enc'] = 'サイズ超過 (50MB以下のみ)';
       } else {
         initRes['SHA-384'] = '計算中…'; initRes['SHA-512'] = '計算中…';
-        if(AppState.b64Encode) initRes['Base64-Enc'] = '計算中…';
-        if(AppState.b85Encode) initRes['Base85-Enc'] = '計算中…';
+        if(AppState.Base64Encode) initRes['Base64-Enc'] = '計算中…';
+        if(AppState.Base85Encode) initRes['Base85-Enc'] = '計算中…';
       }
       renderResults(initRes);
 
@@ -1363,8 +1363,8 @@ const UI = (() => {
       if (curSeq === AppState.seq) updateMeta(displayCount, isFile, '完了');
     } else {
       const initRes = {'MD5': '計算中…', 'SHA-1': '計算中…', 'SHA-256': '計算中…', 'CRC32': '計算中…', 'SHA-384': '計算中…', 'SHA-512': '計算中…'};
-      if(AppState.b64Encode) initRes['Base64-Enc'] = '計算中…';
-      if(AppState.b85Encode) initRes['Base85-Enc'] = '計算中…';
+      if(AppState.Base64Encode) initRes['Base64-Enc'] = '計算中…';
+      if(AppState.Base85Encode) initRes['Base85-Enc'] = '計算中…';
       if(Engine.hasWorker && bytesToHash.length > Engine.WORKER_THRESHOLD) renderResults(initRes);
 
       await Engine.hashText(bytesToHash, curSeq, res => {
@@ -1480,35 +1480,35 @@ const UI = (() => {
       els.metaEl.textContent = els.metaEl.textContent.replace(/HEX:\s*(upper|lower)/, `HEX: ${AppState.hexUpper ? 'upper' : 'lower'}`);
     });
 
-    els.b64EncToggleBtn.addEventListener('click', () => {
-      AppState.b64Encode = !AppState.b64Encode;
-      els.b64EncToggleBtn.textContent = `B64 Enc: ${AppState.b64Encode ? 'オン' : 'オフ'}`;
-      els.rowB64Enc.style.display = AppState.b64Encode ? 'flex' : 'none';
-      if (AppState.b64Encode) scheduleUpdate();
+    els.Base64EncToggleBtn.addEventListener('click', () => {
+      AppState.Base64Encode = !AppState.Base64Encode;
+      els.Base64EncToggleBtn.textContent = `Base64 Enc: ${AppState.Base64Encode ? 'オン' : 'オフ'}`;
+      els.rowBase64Enc.style.display = AppState.Base64Encode ? 'flex' : 'none';
+      if (AppState.Base64Encode) scheduleUpdate();
       else renderResults({'Base64-Enc': ''});
     });
 
-    els.b64DecToggleBtn.addEventListener('click', () => {
-      AppState.b64Decode = !AppState.b64Decode;
-      els.b64DecToggleBtn.textContent = `B64 Dec: ${AppState.b64Decode ? 'オン' : 'オフ'}`;
-      els.rowB64Dec.style.display = AppState.b64Decode ? 'flex' : 'none';
-      if (AppState.b64Decode) scheduleUpdate();
+    els.Base64DecToggleBtn.addEventListener('click', () => {
+      AppState.Base64Decode = !AppState.Base64Decode;
+      els.Base64DecToggleBtn.textContent = `Base64 Dec: ${AppState.Base64Decode ? 'オン' : 'オフ'}`;
+      els.rowBase64Dec.style.display = AppState.Base64Decode ? 'flex' : 'none';
+      if (AppState.Base64Decode) scheduleUpdate();
       else renderResults({'Base64-Dec': ''});
     });
 
-    els.b85EncToggleBtn.addEventListener('click', () => {
-      AppState.b85Encode = !AppState.b85Encode;
-      els.b85EncToggleBtn.textContent = `B85 Enc: ${AppState.b85Encode ? 'オン' : 'オフ'}`;
-      els.rowB85Enc.style.display = AppState.b85Encode ? 'flex' : 'none';
-      if (AppState.b85Encode) scheduleUpdate();
+    els.Base85EncToggleBtn.addEventListener('click', () => {
+      AppState.Base85Encode = !AppState.Base85Encode;
+      els.Base85EncToggleBtn.textContent = `Base85 Enc: ${AppState.Base85Encode ? 'オン' : 'オフ'}`;
+      els.rowBase85Enc.style.display = AppState.Base85Encode ? 'flex' : 'none';
+      if (AppState.Base85Encode) scheduleUpdate();
       else renderResults({'Base85-Enc': ''});
     });
 
-    els.b85DecToggleBtn.addEventListener('click', () => {
-      AppState.b85Decode = !AppState.b85Decode;
-      els.b85DecToggleBtn.textContent = `B85 Dec: ${AppState.b85Decode ? 'オン' : 'オフ'}`;
-      els.rowB85Dec.style.display = AppState.b85Decode ? 'flex' : 'none';
-      if (AppState.b85Decode) scheduleUpdate();
+    els.Base85DecToggleBtn.addEventListener('click', () => {
+      AppState.Base85Decode = !AppState.Base85Decode;
+      els.Base85DecToggleBtn.textContent = `Base85 Dec: ${AppState.Base85Decode ? 'オン' : 'オフ'}`;
+      els.rowBase85Dec.style.display = AppState.Base85Decode ? 'flex' : 'none';
+      if (AppState.Base85Decode) scheduleUpdate();
       else renderResults({'Base85-Dec': ''});
     });
 
@@ -1552,10 +1552,10 @@ const UI = (() => {
       lines.push('');
       lines.push('[DIGEST]');
       for (const id of ['MD5','SHA-1','SHA-256','SHA-384','SHA-512','CRC32', 'Base64-Enc', 'Base64-Dec', 'Base85-Enc', 'Base85-Dec']) {
-        if (!AppState.b64Encode && id === 'Base64-Enc') continue;
-        if (!AppState.b64Decode && id === 'Base64-Dec') continue;
-        if (!AppState.b85Encode && id === 'Base85-Enc') continue;
-        if (!AppState.b85Decode && id === 'Base85-Dec') continue;
+        if (!AppState.Base64Encode && id === 'Base64-Enc') continue;
+        if (!AppState.Base64Decode && id === 'Base64-Dec') continue;
+        if (!AppState.Base85Encode && id === 'Base85-Enc') continue;
+        if (!AppState.Base85Decode && id === 'Base85-Dec') continue;
         const el = document.getElementById(id);
         const raw = el.dataset.raw || el.textContent.trim();
         lines.push(`${id}: ${raw}`);
