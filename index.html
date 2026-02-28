@@ -6,10 +6,10 @@
 <title>SONY HASH</title>
 <script>
   if(location.search.includes('airgap=1') || location.hash === '#airgap') {
-    document.write('<meta http-equiv="Content-Security-Policy" content="default-src \'self\'; script-src \'self\' \'unsafe-inline\' blob:; style-src \'self\' \'unsafe-inline\'; worker-src \'self\' blob:; connect-src \'none\'; object-src \'none\'; base-uri \'none\'; frame-ancestors \'none\';">');
+    document.write('<meta http-equiv="Content-Security-Policy" content="default-src \'self\'; script-src \'self\' \'unsafe-inline\' blob:; style-src \'self\' \'unsafe-inline\'; worker-src \'self\' blob:; frame-src \'self\' blob:; child-src \'self\' blob:; connect-src \'none\'; object-src \'none\'; base-uri \'none\'; frame-ancestors \'none\';">');
     window.__ZESS_MODE__ = true;
   } else {
-    document.write('<meta http-equiv="Content-Security-Policy" content="default-src \'self\'; script-src \'self\' \'unsafe-inline\' blob:; style-src \'self\' \'unsafe-inline\'; worker-src \'self\' blob:; img-src \'self\' data:; connect-src \'self\' https://api.ipify.org https://worldtimeapi.org https://ipapi.co https://ipinfo.io https://ip-api.com https://ipwho.is https://www.cloudflare.com; object-src \'none\'; base-uri \'none\'; frame-ancestors \'none\';">');
+    document.write('<meta http-equiv="Content-Security-Policy" content="default-src \'self\'; script-src \'self\' \'unsafe-inline\' blob:; style-src \'self\' \'unsafe-inline\'; worker-src \'self\' blob:; frame-src \'self\' blob:; child-src \'self\' blob:; img-src \'self\' data:; connect-src \'self\' https://api.ipify.org https://worldtimeapi.org https://ipapi.co https://ipinfo.io https://ip-api.com https://ipwho.is https://www.cloudflare.com; object-src \'none\'; base-uri \'none\'; frame-ancestors \'none\';">');
   }
 </script>
 <meta name="referrer" content="no-referrer">
@@ -149,6 +149,8 @@
       <button id="norm" class="link" aria-label="正規化の切替">正規化: NFC</button><span class="sep hint">/</span>
       <button id="hexcase" class="link" aria-label="HEX大小の切替">HEX: lower</button>
       <span class="sep hint">/</span>
+      <button id="decodeModeToggle" class="link" aria-label="デコードモードの切替">デコード: 厳密</button>
+      <span class="sep hint">/</span>
       <button id="Base64EncToggle" class="link" aria-label="Base64エンコードの切替">Base64 Enc: オフ</button>
       <span class="sep hint">/</span>
       <button id="Base64DecToggle" class="link" aria-label="Base64デコードの切替">Base64 Dec: オフ</button>
@@ -230,6 +232,7 @@ const AppState = {
   theme: 'default',
   normalization: 'NFC',
   hexUpper: false,
+  decodeLenient: false,
   grouping: 0,
   Base64Encode: false,
   Base64Decode: false,
@@ -328,13 +331,28 @@ const Core = (() => {
     return {ext: 'bin', mime: 'application/octet-stream'};
   }
 
-  function decodeBase64Info(str) {
+  function decodeBase64Info(str, lenient = false) {
     try {
-      let clean = str.replace(/\s+/g, '');
+      let clean = str;
+      if (lenient) {
+        clean = clean.replace(/[^A-Za-z0-9+/=_\-]/g, '');
+      } else {
+        clean = clean.replace(/\s+/g, '');
+      }
+
       if (!clean) return { type: 'empty' };
-      if (/[^A-Za-z0-9+/=_\-]/.test(clean)) return { type: 'error' };
+      if (!lenient && /[^A-Za-z0-9+/=_\-]/.test(clean)) return { type: 'error' };
+
       clean = clean.replace(/-/g, '+').replace(/_/g, '/');
-      while (clean.length % 4 !== 0) clean += '=';
+
+      if (lenient) {
+        clean = clean.replace(/=+$/, '');
+        const pad = (4 - (clean.length % 4)) % 4;
+        if (pad > 0 && pad < 4) clean += '='.repeat(pad);
+      } else {
+        while (clean.length % 4 !== 0) clean += '=';
+      }
+
       const binary = atob(clean);
       const bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) {
@@ -638,6 +656,8 @@ const SysUtils = (() => {
 ========================================================= */
 const Base85Engine = (() => {
   let worker = null;
+  const activeTasks = new Map();
+
   function init() {
     if(worker) return;
     const code = `
@@ -667,12 +687,11 @@ const Base85Engine = (() => {
       }
 
       function decodeZ85(str) {
-        const clean = str.replace(/\\s+/g, '');
-        if(!clean) return new Uint8Array(0);
-        const len = clean.length;
+        if(!str) return new Uint8Array(0);
+        const len = str.length;
         const extra = len % 5;
         const paddedLen = extra === 0 ? len : len + (5 - extra);
-        let workStr = clean;
+        let workStr = str;
         if(extra > 0) {
           workStr += CHARSET[84].repeat(5 - extra);
         }
@@ -695,10 +714,16 @@ const Base85Engine = (() => {
             const str = encodeZ85(payload);
             postMessage({ reqId, status: 'ok', result: { type: 'text', value: str } });
           } else if(action === 'decode') {
-            const clean = payload.replace(/\\s+/g, '');
-            const invalid = /[^0-9a-zA-Z\\.\\-\\:\\+\\=\\^\\!\\/\\*\\?\\&\\<\\>\\(\\)\\[\\]\\{\\}\\@\\%\\$\\#]/;
-            if(invalid.test(clean)) throw new Error('Invalid Z85 Characters');
-            const bytes = decodeZ85(payload);
+            let clean = payload.str;
+            if(payload.lenient) {
+              clean = clean.replace(/[^0-9a-zA-Z\\.\\-\\:\\+\\=\\^\\!\\/\\*\\?\\&\\<\\>\\(\\)\\[\\]\\{\\}\\@\\%\\$\\#]/g, '');
+            } else {
+              clean = clean.replace(/\\s+/g, '');
+              const invalid = /[^0-9a-zA-Z\\.\\-\\:\\+\\=\\^\\!\\/\\*\\?\\&\\<\\>\\(\\)\\[\\]\\{\\}\\@\\%\\$\\#]/;
+              if(invalid.test(clean)) throw new Error('Invalid Z85 Characters');
+            }
+            
+            const bytes = decodeZ85(clean);
             try {
               const text = new TextDecoder('utf-8', {fatal: true}).decode(bytes);
               if (/[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]/.test(text)) throw new Error('binary');
@@ -714,20 +739,23 @@ const Base85Engine = (() => {
     `;
     const blob = new Blob([code], {type:'application/javascript'});
     worker = new Worker(URL.createObjectURL(blob));
+    
+    worker.addEventListener('message', (e) => {
+      const task = activeTasks.get(e.data.reqId);
+      if(task) {
+        activeTasks.delete(e.data.reqId);
+        if(e.data.status === 'ok') task.resolve(e.data.result);
+        else task.reject(new Error(e.data.error));
+      }
+    });
   }
 
   function run(action, payload) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       init();
       const reqId = Date.now() + Math.random();
-      const handler = (e) => {
-        if(e.data.reqId === reqId) {
-          worker.removeEventListener('message', handler);
-          if(e.data.status === 'ok') resolve(e.data.result);
-          else resolve({ type: 'error', message: e.data.error });
-        }
-      };
-      worker.addEventListener('message', handler);
+      activeTasks.set(reqId, { resolve, reject });
+
       if(action === 'encode') {
         const copy = new Uint8Array(payload).buffer;
         worker.postMessage({ action, payload: new Uint8Array(copy), reqId }, [copy]);
@@ -739,9 +767,17 @@ const Base85Engine = (() => {
   
   function terminate() {
     if(worker) { worker.terminate(); worker = null; }
+    for(const task of activeTasks.values()) {
+      task.reject(new Error('AbortError'));
+    }
+    activeTasks.clear();
   }
 
-  return { encode: bytes => run('encode', bytes), decode: str => run('decode', str), terminate };
+  return { 
+    encode: bytes => run('encode', bytes), 
+    decode: (str, lenient) => run('decode', {str, lenient}), 
+    terminate 
+  };
 })();
 
 /* =========================================================
@@ -752,6 +788,8 @@ const Engine = (() => {
   const hasWorker = !!window.Worker;
   let workerUrl = null;
   let worker = null;
+  let activeReaderController = null;
+  let activeFileReader = null;
 
   function createWorkerBlob() {
     if (workerUrl) { try { URL.revokeObjectURL(workerUrl); } catch(e){} }
@@ -856,10 +894,10 @@ const Engine = (() => {
           a=hh(a,b,c,d,x[5],4,0xfffa3942); d=hh(d,a,b,c,x[8],11,0x8771f681); c=hh(c,d,a,b,x[11],16,0x6d9d6122); b=hh(b,c,d,a,x[14],23,0xfde5380c);
           a=hh(a,b,c,d,x[1],4,0xa4beea44); d=hh(d,a,b,c,x[4],11,0x4bdecfa9); c=hh(c,d,a,b,x[7],16,0xf6bb4b60); b=hh(b,c,d,a,x[10],23,0xbebfbc70);
           a=hh(a,b,c,d,x[13],4,0x289b7ec6); d=hh(d,a,b,c,x[0],11,0xeaa127fa); c=hh(c,d,a,b,x[3],16,0xd4ef3085); b=hh(b,c,d,a,x[6],23,0x04881d05);
-          a=hh(a,b,c,d,x[9],4,0xd9d4d039); d=hh(d,a,b,c,x[12],11,0xe6db99e5); c=hh(c,d,a,b,x[15],16,0x1fa27cf8); b=hh(b,c,d,a,x[2],23,0xc4ac5665);
-          a=ii(a,b,c,d,x[0],6,0xf4292244); d=ii(d,a,b,c,x[7],10,0x432aff97); c=ii(c,d,a,b,x[14],15,0xab9423a7); b=ii(b,c,d,a,x[5],21,0xfc93a039);
-          a=ii(a,b,c,d,x[12],6,0x655b59c3); d=ii(d,a,b,c,x[3],10,0x8f0ccc92); c=ii(c,d,a,b,x[10],15,0xffeff47d); b=ii(b,c,d,a,x[1],21,0x85845dd1);
-          a=ii(a,b,c,d,x[8],6,0x6fa87e4f); d=ii(d,a,b,c,x[15],10,0xfe2ce6e0); c=ii(c,d,a,b,x[6],15,0xa3014314); b=ii(b,c,d,a,x[13],21,0x4e0811a1);
+          a=hh(a,b,c,d,x[9],4,0xd9d4d039); d=hh(d,a,b,c,x[12],11,0xe6db99e5); c=hh(c,d,a,b,x[15],16,0x1fa27cf8); b=hh(b,c,d,a,x[i+2],23,0xc4ac5665);
+          a=ii(a,b,c,d,x[i+0],6,0xf4292244); d=ii(d,a,b,c,x[i+7],10,0x432aff97); c=ii(c,d,a,b,x[i+14],15,0xab9423a7); b=ii(b,c,d,a,x[i+5],21,0xfc93a039);
+          a=ii(a,b,c,d,x[i+12],6,0x655b59c3); d=ii(d,a,b,c,x[i+3],10,0x8f0ccc92); c=ii(c,d,a,b,x[i+10],15,0xffeff47d); b=ii(b,c,d,a,x[i+1],21,0x85845dd1);
+          a=ii(a,b,c,d,x[i+8],6,0x6fa87e4f); d=ii(d,a,b,c,x[i+15],10,0xfe2ce6e0); c=ii(c,d,a,b,x[i+6],15,0xa3014314); b=ii(b,c,d,a,x[i+13],21,0x4e0811a1);
           this.md5_h[0]=(this.md5_h[0]+a)|0; this.md5_h[1]=(this.md5_h[1]+b)|0; this.md5_h[2]=(this.md5_h[2]+c)|0; this.md5_h[3]=(this.md5_h[3]+d)|0;
           sha1Process(this.sha1_h, wSHA);
           sha256Process(this.sha256_h, wSHA);
@@ -968,6 +1006,8 @@ const Engine = (() => {
 
   function terminateWorker() {
     if (worker) { worker.terminate(); worker = null; }
+    if (activeReaderController) { activeReaderController.abort(); activeReaderController = null; }
+    if (activeFileReader) { activeFileReader.abort(); activeFileReader = null; }
   }
 
   async function hashFile(file, curSeq, onUpdate) {
@@ -1001,6 +1041,9 @@ const Engine = (() => {
         worker.postMessage({action: 'init'});
         const stream = file.stream();
         const reader = stream.getReader();
+        activeReaderController = new AbortController();
+        const signal = activeReaderController.signal;
+
         let fullBuffer = isSmallFile ? new Uint8Array(file.size) : null;
         let offset = 0;
         let bytesSinceLastYield = 0;
@@ -1009,7 +1052,10 @@ const Engine = (() => {
         (async function readAll() {
           try {
             while (true) {
-              if (curSeq !== AppState.seq) { await reader.cancel(); return; }
+              if (signal.aborted || curSeq !== AppState.seq) { 
+                await reader.cancel(); 
+                return; 
+              }
               const {done, value} = await reader.read();
               if (done) {
                 worker.postMessage({action: 'finalize'});
@@ -1022,7 +1068,7 @@ const Engine = (() => {
                         if (res.type === 'error') onUpdate({'Base85-Enc': 'エラー'});
                         else onUpdate({'Base85-Enc': res.value});
                       }
-                    });
+                    }).catch(() => {});
                   }
                   
                   const tasks = [['SHA-384','SHA-384'], ['SHA-512','SHA-512']].map(async ([id, alg]) => {
@@ -1056,6 +1102,7 @@ const Engine = (() => {
               }
             }
           } catch (e) {
+            if (e.name === 'AbortError') return;
             const errRes = {'MD5':'読込エラー', 'SHA-1':'読込エラー', 'SHA-256':'読込エラー', 'CRC32':'読込エラー'};
             if (isSmallFile) {
               errRes['SHA-384'] = '読込エラー'; errRes['SHA-512'] = '読込エラー';
@@ -1067,11 +1114,13 @@ const Engine = (() => {
             if (isSmallFile) checkDone();
             terminateWorker();
             ensureWorker();
+          } finally {
+            activeReaderController = null;
           }
         })();
       } else {
-        const reader = new FileReader();
-        reader.onload = async e => {
+        activeFileReader = new FileReader();
+        activeFileReader.onload = async e => {
           if (curSeq !== AppState.seq) return;
           const bytes = new Uint8Array(e.target.result);
           onUpdate({'MD5': Core.md5Hex(bytes), 'CRC32': Core.crc32Hex(bytes)});
@@ -1082,7 +1131,7 @@ const Engine = (() => {
                 if(res.type === 'error') onUpdate({'Base85-Enc': 'エラー'});
                 else onUpdate({'Base85-Enc': res.value});
               }
-            });
+            }).catch(() => {});
           }
           checkDone();
 
@@ -1094,15 +1143,20 @@ const Engine = (() => {
             await Promise.allSettled(tasks);
             checkDone();
           }
+          activeFileReader = null;
         };
-        reader.onerror = () => {
+        activeFileReader.onerror = () => {
           const errRes = {};
           ['MD5','SHA-1','SHA-256','SHA-384','SHA-512','CRC32','Base64-Enc','Base64-Dec','Base85-Enc','Base85-Dec'].forEach(id => errRes[id] = '読込エラー');
           onUpdate(errRes);
           checkDone();
           if (isSmallFile) checkDone();
+          activeFileReader = null;
         };
-        reader.readAsArrayBuffer(file);
+        activeFileReader.onabort = () => {
+          activeFileReader = null;
+        };
+        activeFileReader.readAsArrayBuffer(file);
       }
     });
   }
@@ -1115,7 +1169,7 @@ const Engine = (() => {
           if(res.type === 'error') onUpdate({'Base85-Enc': 'エラー'});
           else onUpdate({'Base85-Enc': res.value});
         }
-      });
+      }).catch(() => {});
     }
 
     if (hasWorker && bytesToHash.length > WORKER_THRESHOLD) {
@@ -1158,7 +1212,7 @@ const Engine = (() => {
     ensureWorker();
   }
 
-  return { init, hasWorker, WORKER_THRESHOLD, hashFile, hashText, terminateWorker };
+  return { init, hasWorker, WORKER_THRESHOLD, hashFile, hashText, terminateWorker, ensureWorker };
 })();
 
 /* =========================================================
@@ -1180,6 +1234,7 @@ const UI = (() => {
     els.fsBtn = document.getElementById('fs');
     els.normBtn = document.getElementById('norm');
     els.hexBtn = document.getElementById('hexcase');
+    els.decodeModeBtn = document.getElementById('decodeModeToggle');
     els.toastEl = document.getElementById('toast');
     els.tvSel = document.getElementById('tv');
     els.applyBtn = document.getElementById('apply');
@@ -1283,6 +1338,13 @@ const UI = (() => {
   }
 
   async function updateAll() {
+    Engine.terminateWorker();
+    Base85Engine.terminate();
+    Engine.ensureWorker();
+    
+    AppState.seq++;
+    const curSeq = AppState.seq;
+    
     let bytesToHash;
     let isFile = false;
     let displayCount = 0;
@@ -1313,12 +1375,10 @@ const UI = (() => {
       displayCount = Core.countGraphemes(v);
     }
 
-    AppState.seq++;
-    const curSeq = AppState.seq;
     updateMeta(displayCount, isFile, '計算中');
 
     if (AppState.Base64Decode && !isFile) {
-      const decInfo = Core.decodeBase64Info(raw);
+      const decInfo = Core.decodeBase64Info(raw, AppState.decodeLenient);
       if (decInfo.type === 'empty') renderResults({'Base64-Dec': ''});
       else if (decInfo.type === 'error') renderResults({'Base64-Dec': 'デコード不可'});
       else if (decInfo.type === 'binary') renderResults({'Base64-Dec': decInfo});
@@ -1329,11 +1389,15 @@ const UI = (() => {
       if(!raw.trim()) {
         renderResults({'Base85-Dec': ''});
       } else {
-        Base85Engine.decode(raw).then(res => {
+        Base85Engine.decode(raw, AppState.decodeLenient).then(res => {
           if (curSeq === AppState.seq) {
              if (res.type === 'error') renderResults({'Base85-Dec': 'デコード不可'});
              else if (res.type === 'binary') renderResults({'Base85-Dec': res});
              else renderResults({'Base85-Dec': res.value});
+          }
+        }).catch(e => {
+          if (curSeq === AppState.seq && e.message !== 'AbortError') {
+             renderResults({'Base85-Dec': 'デコード不可'});
           }
         });
       }
@@ -1478,6 +1542,12 @@ const UI = (() => {
       els.hexBtn.textContent = `HEX: ${AppState.hexUpper ? 'upper' : 'lower'}`;
       reformatAll();
       els.metaEl.textContent = els.metaEl.textContent.replace(/HEX:\s*(upper|lower)/, `HEX: ${AppState.hexUpper ? 'upper' : 'lower'}`);
+    });
+
+    els.decodeModeBtn.addEventListener('click', () => {
+      AppState.decodeLenient = !AppState.decodeLenient;
+      els.decodeModeBtn.textContent = `デコード: ${AppState.decodeLenient ? '柔軟 (自動修復)' : '厳密'}`;
+      scheduleUpdate();
     });
 
     els.Base64EncToggleBtn.addEventListener('click', () => {
