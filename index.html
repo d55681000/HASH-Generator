@@ -48,7 +48,7 @@
     --sb-thumb:#888888;
     --sb-thumb-hover:#cccccc;
   }
-  body[data-theme=""]{
+  body[data-theme="ps"]{
     --bg:#012456;
     --fg:#eeedf0;
     --fg-bright:#ffe900;
@@ -248,7 +248,7 @@ const Security = (() => {
 /* =========================================================
    STATE LAYER — Application State Container
 ========================================================= */
-const Aptate = {
+const AppState = {
   theme: 'default',
   normalization: 'NFC',
   hexUpper: false,
@@ -464,15 +464,15 @@ const Core = (() => {
     }
   }
 
-  function applyGrouping(hex, grouize) {
-    const n = grouize | 0;
+  function applyGrouping(hex, groupSize) {
+    const n = groupSize | 0;
     if(!n) return hex;
     return hex.replace(new RegExp(`(.{${n}})`, 'g'), '$1 ').trim();
   }
 
-  function formatForDisplay(rawHex, hexUpper, grouize) {
+  function formatForDisplay(rawHex, hexUpper, groupSize) {
     const h = hexUpper ? rawHex.toUpperCase() : rawHex.toLowerCase();
-    return applyGrouping(h, grouize);
+    return applyGrouping(h, groupSize);
   }
 
   const CRC_TABLE = (()=>{const t=new Uint32Array(256);for(let i=0;i<256;i++){let c=i;for(let j=0;j<8;j++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[i]=c>>>0;}return t;})();
@@ -721,7 +721,7 @@ const SysUtils = (() => {
       `ベンダー: ${vendor||'N/A'}`,
       `ブランド: ${brands||'N/A'}`,
       `CPU: ${cores} / メモリ: ${mem}`,
-      `電源: ${Aptate.battStr}`
+      `電源: ${AppState.battStr}`
     ].join('\n');
   }
 
@@ -733,7 +733,7 @@ const SysUtils = (() => {
     try{
       const ctrl = new AbortController();
       const t = setTimeout(()=>ctrl.abort(), 3000);
-      const r = await fetch('htt://api.ipify.org?format=json',{signal:ctrl.signal});
+      const r = await fetch('https://api.ipify.org?format=json',{signal:ctrl.signal});
       clearTimeout(t);
       if(!r.ok) throw new Error('ipify error');
       const {ip} = await r.json();
@@ -746,7 +746,7 @@ const SysUtils = (() => {
   async function networkDetail(){
     if(window.__ZESS_MODE__) return '接続: ZESS Enclave (No Egress)';
     const c=navigator.connection||navigator.mozConnection||navigator.webkitConnection;
-    const base=c?`接続: ${c.effectiveType||'N/A'} 下り:${c.downlink||'?'}Mb RTT:${c.rtt||'?'}ms`:'接続: N/A';
+    const base=c?`接続: ${c.effectiveType||'N/A'} 下り:${c.downlink||'?'}Mbps RTT:${c.rtt||'?'}ms`:'接続: N/A';
     const ip=await publicIP();
     return `${base}\n${ip}`;
   }
@@ -1763,7 +1763,7 @@ const UI = (() => {
   function attachEvents() {
     const THEMES = [
       { id: 'default', label: 'DEFAULT' },
-      { id: 'cmd', label: 'CMD' },
+      { id: 'cmd', label: 'Command Prompt' },
       { id: 'ps', label: 'PowerShell' }
     ];
     function applyTheme() {
@@ -2031,5 +2031,3 @@ const UI = (() => {
 </script>
 </body>
 </html>
-
-
