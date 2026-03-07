@@ -1588,7 +1588,7 @@ const UI = (() => {
       delete el._fileInfo;
 
       if (!value) {
-        el.dataset.raw = ''; el.textContent = ''; el.dataset.empty = '1';
+        el.dataset.raw = ''; el.textContent = '入力待ち'; el.dataset.empty = '1';
         continue;
       }
       if (typeof value === 'object' && value.type === 'binary') {
