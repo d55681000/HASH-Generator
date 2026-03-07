@@ -202,14 +202,14 @@
       <button id="zessToggle" class="link" aria-label="ZESS隔離モード">ZESS: オフ</button>
     </div>
     <section class="list mono" aria-live="polite" aria-busy="false">
+      <div class="row"><div class="label">CRC32</div>                         <div id="CRC32"   class="value" data-alg="CRC32" tabindex="0">入力待ち</div></div>
+      <div class="row"><div class="label">CRC64</div>                         <div id="CRC64"   class="value" data-alg="CRC64" tabindex="0">入力待ち</div></div>
       <div class="row"><div class="label" id="label-MD5">MD5</div>            <div id="MD5"     class="value" data-alg="MD5" tabindex="0">入力待ち</div></div>
       <div class="row"><div class="label" id="label-SHA-1">SHA-1</div>        <div id="SHA-1"   class="value" data-alg="SHA-1" tabindex="0">入力待ち</div></div>
       <div class="row"><div class="label" id="label-SHA-224">SHA-224</div>    <div id="SHA-224" class="value" data-alg="SHA-224" tabindex="0">入力待ち</div></div>
       <div class="row"><div class="label" id="label-SHA-256">SHA-256</div>    <div id="SHA-256" class="value" data-alg="SHA-256" tabindex="0">入力待ち</div></div>
       <div class="row"><div class="label" id="label-SHA-384">SHA-384</div>    <div id="SHA-384" class="value" data-alg="SHA-384" tabindex="0">入力待ち</div></div>
       <div class="row"><div class="label" id="label-SHA-512">SHA-512</div>    <div id="SHA-512" class="value" data-alg="SHA-512" tabindex="0">入力待ち</div></div>
-      <div class="row"><div class="label">CRC32</div>                         <div id="CRC32"   class="value" data-alg="CRC32" tabindex="0">入力待ち</div></div>
-      <div class="row"><div class="label">CRC64</div>                         <div id="CRC64"   class="value" data-alg="CRC64" tabindex="0">入力待ち</div></div>
       <div class="row" id="row-Base64-enc" style="display:none;"><div class="label">Base64 Enc</div> <div id="Base64-Enc" class="value" data-alg="Base64 Enc" tabindex="0">入力待ち</div></div>
       <div class="row" id="row-Base64-dec" style="display:none;"><div class="label">Base64 Dec</div> <div id="Base64-Dec" class="value" data-alg="Base64 Dec" tabindex="0">入力待ち</div></div>
       <div class="row" id="row-Base85-enc" style="display:none;"><div class="label">Base85 Enc</div> <div id="Base85-Enc" class="value" data-alg="Base85 Enc" tabindex="0">入力待ち</div></div>
@@ -1288,7 +1288,7 @@ const Engine = (() => {
 
       if (hasWorker && file.stream) {
         worker.onerror = () => {
-          const errRes = {'MD5':'ワーカーエラー', 'SHA-1':'ワーカーエラー', 'SHA-224':'ワーカーエラー', 'SHA-256':'ワーカーエラー', 'CRC32':'ワーカーエラー', 'CRC64':'ワーカーエラー'};
+          const errRes = {'CRC32':'ワーカーエラー', 'CRC64':'ワーカーエラー', 'MD5':'ワーカーエラー', 'SHA-1':'ワーカーエラー', 'SHA-224':'ワーカーエラー', 'SHA-256':'ワーカーエラー'};
           if (isSmallFile) {
             errRes['SHA-384'] = 'ワーカーエラー';
             errRes['SHA-512'] = 'ワーカーエラー';
@@ -1301,7 +1301,7 @@ const Engine = (() => {
         };
         worker.onmessage = ev => {
           const {md5, sha1, sha224, sha256, crc, crc64} = ev.data;
-          onUpdate({'MD5': md5, 'SHA-1': sha1, 'SHA-224': sha224, 'SHA-256': sha256, 'CRC32': crc, 'CRC64': crc64});
+          onUpdate({'CRC32': crc, 'CRC64': crc64, 'MD5': md5, 'SHA-1': sha1, 'SHA-224': sha224, 'SHA-256': sha256});
           checkDone();
         };
         worker.postMessage({action: 'init', key: hmacKeyBytes});
@@ -1368,7 +1368,7 @@ const Engine = (() => {
               }
             }
           } catch (e) {
-            const errRes = {'MD5':'読込エラー', 'SHA-1':'読込エラー', 'SHA-224':'読込エラー', 'SHA-256':'読込エラー', 'CRC32':'読込エラー', 'CRC64':'読込エラー'};
+            const errRes = {'CRC32':'読込エラー', 'CRC64':'読込エラー', 'MD5':'読込エラー', 'SHA-1':'読込エラー', 'SHA-224':'読込エラー', 'SHA-256':'読込エラー'};
             if (isSmallFile) {
               errRes['SHA-384'] = '読込エラー'; errRes['SHA-512'] = '読込エラー';
               if (AppState.Base64Encode) errRes['Base64-Enc'] = '読込エラー';
@@ -1381,7 +1381,7 @@ const Engine = (() => {
         })();
       } else {
         if (!isSmallFile) {
-          const errRes = {'MD5':'サイズ超過 (旧環境/50MB制限)', 'SHA-1':'サイズ超過', 'SHA-224':'サイズ超過', 'SHA-256':'サイズ超過', 'CRC32':'サイズ超過', 'CRC64':'サイズ超過'};
+          const errRes = {'CRC32':'サイズ超過 (旧環境/50MB制限)', 'CRC64':'サイズ超過', 'MD5':'サイズ超過', 'SHA-1':'サイズ超過', 'SHA-224':'サイズ超過', 'SHA-256':'サイズ超過'};
           if (AppState.Base64Encode) errRes['Base64-Enc'] = 'サイズ超過';
           if (AppState.Base85Encode) errRes['Base85-Enc'] = 'サイズ超過';
           onUpdate(errRes);
@@ -1407,9 +1407,9 @@ const Engine = (() => {
             bytes = newBytes;
           }
           if (hmacKeyBytes) {
-            onUpdate({'MD5': Core.hmacMd5Hex(hmacKeyBytes, bytes), 'SHA-224': Core.hmacSha224Hex(hmacKeyBytes, bytes), 'CRC32': Core.crc32Hex(bytes), 'CRC64': Core.crc64Hex(bytes)});
+            onUpdate({'CRC32': Core.crc32Hex(bytes), 'CRC64': Core.crc64Hex(bytes), 'MD5': Core.hmacMd5Hex(hmacKeyBytes, bytes), 'SHA-224': Core.hmacSha224Hex(hmacKeyBytes, bytes)});
           } else {
-            onUpdate({'MD5': Core.md5Hex(bytes), 'SHA-224': Core.sha224Hex(bytes), 'CRC32': Core.crc32Hex(bytes), 'CRC64': Core.crc64Hex(bytes)});
+            onUpdate({'CRC32': Core.crc32Hex(bytes), 'CRC64': Core.crc64Hex(bytes), 'MD5': Core.md5Hex(bytes), 'SHA-224': Core.sha224Hex(bytes)});
           }
           checkDone();
           if (isSmallFile) {
@@ -1425,7 +1425,7 @@ const Engine = (() => {
         };
         reader.onerror = () => {
           const errRes = {};
-          ['MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','CRC32','CRC64','Base64-Enc','Base64-Dec','Base85-Enc','Base85-Dec'].forEach(id => errRes[id] = '読込エラー');
+          ['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','Base64-Enc','Base64-Dec','Base85-Enc','Base85-Dec'].forEach(id => errRes[id] = '読込エラー');
           onUpdate(errRes); checkDone();
           if (isSmallFile) checkDone();
         };
@@ -1454,13 +1454,13 @@ const Engine = (() => {
         let workerDone = false; let mainDone = false;
         const checkFinished = () => { if (workerDone && mainDone) resolve(); };
         worker.onerror = () => {
-          onUpdate({'MD5':'ワーカーエラー', 'SHA-1':'ワーカーエラー', 'SHA-224':'ワーカーエラー', 'SHA-256':'ワーカーエラー', 'CRC32':'ワーカーエラー', 'CRC64':'ワーカーエラー'});
+          onUpdate({'CRC32':'ワーカーエラー', 'CRC64':'ワーカーエラー', 'MD5':'ワーカーエラー', 'SHA-1':'ワーカーエラー', 'SHA-224':'ワーカーエラー', 'SHA-256':'ワーカーエラー'});
           terminateWorker(); ensureWorker();
           workerDone = true; checkFinished();
         };
         worker.onmessage = ev => {
           const {md5, sha1, sha224, sha256, crc, crc64} = ev.data;
-          onUpdate({'MD5': md5, 'SHA-1': sha1, 'SHA-224': sha224, 'SHA-256': sha256, 'CRC32': crc, 'CRC64': crc64});
+          onUpdate({'CRC32': crc, 'CRC64': crc64, 'MD5': md5, 'SHA-1': sha1, 'SHA-224': sha224, 'SHA-256': sha256});
           workerDone = true; checkFinished();
         };
         worker.postMessage({action: 'hashAll', bytes: finalBytes, key: hmacKeyBytes});
@@ -1476,13 +1476,13 @@ const Engine = (() => {
     } else {
       if (hmacKeyBytes) {
         onUpdate({
-          'MD5': Core.hmacMd5Hex(hmacKeyBytes, finalBytes), 'SHA-224': Core.hmacSha224Hex(hmacKeyBytes, finalBytes),
-          'CRC32': Core.crc32Hex(finalBytes), 'CRC64': Core.crc64Hex(finalBytes)
+          'CRC32': Core.crc32Hex(finalBytes), 'CRC64': Core.crc64Hex(finalBytes),
+          'MD5': Core.hmacMd5Hex(hmacKeyBytes, finalBytes), 'SHA-224': Core.hmacSha224Hex(hmacKeyBytes, finalBytes)
         });
       } else {
         onUpdate({
-          'MD5': Core.md5Hex(finalBytes), 'SHA-224': Core.sha224Hex(finalBytes),
-          'CRC32': Core.crc32Hex(finalBytes), 'CRC64': Core.crc64Hex(finalBytes)
+          'CRC32': Core.crc32Hex(finalBytes), 'CRC64': Core.crc64Hex(finalBytes),
+          'MD5': Core.md5Hex(finalBytes), 'SHA-224': Core.sha224Hex(finalBytes)
         });
       }
       const tasks = [['SHA-1','SHA-1'], ['SHA-256','SHA-256'], ['SHA-384','SHA-384'], ['SHA-512','SHA-512']].map(async ([id, alg]) => {
@@ -1507,8 +1507,8 @@ const UI = (() => {
   let scheduled = false;
 
   const TEST_VECTORS = {
-    empty:{text:'',expect:{'MD5':'d41d8cd98f00b204e9800998ecf8427e','SHA-1':'da39a3ee5e6b4b0d3255bfef95601890afd80709','SHA-224':'d14a028c2a3a2bc9476102bb288234c415a2b01f828ea62ac5b3e42f','SHA-256':'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855','SHA-384':'38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b','SHA-512':'cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e','CRC32':'00000000','CRC64':'0000000000000000'}},
-    abc:{text:'abc',expect:{'MD5':'900150983cd24fb0d6963f7d28e17f72','SHA-1':'a9993e364706816aba3e25717850c26c9cd0d89d','SHA-224':'23097d223405d8228642a477bda255b32aadbce4bda0b3f7e36c9da7','SHA-256':'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad','SHA-384':'cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7','SHA-512':'ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f','CRC32':'352441c2'}}
+    empty:{text:'',expect:{'CRC32':'00000000','CRC64':'0000000000000000','MD5':'d41d8cd98f00b204e9800998ecf8427e','SHA-1':'da39a3ee5e6b4b0d3255bfef95601890afd80709','SHA-224':'d14a028c2a3a2bc9476102bb288234c415a2b01f828ea62ac5b3e42f','SHA-256':'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855','SHA-384':'38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b','SHA-512':'cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e'}},
+    abc:{text:'abc',expect:{'CRC32':'352441c2','MD5':'900150983cd24fb0d6963f7d28e17f72','SHA-1':'a9993e364706816aba3e25717850c26c9cd0d89d','SHA-224':'23097d223405d8228642a477bda255b32aadbce4bda0b3f7e36c9da7','SHA-256':'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad','SHA-384':'cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7','SHA-512':'ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f'}}
   };
 
   function initDOM() {
@@ -1612,7 +1612,7 @@ const UI = (() => {
   }
 
   function reformatAll() {
-    const ids = ['MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','CRC32','CRC64', 'Base64-Enc', 'Base64-Dec', 'Base85-Enc', 'Base85-Dec'];
+    const ids = ['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','Base64-Enc','Base64-Dec','Base85-Enc','Base85-Dec'];
     for (const id of ids) {
       const el = document.getElementById(id);
       if (!el) continue;
@@ -1675,7 +1675,7 @@ const UI = (() => {
           isEmptyInput = true; bytesToHash = new Uint8Array(0); displayCount = 0;
         } else {
           const emptyRes = {};
-          ['MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','CRC32','CRC64', 'Base64-Enc', 'Base64-Dec', 'Base85-Enc', 'Base85-Dec'].forEach(id => emptyRes[id] = '');
+          ['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','Base64-Enc','Base64-Dec','Base85-Enc','Base85-Dec'].forEach(id => emptyRes[id] = '');
           renderResults(emptyRes);
           updateMeta(0, false, '待機');
           return;
@@ -1712,7 +1712,7 @@ const UI = (() => {
 
     if (isFile) {
       const isSmallFile = AppState.currentFile.size <= 50 * 1024 * 1024;
-      const initRes = {'MD5': '計算中…', 'SHA-1': '計算中…', 'SHA-224': '計算中…', 'SHA-256': '計算中…', 'CRC32': '計算中…', 'CRC64': '計算中…'};
+      const initRes = {'CRC32': '計算中…', 'CRC64': '計算中…', 'MD5': '計算中…', 'SHA-1': '計算中…', 'SHA-224': '計算中…', 'SHA-256': '計算中…'};
       if (AppState.Base64Decode) initRes['Base64-Dec'] = 'ファイル非対応';
       if (AppState.Base85Decode) initRes['Base85-Dec'] = 'ファイル非対応';
       if (!isSmallFile) {
@@ -1731,7 +1731,7 @@ const UI = (() => {
       }, saltBytes, hmacKeyBytes);
       if (curSeq === AppState.seq) updateMeta(displayCount, isFile, '完了');
     } else {
-      const initRes = {'MD5': '計算中…', 'SHA-1': '計算中…', 'SHA-224': '計算中…', 'SHA-256': '計算中…', 'CRC32': '計算中…', 'CRC64': '計算中…', 'SHA-384': '計算中…', 'SHA-512': '計算中…'};
+      const initRes = {'CRC32': '計算中…', 'CRC64': '計算中…', 'MD5': '計算中…', 'SHA-1': '計算中…', 'SHA-224': '計算中…', 'SHA-256': '計算中…', 'SHA-384': '計算中…', 'SHA-512': '計算中…'};
       if(AppState.Base64Encode) initRes['Base64-Enc'] = '計算中…';
       if(AppState.Base85Encode) initRes['Base85-Enc'] = '計算中…';
       if(Engine.hasWorker && bytesToHash.length > Engine.WORKER_THRESHOLD) renderResults(initRes, isEmptyInput);
@@ -1904,15 +1904,15 @@ const UI = (() => {
       const v = Core.normalizeText(Core.sanitizeText(TEST_VECTORS[els.tvSel.value].text), AppState.normalization);
       const bytes = Core.utf8Encode(v);
       const results = {
-        'MD5': Core.md5Hex(bytes), 'SHA-224': Core.sha224Hex(bytes),
-        'CRC32': Core.crc32Hex(bytes), 'CRC64': Core.crc64Hex(bytes)
+        'CRC32': Core.crc32Hex(bytes), 'CRC64': Core.crc64Hex(bytes),
+        'MD5': Core.md5Hex(bytes), 'SHA-224': Core.sha224Hex(bytes)
       };
       results['SHA-1'] = await Core.safeAsync(() => Core.digestHex('SHA-1', bytes), '');
       results['SHA-256'] = await Core.safeAsync(() => Core.digestHex('SHA-256', bytes), '');
       results['SHA-384'] = await Core.safeAsync(() => Core.digestHex('SHA-384', bytes), '');
       results['SHA-512'] = await Core.safeAsync(() => Core.digestHex('SHA-512', bytes), '');
       let ok = 0; let total = 0;
-      for (const k of ['MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','CRC32','CRC64']) {
+      for (const k of ['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512']) {
         if (TEST_VECTORS[els.tvSel.value].expect[k] !== undefined) {
           total++;
           if (String(results[k]||'').toLowerCase() === TEST_VECTORS[els.tvSel.value].expect[k]) ok++;
@@ -1931,7 +1931,7 @@ const UI = (() => {
       if (AppState.salt) lines.push(`Salt: ${AppState.salt}`);
       if (AppState.hmacKey) lines.push(`HMAC Key: ${AppState.hmacKey}`);
       lines.push('---');
-      for (const id of ['MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','CRC32','CRC64','Base64-Enc','Base64-Dec','Base85-Enc','Base85-Dec']) {
+      for (const id of ['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','Base64-Enc','Base64-Dec','Base85-Enc','Base85-Dec']) {
         const el = document.getElementById(id);
         if (!el || !el.dataset.raw) continue;
         const raw = el.dataset.raw;
