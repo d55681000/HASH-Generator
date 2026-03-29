@@ -2015,12 +2015,35 @@ const UI = (() => {
 })();
 
 /* =========================================================
+   PRESET LAYER — 初期既定テキストの自動展開と計算トリガー
+========================================================= */
+const PresetLoader = (() => {
+  const PRESET_TEXT = `A  A  D  F  G  V  X
+A  A  B  C  D  E  F
+D  G  H  I  J  K  L
+F  M  N  O  P  Q  R
+G  S  T  U  V  W  X
+V  Y  Z  0  1  2  3
+X  4  5  6  7  8  9`;
+
+  function init() {
+    const inputEl = document.getElementById('in');
+    if (inputEl && inputEl.value.trim() === '') {
+      inputEl.value = PRESET_TEXT;
+      inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }
+  return { init };
+})();
+
+/* =========================================================
    APP ENTRY — Orchestration
 ========================================================= */
 (async function initApp() {
   Security.init();
   Engine.init();
   UI.init();
+  PresetLoader.init();
   
   if (!window.__ZESS_MODE__) {
     await SysUtils.syncNetworkTime();
