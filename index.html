@@ -2018,13 +2018,14 @@ const UI = (() => {
    PRESET LAYER — 初期既定テキストの自動展開と計算トリガー
 ========================================================= */
 const PresetLoader = (() => {
-  const PRESET_TEXT = `A  A  D  F  G  V  X
-A  A  B  C  D  E  F
-D  G  H  I  J  K  L
-F  M  N  O  P  Q  R
-G  S  T  U  V  W  X
-V  Y  Z  0  1  2  3
-X  4  5  6  7  8  9`;
+  const PRESET_TEXT = `0  0  1  2  3  4  5  6
+0  A  A  D  F  G  V  X
+1  A  A  B  C  D  E  F
+2  D  G  H  I  J  K  L
+3  F  M  N  O  P  Q  R
+4  G  S  T  U  V  W  X
+5  V  Y  Z  0  1  2  3
+6  X  4  5  6  7  8  9`;
 
   function init() {
     const inputEl = document.getElementById('in');
