@@ -203,7 +203,7 @@
     </div>
     <section class="list mono" aria-live="polite" aria-busy="false">
       <div class="row"><div class="label">CRC32</div>                         <div id="CRC32"   class="value" data-alg="CRC32" tabindex="0">入力待ち</div></div>
-      <div class="row"><div class="label">CRC64</div>                         <div id="CRC64"   class="value" data-alg="CRC64" tabindex="0">入力待ち</div></div>
+      <div class="row"><div class="label" id="label-CRC64">CRC64</div>        <div id="CRC64"   class="value" data-alg="CRC64" tabindex="0">入力待ち</div></div>
       <div class="row"><div class="label" id="label-MD5">MD5</div>            <div id="MD5"     class="value" data-alg="MD5" tabindex="0">入力待ち</div></div>
       <div class="row"><div class="label" id="label-SHA-1">SHA-1</div>        <div id="SHA-1"   class="value" data-alg="SHA-1" tabindex="0">入力待ち</div></div>
       <div class="row"><div class="label" id="label-SHA-224">SHA-224</div>    <div id="SHA-224" class="value" data-alg="SHA-224" tabindex="0">入力待ち</div></div>
@@ -212,8 +212,8 @@
       <div class="row"><div class="label" id="label-SHA-512">SHA-512</div>    <div id="SHA-512" class="value" data-alg="SHA-512" tabindex="0">入力待ち</div></div>
       <div class="row" id="row-Base64-enc" style="display:none;"><div class="label">Base64 Enc</div> <div id="Base64-Enc" class="value" data-alg="Base64 Enc" tabindex="0">入力待ち</div></div>
       <div class="row" id="row-Base64-dec" style="display:none;"><div class="label">Base64 Dec</div> <div id="Base64-Dec" class="value" data-alg="Base64 Dec" tabindex="0">入力待ち</div></div>
-      <div class="row" id="row-Base85-enc" style="display:none;"><div class="label">Base85 Enc</div> <div id="Base85-Enc" class="value" data-alg="Base85 Enc" tabindex="0">入力待ち</div></div>
-      <div class="row" id="row-Base85-dec" style="display:none;"><div class="label">Base85 Dec</div> <div id="Base85-Dec" class="value" data-alg="Base85 Dec" tabindex="0">入力待ち</div></div>
+      <div class="row" id="row-Base85-enc" style="display:none;"><div class="label" id="label-Base85-Enc">Base85 Enc</div> <div id="Base85-Enc" class="value" data-alg="Base85 Enc" tabindex="0">入力待ち</div></div>
+      <div class="row" id="row-Base85-dec" style="display:none;"><div class="label" id="label-Base85-Dec">Base85 Dec</div> <div id="Base85-Dec" class="value" data-alg="Base85 Dec" tabindex="0">入力待ち</div></div>
     </section>
   </main>
   <aside id="sys" class="sys">
@@ -259,6 +259,8 @@ const AppState = {
   Base64Decode: false,
   Base85Encode: false,
   Base85Decode: false,
+  base85Variant: 'ZeroMQ (Z85)',
+  crc64Variant: 'XZ (ECMA, Reflected)',
   salt: '',
   hmacKey: '',
   currentFile: null,
@@ -478,30 +480,9 @@ const Core = (() => {
   const CRC_TABLE = (()=>{const t=new Uint32Array(256);for(let i=0;i<256;i++){let c=i;for(let j=0;j<8;j++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[i]=c>>>0;}return t;})();
   function crc32Hex(bytes){let c=0xFFFFFFFF;for(let i=0;i<bytes.length;i++){c=CRC_TABLE[(c^bytes[i])&0xFF]^(c>>>8);}return ((c^0xFFFFFFFF)>>>0).toString(16).padStart(8,'0');}
 
-  /* --- Pure JS CRC64-ECMA (Reflected) --- */
-  const CRC64_TABLE_HI = new Uint32Array(256);
-  const CRC64_TABLE_LO = new Uint32Array(256);
-  const POLY_HI = 0xC96C5795, POLY_LO = 0xD7870F42;
-  for (let i = 0; i < 256; i++) {
-    let hi = 0, lo = i;
-    for (let j = 0; j < 8; j++) {
-      let isOdd = lo & 1;
-      lo = (lo >>> 1) | ((hi & 1) << 31);
-      hi = hi >>> 1;
-      if (isOdd) { hi ^= POLY_HI; lo ^= POLY_LO; }
-    }
-    CRC64_TABLE_HI[i] = hi; CRC64_TABLE_LO[i] = lo;
-  }
+  // NOTE: CRC-64 is now entirely handled within the background Worker to support dynamic module loading (Strategy Pattern).
   function crc64Hex(bytes) {
-    let hi = 0xFFFFFFFF, lo = 0xFFFFFFFF;
-    for(let i=0; i<bytes.length; i++){
-      let idx = (lo ^ bytes[i]) & 0xFF;
-      lo = (lo >>> 8) | ((hi & 0xFF) << 24);
-      hi = hi >>> 8;
-      hi ^= CRC64_TABLE_HI[idx];
-      lo ^= CRC64_TABLE_LO[idx];
-    }
-    return ((~hi) >>> 0).toString(16).padStart(8, '0') + ((~lo) >>> 0).toString(16).padStart(8, '0');
+     return "計算中…";
   }
 
   function md5Hex(bytes){
@@ -852,19 +833,36 @@ const SysUtils = (() => {
 })();
 
 /* =========================================================
-   BASE85 (Z85) ENGINE LAYER — Dedicated Worker
+   BASE85 ENGINE LAYER — Dedicated Worker (Multi-Variant)
 ========================================================= */
 const Base85Engine = (() => {
   let worker = null;
   function init() {
     if(worker) return;
     const code = `
-      // Z85 (ZeroMQ Base-85) Charset
-      const CHARSET = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#'.split('');
-      const DECODE_MAP = new Uint8Array(256);
-      for(let i=0; i<85; i++) DECODE_MAP[CHARSET[i].charCodeAt(0)] = i;
+      const CHARSETS = {
+        'ZeroMQ (Z85)': '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#',
+        'RFC 1924': '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!#$%&()*+-;<=>?@^_' + String.fromCharCode(96) + '{|}~',
+        'Standard ASCII85': (function(){ let s=''; for(let i=33; i<=117; i++) s+=String.fromCharCode(i); return s; })(),
+        'Adobe ASCII85': (function(){ let s=''; for(let i=33; i<=117; i++) s+=String.fromCharCode(i); return s; })()
+      };
 
-      function encodeZ85(bytes) {
+      function createDecodeMap(charset) {
+        const map = new Uint8Array(256);
+        for(let i = 0; i < 85; i++) map[charset.charCodeAt(i)] = i;
+        return map;
+      }
+
+      const DECODE_MAPS = {
+        'ZeroMQ (Z85)': createDecodeMap(CHARSETS['ZeroMQ (Z85)']),
+        'RFC 1924': createDecodeMap(CHARSETS['RFC 1924']),
+        'Standard ASCII85': createDecodeMap(CHARSETS['Standard ASCII85']),
+        'Adobe ASCII85': createDecodeMap(CHARSETS['Adobe ASCII85'])
+      };
+
+      function encodeBase85(bytes, variant) {
+        const isAscii85 = variant === 'Standard ASCII85' || variant === 'Adobe ASCII85';
+        const charset = CHARSETS[variant];
         const len = bytes.length;
         const extra = len % 4;
         const paddedLen = extra === 0 ? len : len + (4 - extra);
@@ -872,38 +870,94 @@ const Base85Engine = (() => {
         data.set(bytes);
         const view = new DataView(data.buffer);
         let res = '';
-        for(let i=0; i<paddedLen; i+=4) {
-          let val = view.getUint32(i, false);
+
+        for(let i = 0; i < len; i += 4) {
+          let val = 0;
+          let paddingBytes = 0;
+          if (i + 4 <= len) {
+             val = view.getUint32(i, false);
+          } else {
+             paddingBytes = 4 - (len - i);
+             let temp = new Uint8Array(4);
+             for(let k = 0; k < len - i; k++) temp[k] = bytes[i + k];
+             val = new DataView(temp.buffer).getUint32(0, false);
+          }
+
+          if (isAscii85 && val === 0 && paddingBytes === 0) {
+            res += 'z';
+            continue;
+          }
+
           let chunk = '';
-          for(let j=0; j<5; j++) {
-            chunk = CHARSET[val % 85] + chunk;
+          for(let j = 0; j < 5; j++) {
+            chunk = charset[val % 85] + chunk;
             val = Math.floor(val / 85);
+          }
+          if (paddingBytes > 0) {
+             chunk = chunk.substring(0, 5 - paddingBytes);
           }
           res += chunk;
         }
-        return extra === 0 ? res : res.slice(0, res.length - (4 - extra));
+
+        if (variant === 'Adobe ASCII85') {
+          return '<~' + res + '~>';
+        }
+        return res;
       }
 
-      function decodeZ85(str) {
-        const clean = str.replace(/\\s+/g, '');
-        if(!clean) return new Uint8Array(0);
-        const len = clean.length;
-        const extra = len % 5;
-        const paddedLen = extra === 0 ? len : len + (5 - extra);
-        let workStr = clean;
-        if(extra > 0) {
-          workStr += CHARSET[84].repeat(5 - extra);
+      function decodeBase85(str, variant) {
+        const isAscii85 = variant === 'Standard ASCII85' || variant === 'Adobe ASCII85';
+        let clean = str;
+
+        if (variant === 'Adobe ASCII85') {
+          const start = clean.indexOf('<~');
+          const end = clean.lastIndexOf('~>');
+          if (start !== -1 && end !== -1 && end > start) {
+            clean = clean.substring(start + 2, end);
+          } else if (start !== -1) {
+             clean = clean.substring(start + 2);
+          }
         }
+
+        clean = clean.replace(/\\s+/g, '');
+        if (isAscii85) clean = clean.replace(/z/g, '!!!!!');
+        if (!clean) return new Uint8Array(0);
+
+        const charset = CHARSETS[variant];
+        const decodeMap = DECODE_MAPS[variant];
+
+        for(let i=0; i<clean.length; i++) {
+           const code = clean.charCodeAt(i);
+           if (code >= 256 || (decodeMap[code] === 0 && charset.charCodeAt(0) !== code)) {
+              throw new Error('Invalid Base85 Characters');
+           }
+        }
+
+        const len = clean.length;
+        const extraChars = len % 5;
+        if (extraChars === 1) throw new Error('Invalid Base85 Length');
+
+        const paddedLen = extraChars === 0 ? len : len + (5 - extraChars);
+        let workStr = clean;
+        if (extraChars > 0) {
+          workStr += charset[84].repeat(5 - extraChars);
+        }
+
         const out = new Uint8Array((paddedLen / 5) * 4);
         const view = new DataView(out.buffer);
-        for(let i=0; i<paddedLen; i+=5) {
+
+        for(let i = 0; i < paddedLen; i += 5) {
           let val = 0;
-          for(let j=0; j<5; j++) {
-            val = val * 85 + DECODE_MAP[workStr.charCodeAt(i+j)];
+          for(let j = 0; j < 5; j++) {
+            val = val * 85 + decodeMap[workStr.charCodeAt(i+j)];
           }
           view.setUint32((i/5)*4, val, false);
         }
-        return extra === 0 ? out : out.slice(0, out.length - (5 - extra));
+
+        if (extraChars > 0) {
+           return out.slice(0, out.length - (5 - extraChars));
+        }
+        return out;
       }
 
       function utf8Decode(bytes) {
@@ -933,16 +987,13 @@ const Base85Engine = (() => {
       }
 
       onmessage = function(e) {
-        const { action, payload, reqId } = e.data;
+        const { action, payload, variant, reqId } = e.data;
         try {
           if(action === 'encode') {
-            const str = encodeZ85(payload);
+            const str = encodeBase85(payload, variant);
             postMessage({ reqId, status: 'ok', result: { type: 'text', value: str } });
           } else if(action === 'decode') {
-            const clean = payload.replace(/\\s+/g, '');
-            const invalid = /[^0-9a-zA-Z\\.\\-\\:\\+\\=\\^\\!\\/\\*\\?\\&\\<\\>\\(\\)\\[\\]\\{\\}\\@\\%\\$\\#]/;
-            if(invalid.test(clean)) throw new Error('Invalid Z85 Characters');
-            const bytes = decodeZ85(payload);
+            const bytes = decodeBase85(payload, variant);
             try {
               const text = utf8Decode(bytes);
               postMessage({ reqId, status: 'ok', result: { type: 'text', value: text } });
@@ -959,7 +1010,7 @@ const Base85Engine = (() => {
     worker = new Worker(URL.createObjectURL(blob));
   }
 
-  function run(action, payload) {
+  function run(action, payload, variant) {
     return new Promise((resolve) => {
       init();
       const reqId = Date.now() + Math.random();
@@ -973,9 +1024,9 @@ const Base85Engine = (() => {
       worker.addEventListener('message', handler);
       if(action === 'encode') {
         const copy = new Uint8Array(payload).buffer;
-        worker.postMessage({ action, payload: new Uint8Array(copy), reqId }, [copy]);
+        worker.postMessage({ action, payload: new Uint8Array(copy), variant, reqId }, [copy]);
       } else {
-        worker.postMessage({ action, payload, reqId });
+        worker.postMessage({ action, payload, variant, reqId });
       }
     });
   }
@@ -984,11 +1035,15 @@ const Base85Engine = (() => {
     if(worker) { worker.terminate(); worker = null; }
   }
 
-  return { encode: bytes => run('encode', bytes), decode: str => run('decode', str), terminate };
+  return { 
+    encode: (bytes, variant) => run('encode', bytes, variant), 
+    decode: (str, variant) => run('decode', str, variant), 
+    terminate 
+  };
 })();
 
 /* =========================================================
-   ENGINE LAYER — Hash Execution & Worker Control
+   ENGINE LAYER — Hash Execution & Worker Control (Strategy Pattern)
 ========================================================= */
 const Engine = (() => {
   const WORKER_THRESHOLD = 200000;
@@ -1000,21 +1055,137 @@ const Engine = (() => {
     if (workerUrl) { try { URL.revokeObjectURL(workerUrl); } catch(e){} }
     const code = `
       const HEX_LUT = [${Array.from({length: 256}, (_, i) => "'" + i.toString(16).padStart(2, '0') + "'").join(',')}];
-      const CRC_TABLE = (()=>{const t=new Uint32Array(256);for(let i=0;i<256;i++){let c=i;for(let j=0;j<8;j++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[i]=c>>>0;}return t;})();
-      
-      const CRC64_TABLE_HI = new Uint32Array(256);
-      const CRC64_TABLE_LO = new Uint32Array(256);
-      const POLY_HI = 0xC96C5795, POLY_LO = 0xD7870F42;
-      for (let i = 0; i < 256; i++) {
-        let hi = 0, lo = i;
-        for (let j = 0; j < 8; j++) {
-          let isOdd = lo & 1;
-          lo = (lo >>> 1) | ((hi & 1) << 31);
-          hi = hi >>> 1;
-          if (isOdd) { hi ^= POLY_HI; lo ^= POLY_LO; }
+
+      /* --- CRC-64 Multi-Variant Engines --- */
+      class Crc64XzEngine {
+        constructor() {
+          this.table = new Uint32Array(512);
+          const POLY_HI = 0xC96C5795, POLY_LO = 0xD7870F42;
+          for (let i = 0; i < 256; i++) {
+            let hi = 0, lo = i;
+            for (let j = 0; j < 8; j++) {
+              let isOdd = lo & 1;
+              lo = (lo >>> 1) | ((hi & 1) << 31);
+              hi = hi >>> 1;
+              if (isOdd) { hi ^= POLY_HI; lo ^= POLY_LO; }
+            }
+            this.table[i*2] = hi; this.table[i*2+1] = lo;
+          }
+          this.hi = 0xFFFFFFFF; this.lo = 0xFFFFFFFF;
         }
-        CRC64_TABLE_HI[i] = hi; CRC64_TABLE_LO[i] = lo;
+        update(bytes) {
+          let hi = this.hi, lo = this.lo;
+          const t = this.table;
+          for(let i=0; i<bytes.length; i++) {
+            let idx = (lo ^ bytes[i]) & 0xFF;
+            lo = (lo >>> 8) | ((hi & 0xFF) << 24);
+            hi = hi >>> 8;
+            hi ^= t[idx*2]; lo ^= t[idx*2+1];
+          }
+          this.hi = hi; this.lo = lo;
+        }
+        finalize() {
+          return ((~this.hi) >>> 0).toString(16).padStart(8, '0') + ((~this.lo) >>> 0).toString(16).padStart(8, '0');
+        }
       }
+
+      class Crc64WeEngine {
+        constructor() {
+          this.table = new Uint32Array(512);
+          const POLY_HI = 0x42F0E1EB, POLY_LO = 0xA9EA3693;
+          for (let i = 0; i < 256; i++) {
+            let hi = i << 24, lo = 0;
+            for (let j = 0; j < 8; j++) {
+              let isTop = hi & 0x80000000;
+              hi = (hi << 1) | (lo >>> 31);
+              lo = lo << 1;
+              if (isTop) { hi ^= POLY_HI; lo ^= POLY_LO; }
+            }
+            this.table[i*2] = hi; this.table[i*2+1] = lo;
+          }
+          this.hi = 0xFFFFFFFF; this.lo = 0xFFFFFFFF;
+        }
+        update(bytes) {
+          let hi = this.hi, lo = this.lo;
+          const t = this.table;
+          for(let i=0; i<bytes.length; i++) {
+            let idx = ((hi >>> 24) ^ bytes[i]) & 0xFF;
+            hi = (hi << 8) | (lo >>> 24);
+            lo = lo << 8;
+            hi ^= t[idx*2]; lo ^= t[idx*2+1];
+          }
+          this.hi = hi; this.lo = lo;
+        }
+        finalize() {
+          return ((~this.hi) >>> 0).toString(16).padStart(8, '0') + ((~this.lo) >>> 0).toString(16).padStart(8, '0');
+        }
+      }
+
+      class Crc64IsoEngine {
+        constructor() {
+          this.table = new Uint32Array(512);
+          const POLY_HI = 0x00000000, POLY_LO = 0x0000001B;
+          for (let i = 0; i < 256; i++) {
+            let hi = i << 24, lo = 0;
+            for (let j = 0; j < 8; j++) {
+              let isTop = hi & 0x80000000;
+              hi = (hi << 1) | (lo >>> 31);
+              lo = lo << 1;
+              if (isTop) { hi ^= POLY_HI; lo ^= POLY_LO; }
+            }
+            this.table[i*2] = hi; this.table[i*2+1] = lo;
+          }
+          this.hi = 0xFFFFFFFF; this.lo = 0xFFFFFFFF;
+        }
+        update(bytes) {
+          let hi = this.hi, lo = this.lo;
+          const t = this.table;
+          for(let i=0; i<bytes.length; i++) {
+            let idx = ((hi >>> 24) ^ bytes[i]) & 0xFF;
+            hi = (hi << 8) | (lo >>> 24);
+            lo = lo << 8;
+            hi ^= t[idx*2]; lo ^= t[idx*2+1];
+          }
+          this.hi = hi; this.lo = lo;
+        }
+        finalize() {
+          return ((~this.hi) >>> 0).toString(16).padStart(8, '0') + ((~this.lo) >>> 0).toString(16).padStart(8, '0');
+        }
+      }
+
+      class Crc64RedisEngine {
+        constructor() {
+          this.table = new Uint32Array(512);
+          const POLY_HI = 0xAD93D235, POLY_LO = 0x94C939A2;
+          for (let i = 0; i < 256; i++) {
+            let hi = 0, lo = i;
+            for (let j = 0; j < 8; j++) {
+              let isOdd = lo & 1;
+              lo = (lo >>> 1) | ((hi & 1) << 31);
+              hi = hi >>> 1;
+              if (isOdd) { hi ^= POLY_HI; lo ^= POLY_LO; }
+            }
+            this.table[i*2] = hi; this.table[i*2+1] = lo;
+          }
+          this.hi = 0x00000000; this.lo = 0x00000000;
+        }
+        update(bytes) {
+          let hi = this.hi, lo = this.lo;
+          const t = this.table;
+          for(let i=0; i<bytes.length; i++) {
+            let idx = (lo ^ bytes[i]) & 0xFF;
+            lo = (lo >>> 8) | ((hi & 0xFF) << 24);
+            hi = hi >>> 8;
+            hi ^= t[idx*2]; lo ^= t[idx*2+1];
+          }
+          this.hi = hi; this.lo = lo;
+        }
+        finalize() {
+          return ((this.hi) >>> 0).toString(16).padStart(8, '0') + ((this.lo) >>> 0).toString(16).padStart(8, '0');
+        }
+      }
+
+      const CRC32_TABLE = (()=>{const t=new Uint32Array(256);for(let i=0;i<256;i++){let c=i;for(let j=0;j<8;j++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[i]=c>>>0;}return t;})();
 
       function hexToBytes(hex) {
         const bytes = new Uint8Array(hex.length / 2);
@@ -1065,14 +1236,23 @@ const Engine = (() => {
       }
 
       class IncrementalHasher {
-        constructor() {
+        constructor(crc64Variant) {
           this.md5_h = new Uint32Array([0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476]);
           this.sha1_h = new Uint32Array([0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0]);
           this.sha224_h = new Uint32Array([0xc1059ed8, 0x367cd507, 0x3070dd17, 0xf70e5939, 0xffc00b31, 0x68581511, 0x64f98fa7, 0xbefa4fa4]);
           this.sha256_h = new Uint32Array([0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]);
           this.crc = 0xFFFFFFFF;
-          this.crc64Hi = 0xFFFFFFFF;
-          this.crc64Lo = 0xFFFFFFFF;
+          
+          if (crc64Variant === 'WE (ECMA, Non-Reflected)') {
+            this.crc64Engine = new Crc64WeEngine();
+          } else if (crc64Variant === 'ISO (HDLC, Non-Reflected)') {
+            this.crc64Engine = new Crc64IsoEngine();
+          } else if (crc64Variant === 'Redis (Jones, Reflected)') {
+            this.crc64Engine = new Crc64RedisEngine();
+          } else {
+            this.crc64Engine = new Crc64XzEngine();
+          }
+
           this.buffer = new Uint8Array(64);
           this.bufLen = 0;
           this.totalLen = 0;
@@ -1084,7 +1264,7 @@ const Engine = (() => {
           this.isHmac = true;
           let K_md5 = key, K_sha1 = key, K_sha224 = key, K_sha256 = key;
           if (key.length > 64) {
-            let kh = new IncrementalHasher(); kh.update(key); let res = kh._finalize();
+            let kh = new IncrementalHasher('XZ (ECMA, Reflected)'); kh.update(key); let res = kh._finalize();
             K_md5 = hexToBytes(res.md5); K_sha1 = hexToBytes(res.sha1);
             K_sha224 = hexToBytes(res.sha224); K_sha256 = hexToBytes(res.sha256);
           }
@@ -1097,24 +1277,20 @@ const Engine = (() => {
             ipad_sha224[i] = (i < K_sha224.length ? K_sha224[i] : 0) ^ 0x36; this.opad_sha224[i] = (i < K_sha224.length ? K_sha224[i] : 0) ^ 0x5c;
             ipad_sha256[i] = (i < K_sha256.length ? K_sha256[i] : 0) ^ 0x36; this.opad_sha256[i] = (i < K_sha256.length ? K_sha256[i] : 0) ^ 0x5c;
           }
-          let hMD5 = new IncrementalHasher(); hMD5.update(ipad_md5); this.md5_h = hMD5.md5_h;
-          let hSHA1 = new IncrementalHasher(); hSHA1.update(ipad_sha1); this.sha1_h = hSHA1.sha1_h;
-          let hSHA224 = new IncrementalHasher(); hSHA224.update(ipad_sha224); this.sha224_h = hSHA224.sha224_h;
-          let hSHA256 = new IncrementalHasher(); hSHA256.update(ipad_sha256); this.sha256_h = hSHA256.sha256_h;
+          let hMD5 = new IncrementalHasher('XZ (ECMA, Reflected)'); hMD5.update(ipad_md5); this.md5_h = hMD5.md5_h;
+          let hSHA1 = new IncrementalHasher('XZ (ECMA, Reflected)'); hSHA1.update(ipad_sha1); this.sha1_h = hSHA1.sha1_h;
+          let hSHA224 = new IncrementalHasher('XZ (ECMA, Reflected)'); hSHA224.update(ipad_sha224); this.sha224_h = hSHA224.sha224_h;
+          let hSHA256 = new IncrementalHasher('XZ (ECMA, Reflected)'); hSHA256.update(ipad_sha256); this.sha256_h = hSHA256.sha256_h;
           this.totalLen = 64;
         }
         update(bytes) {
           let crc = this.crc;
-          let cHi = this.crc64Hi, cLo = this.crc64Lo;
           for(let i=0; i<bytes.length; i++) {
-            crc = CRC_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
-            let idx = (cLo ^ bytes[i]) & 0xFF;
-            cLo = (cLo >>> 8) | ((cHi & 0xFF) << 24);
-            cHi = cHi >>> 8;
-            cHi ^= CRC64_TABLE_HI[idx];
-            cLo ^= CRC64_TABLE_LO[idx];
+            crc = CRC32_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
           }
-          this.crc = crc; this.crc64Hi = cHi; this.crc64Lo = cLo;
+          this.crc = crc;
+          
+          this.crc64Engine.update(bytes);
 
           let offset = 0; let len = bytes.length; this.totalLen += len;
           if (this.bufLen > 0) {
@@ -1161,16 +1337,16 @@ const Engine = (() => {
           const sha224Final = this._finalizeSHA(this.sha224_h, sha256Process, 28);
           const sha256Final = this._finalizeSHA(this.sha256_h, sha256Process, 32);
           const crcHex = ((this.crc ^ 0xFFFFFFFF) >>> 0).toString(16).padStart(8, '0');
-          const crc64Hex = ((~this.crc64Hi) >>> 0).toString(16).padStart(8, '0') + ((~this.crc64Lo) >>> 0).toString(16).padStart(8, '0');
+          const crc64Hex = this.crc64Engine.finalize();
           return { md5: md5Final, sha1: sha1Final, sha224: sha224Final, sha256: sha256Final, crc: crcHex, crc64: crc64Hex };
         }
         finalizeHmacOrNormal() {
           let r = this._finalize();
           if(!this.isHmac) return r;
-          let ohMD5 = new IncrementalHasher(); ohMD5.update(this.opad_md5); ohMD5.update(hexToBytes(r.md5));
-          let ohSHA1 = new IncrementalHasher(); ohSHA1.update(this.opad_sha1); ohSHA1.update(hexToBytes(r.sha1));
-          let ohSHA224 = new IncrementalHasher(); ohSHA224.update(this.opad_sha224); ohSHA224.update(hexToBytes(r.sha224));
-          let ohSHA256 = new IncrementalHasher(); ohSHA256.update(this.opad_sha256); ohSHA256.update(hexToBytes(r.sha256));
+          let ohMD5 = new IncrementalHasher('XZ (ECMA, Reflected)'); ohMD5.update(this.opad_md5); ohMD5.update(hexToBytes(r.md5));
+          let ohSHA1 = new IncrementalHasher('XZ (ECMA, Reflected)'); ohSHA1.update(this.opad_sha1); ohSHA1.update(hexToBytes(r.sha1));
+          let ohSHA224 = new IncrementalHasher('XZ (ECMA, Reflected)'); ohSHA224.update(this.opad_sha224); ohSHA224.update(hexToBytes(r.sha224));
+          let ohSHA256 = new IncrementalHasher('XZ (ECMA, Reflected)'); ohSHA256.update(this.opad_sha256); ohSHA256.update(hexToBytes(r.sha256));
           return {
             md5: ohMD5._finalize().md5, sha1: ohSHA1._finalize().sha1,
             sha224: ohSHA224._finalize().sha224, sha256: ohSHA256._finalize().sha256,
@@ -1247,9 +1423,9 @@ const Engine = (() => {
 
       let hasher = null;
       onmessage = e => {
-        const { action, bytes, key } = e.data;
+        const { action, bytes, key, crc64Variant } = e.data;
         if (action === 'init') {
-          hasher = new IncrementalHasher();
+          hasher = new IncrementalHasher(crc64Variant);
           if(key && key.length) hasher.initHmac(key);
         } else if (action === 'update') {
           if(hasher) hasher.update(bytes);
@@ -1257,7 +1433,7 @@ const Engine = (() => {
           if(hasher) postMessage(hasher.finalizeHmacOrNormal());
           hasher = null;
         } else if (action === 'hashAll') {
-          const temp = new IncrementalHasher();
+          const temp = new IncrementalHasher(crc64Variant);
           if(key && key.length) temp.initHmac(key);
           temp.update(bytes);
           postMessage(temp.finalizeHmacOrNormal());
@@ -1304,7 +1480,7 @@ const Engine = (() => {
           onUpdate({'CRC32': crc, 'CRC64': crc64, 'MD5': md5, 'SHA-1': sha1, 'SHA-224': sha224, 'SHA-256': sha256});
           checkDone();
         };
-        worker.postMessage({action: 'init', key: hmacKeyBytes});
+        worker.postMessage({action: 'init', key: hmacKeyBytes, crc64Variant: AppState.crc64Variant});
 
         const stream = file.stream();
         const reader = stream.getReader();
@@ -1325,7 +1501,7 @@ const Engine = (() => {
                   let finalBuffer = (offset === fullBuffer.length) ? fullBuffer : fullBuffer.subarray(0, offset);
                   if (AppState.Base64Encode) onUpdate({'Base64-Enc': Core.encodeBase64(finalBuffer)});
                   if (AppState.Base85Encode) {
-                    Base85Engine.encode(finalBuffer).then(res => {
+                    Base85Engine.encode(finalBuffer, AppState.base85Variant).then(res => {
                       if (curSeq === AppState.seq) {
                         if (res.type === 'error') onUpdate({'Base85-Enc': 'エラー'});
                         else onUpdate({'Base85-Enc': res.value});
@@ -1394,7 +1570,7 @@ const Engine = (() => {
           let bytes = new Uint8Array(e.target.result);
           if (AppState.Base64Encode) onUpdate({'Base64-Enc': Core.encodeBase64(bytes)});
           if (AppState.Base85Encode) {
-            Base85Engine.encode(bytes).then(res => {
+            Base85Engine.encode(bytes, AppState.base85Variant).then(res => {
               if (curSeq === AppState.seq) {
                 if(res.type === 'error') onUpdate({'Base85-Enc': 'エラー'});
                 else onUpdate({'Base85-Enc': res.value});
@@ -1406,11 +1582,21 @@ const Engine = (() => {
             newBytes.set(bytes, 0); newBytes.set(saltBytes, bytes.length);
             bytes = newBytes;
           }
+          
           if (hmacKeyBytes) {
-            onUpdate({'CRC32': Core.crc32Hex(bytes), 'CRC64': Core.crc64Hex(bytes), 'MD5': Core.hmacMd5Hex(hmacKeyBytes, bytes), 'SHA-224': Core.hmacSha224Hex(hmacKeyBytes, bytes)});
+            onUpdate({'CRC32': Core.crc32Hex(bytes), 'CRC64': "処理中…", 'MD5': Core.hmacMd5Hex(hmacKeyBytes, bytes), 'SHA-224': Core.hmacSha224Hex(hmacKeyBytes, bytes)});
           } else {
-            onUpdate({'CRC32': Core.crc32Hex(bytes), 'CRC64': Core.crc64Hex(bytes), 'MD5': Core.md5Hex(bytes), 'SHA-224': Core.sha224Hex(bytes)});
+            onUpdate({'CRC32': Core.crc32Hex(bytes), 'CRC64': "処理中…", 'MD5': Core.md5Hex(bytes), 'SHA-224': Core.sha224Hex(bytes)});
           }
+          
+          if (hasWorker) {
+              worker.onerror = () => { onUpdate({'CRC64': 'エラー'}); terminateWorker(); ensureWorker(); };
+              worker.onmessage = ev => {
+                  if (curSeq === AppState.seq) onUpdate({'CRC64': ev.data.crc64});
+              };
+              worker.postMessage({action: 'hashAll', bytes: bytes, key: hmacKeyBytes, crc64Variant: AppState.crc64Variant});
+          }
+
           checkDone();
           if (isSmallFile) {
             const tasks = [['SHA-1','SHA-1'], ['SHA-256','SHA-256'], ['SHA-384','SHA-384'], ['SHA-512','SHA-512']].map(async ([id, alg]) => {
@@ -1437,7 +1623,7 @@ const Engine = (() => {
   async function hashText(bytesToHash, curSeq, onUpdate, saltBytes, hmacKeyBytes) {
     if (AppState.Base64Encode) onUpdate({'Base64-Enc': Core.encodeBase64(bytesToHash)});
     if (AppState.Base85Encode) {
-      Base85Engine.encode(bytesToHash).then(res => {
+      Base85Engine.encode(bytesToHash, AppState.base85Variant).then(res => {
         if (curSeq === AppState.seq) {
           if(res.type === 'error') onUpdate({'Base85-Enc': 'エラー'});
           else onUpdate({'Base85-Enc': res.value});
@@ -1463,7 +1649,7 @@ const Engine = (() => {
           onUpdate({'CRC32': crc, 'CRC64': crc64, 'MD5': md5, 'SHA-1': sha1, 'SHA-224': sha224, 'SHA-256': sha256});
           workerDone = true; checkFinished();
         };
-        worker.postMessage({action: 'hashAll', bytes: finalBytes, key: hmacKeyBytes});
+        worker.postMessage({action: 'hashAll', bytes: finalBytes, key: hmacKeyBytes, crc64Variant: AppState.crc64Variant});
         const tasks = [['SHA-384','SHA-384'], ['SHA-512','SHA-512']].map(async ([id, alg]) => {
           try {
             const hex = hmacKeyBytes ? await Core.hmacHex(alg, hmacKeyBytes, finalBytes) : await Core.digestHex(alg, finalBytes);
@@ -1476,15 +1662,24 @@ const Engine = (() => {
     } else {
       if (hmacKeyBytes) {
         onUpdate({
-          'CRC32': Core.crc32Hex(finalBytes), 'CRC64': Core.crc64Hex(finalBytes),
+          'CRC32': Core.crc32Hex(finalBytes), 'CRC64': '処理中…',
           'MD5': Core.hmacMd5Hex(hmacKeyBytes, finalBytes), 'SHA-224': Core.hmacSha224Hex(hmacKeyBytes, finalBytes)
         });
       } else {
         onUpdate({
-          'CRC32': Core.crc32Hex(finalBytes), 'CRC64': Core.crc64Hex(finalBytes),
+          'CRC32': Core.crc32Hex(finalBytes), 'CRC64': '処理中…',
           'MD5': Core.md5Hex(finalBytes), 'SHA-224': Core.sha224Hex(finalBytes)
         });
       }
+      
+      if(hasWorker) {
+        worker.onerror = () => { onUpdate({'CRC64':'ワーカーエラー'}); terminateWorker(); ensureWorker(); };
+        worker.onmessage = ev => {
+          if (curSeq === AppState.seq) onUpdate({'CRC64': ev.data.crc64});
+        };
+        worker.postMessage({action: 'hashAll', bytes: finalBytes, key: hmacKeyBytes, crc64Variant: AppState.crc64Variant});
+      }
+
       const tasks = [['SHA-1','SHA-1'], ['SHA-256','SHA-256'], ['SHA-384','SHA-384'], ['SHA-512','SHA-512']].map(async ([id, alg]) => {
         try {
           const hex = hmacKeyBytes ? await Core.hmacHex(alg, hmacKeyBytes, finalBytes) : await Core.digestHex(alg, finalBytes);
@@ -1508,7 +1703,7 @@ const UI = (() => {
 
   const TEST_VECTORS = {
     empty:{text:'',expect:{'CRC32':'00000000','CRC64':'0000000000000000','MD5':'d41d8cd98f00b204e9800998ecf8427e','SHA-1':'da39a3ee5e6b4b0d3255bfef95601890afd80709','SHA-224':'d14a028c2a3a2bc9476102bb288234c415a2b01f828ea62ac5b3e42f','SHA-256':'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855','SHA-384':'38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b','SHA-512':'cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e'}},
-    abc:{text:'abc',expect:{'CRC32':'352441c2','MD5':'900150983cd24fb0d6963f7d28e17f72','SHA-1':'a9993e364706816aba3e25717850c26c9cd0d89d','SHA-224':'23097d223405d8228642a477bda255b32aadbce4bda0b3f7e36c9da7','SHA-256':'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad','SHA-384':'cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7','SHA-512':'ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f'}}
+    abc:{text:'abc',expect:{'CRC32':'352441c2','CRC64':'3420000000000000','MD5':'900150983cd24fb0d6963f7d28e17f72','SHA-1':'a9993e364706816aba3e25717850c26c9cd0d89d','SHA-224':'23097d223405d8228642a477bda255b32aadbce4bda0b3f7e36c9da7','SHA-256':'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad','SHA-384':'cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7','SHA-512':'ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f'}}
   };
 
   function initDOM() {
@@ -1542,6 +1737,9 @@ const UI = (() => {
     els.Base85DecToggleBtn = document.getElementById('Base85DecToggle');
     els.rowBase85Enc = document.getElementById('row-Base85-enc');
     els.rowBase85Dec = document.getElementById('row-Base85-dec');
+    els.labelBase85Enc = document.getElementById('label-Base85-Enc');
+    els.labelBase85Dec = document.getElementById('label-Base85-Dec');
+    els.labelCrc64 = document.getElementById('label-CRC64');
     els.sysEl = document.getElementById('sys');
   }
 
@@ -1633,7 +1831,9 @@ const UI = (() => {
     let activeOpts = [];
     if (AppState.salt) activeOpts.push('Salt適用');
     if (AppState.hmacKey) activeOpts.push('HMAC稼働');
-    const optLabel = activeOpts.length ? `｜${activeOpts.join('/')}` : '';
+    activeOpts.push(`CRC64: ${AppState.crc64Variant}`);
+    if (AppState.Base85Encode || AppState.Base85Decode) activeOpts.push(`Base85: ${AppState.base85Variant}`);
+    const optLabel = activeOpts.length ? `｜${activeOpts.join('｜')}` : '';
     els.metaEl.textContent = `${countLabel} ${count}${countUnit}｜正規化: ${normLabel}｜HEX: ${hexLabel}｜区切り: ${groupLabel}${optLabel}｜ステータス: ${statusText}`;
   }
 
@@ -1700,7 +1900,7 @@ const UI = (() => {
       if(!raw.trim()) {
         renderResults({'Base85-Dec': ''});
       } else {
-        Base85Engine.decode(raw).then(res => {
+        Base85Engine.decode(raw, AppState.base85Variant).then(res => {
           if (curSeq === AppState.seq) {
             if (res.type === 'error') renderResults({'Base85-Dec': 'デコード不可'});
             else if (res.type === 'binary') renderResults({'Base85-Dec': res});
@@ -1830,6 +2030,43 @@ const UI = (() => {
       el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); } });
     });
 
+    const base85Variants = ['ZeroMQ (Z85)', 'Standard ASCII85', 'Adobe ASCII85', 'RFC 1924'];
+    function cycleBase85Variant() {
+      const idx = base85Variants.indexOf(AppState.base85Variant);
+      AppState.base85Variant = base85Variants[(idx + 1) % base85Variants.length];
+      scheduleUpdate();
+      showToast(`Base85 モード切替: ${AppState.base85Variant}`);
+    }
+
+    [els.labelBase85Enc, els.labelBase85Dec].forEach(label => {
+      if(label) {
+        label.style.cursor = 'pointer';
+        label.style.textDecoration = 'underline';
+        label.title = 'クリックでBase85の規格を切り替えます';
+        label.addEventListener('click', cycleBase85Variant);
+      }
+    });
+
+    const crc64Variants = [
+        'XZ (ECMA, Reflected)',
+        'WE (ECMA, Non-Reflected)',
+        'ISO (HDLC, Non-Reflected)',
+        'Redis (Jones, Reflected)'
+    ];
+    function cycleCrc64Variant() {
+        const idx = crc64Variants.indexOf(AppState.crc64Variant);
+        AppState.crc64Variant = crc64Variants[(idx + 1) % crc64Variants.length];
+        scheduleUpdate();
+        showToast(`CRC64 モード切替: ${AppState.crc64Variant}`);
+    }
+    
+    if (els.labelCrc64) {
+        els.labelCrc64.style.cursor = 'pointer';
+        els.labelCrc64.style.textDecoration = 'underline';
+        els.labelCrc64.title = 'クリックでCRC-64の規格を切り替えます';
+        els.labelCrc64.addEventListener('click', cycleCrc64Variant);
+    }
+
     els.normBtn.addEventListener('click', () => {
       AppState.normalization = AppState.normalization === 'NFC' ? 'NFKC' : AppState.normalization === 'NFKC' ? 'none' : 'NFC';
       els.normBtn.textContent = `正規化: ${AppState.normalization}`;
@@ -1843,7 +2080,6 @@ const UI = (() => {
       els.metaEl.textContent = els.metaEl.textContent.replace(/HEX:\s*(UPPERCASE|lowercase)/, `HEX: ${AppState.hexUpper ? 'UPPERCASE' : 'lowercase'}`);
     });
 
-    // --- UI Toggles for Salt & HMAC ---
     els.saltToggleBtn.addEventListener('click', () => {
       AppState.showSalt = !AppState.showSalt;
       els.saltToggleBtn.textContent = `Salt: ${AppState.showSalt ? 'オン' : 'オフ'}`;
@@ -1875,13 +2111,13 @@ const UI = (() => {
       AppState.Base85Encode = !AppState.Base85Encode;
       els.Base85EncToggleBtn.textContent = `Base85 Enc: ${AppState.Base85Encode ? 'オン' : 'オフ'}`;
       els.rowBase85Enc.style.display = AppState.Base85Encode ? 'flex' : 'none';
-      if (AppState.Base85Encode) scheduleUpdate(); else renderResults({'Base85-Enc': ''});
+      if (AppState.Base85Encode) scheduleUpdate(); else { renderResults({'Base85-Enc': ''}); updateMeta(Core.countGraphemes(els.inputEl.value), !!AppState.currentFile, '完了'); }
     });
     els.Base85DecToggleBtn.addEventListener('click', () => {
       AppState.Base85Decode = !AppState.Base85Decode;
       els.Base85DecToggleBtn.textContent = `Base85 Dec: ${AppState.Base85Decode ? 'オン' : 'オフ'}`;
       els.rowBase85Dec.style.display = AppState.Base85Decode ? 'flex' : 'none';
-      if (AppState.Base85Decode) scheduleUpdate(); else renderResults({'Base85-Dec': ''});
+      if (AppState.Base85Decode) scheduleUpdate(); else { renderResults({'Base85-Dec': ''}); updateMeta(Core.countGraphemes(els.inputEl.value), !!AppState.currentFile, '完了'); }
     });
 
     els.groupingSel.addEventListener('change', () => {
@@ -1907,6 +2143,11 @@ const UI = (() => {
         'CRC32': Core.crc32Hex(bytes), 'CRC64': Core.crc64Hex(bytes),
         'MD5': Core.md5Hex(bytes), 'SHA-224': Core.sha224Hex(bytes)
       };
+      
+      const tempEngine = new (eval(Engine.toString() + ' return IncrementalHasher;'))(AppState.crc64Variant);
+      tempEngine.update(bytes);
+      results['CRC64'] = tempEngine.finalizeHmacOrNormal().crc64;
+
       results['SHA-1'] = await Core.safeAsync(() => Core.digestHex('SHA-1', bytes), '');
       results['SHA-256'] = await Core.safeAsync(() => Core.digestHex('SHA-256', bytes), '');
       results['SHA-384'] = await Core.safeAsync(() => Core.digestHex('SHA-384', bytes), '');
@@ -1930,6 +2171,8 @@ const UI = (() => {
       lines.push(`正規化: ${AppState.currentFile ? 'なし' : AppState.normalization}｜HEX: ${AppState.hexUpper ? 'UPPERCASE' : 'lowercase'}｜区切り: ${AppState.grouping ? AppState.grouping+'字' : '連結'}`);
       if (AppState.salt) lines.push(`Salt: ${AppState.salt}`);
       if (AppState.hmacKey) lines.push(`HMAC Key: ${AppState.hmacKey}`);
+      lines.push(`CRC64 モード: ${AppState.crc64Variant}`);
+      if (AppState.Base85Encode || AppState.Base85Decode) lines.push(`Base85 モード: ${AppState.base85Variant}`);
       lines.push('---');
       for (const id of ['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','Base64-Enc','Base64-Dec','Base85-Enc','Base85-Dec']) {
         const el = document.getElementById(id);
