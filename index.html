@@ -32,8 +32,6 @@
     --sb-thumb:rgba(124,255,124,0.3);
     --sb-thumb-hover:rgba(124,255,124,0.6);
   }
-  
-  /* 既存テーマ */
   body[data-theme="cmd"]{
     --bg:#0c0c0c;
     --fg:#cccccc;
@@ -66,87 +64,6 @@
     --sb-thumb:rgba(255,255,255,0.3);
     --sb-thumb-hover:rgba(255,255,255,0.6);
   }
-
-  /* 新規追加テーマ */
-  body[data-theme="amber"]{
-    --bg:#1a0f00;
-    --fg:#ffb000;
-    --fg-bright:#ffcc00;
-    --muted:#cc8800;
-    --alert:#ff4747;
-    --drag-bg:rgba(255, 176, 0, 0.08);
-    --glow:0 0 2px rgba(255, 176, 0, 0.4);
-    --toast-bg:rgba(26, 15, 0, .9);
-    --scanline:repeating-linear-gradient(to bottom,rgba(255,255,255,.02),rgba(255,255,255,.02) 1px,transparent 1px,transparent 3px);
-    --sel-bg:rgba(255, 176, 0, 0.3);
-    --sel-fg:#ffffff;
-    --sb-track:rgba(0,0,0,0.4);
-    --sb-thumb:rgba(255, 176, 0, 0.4);
-    --sb-thumb-hover:rgba(255, 176, 0, 0.7);
-  }
-  body[data-theme="ubuntu"]{
-    --bg:#300a24;
-    --fg:#eeeeee;
-    --fg-bright:#e95420;
-    --muted:#888888;
-    --drag-bg:rgba(233, 84, 32, 0.08);
-    --glow:none;
-    --toast-bg:rgba(48, 10, 36, .9);
-    --scanline:none;
-    --sel-bg:#e95420;
-    --sel-fg:#ffffff;
-    --sb-track:rgba(0,0,0,0.2);
-    --sb-thumb:rgba(238,238,238,0.3);
-    --sb-thumb-hover:rgba(238,238,238,0.6);
-  }
-  body[data-theme="solarized"]{
-    --bg:#002b36;
-    --fg:#839496;
-    --fg-bright:#2aa198;
-    --muted:#586e75;
-    --alert:#dc322f;
-    --drag-bg:rgba(42, 161, 152, 0.08);
-    --glow:none;
-    --toast-bg:rgba(0, 43, 54, .9);
-    --scanline:none;
-    --sel-bg:#073642;
-    --sel-fg:#93a1a1;
-    --sb-track:#002b36;
-    --sb-thumb:#586e75;
-    --sb-thumb-hover:#839496;
-  }
-  body[data-theme="matrix"]{
-    --bg:#000000;
-    --fg:#00ff41;
-    --fg-bright:#ffffff;
-    --muted:#008f11;
-    --drag-bg:rgba(0, 255, 65, 0.1);
-    --glow:0 0 3px rgba(0,255,65,.6), 0 0 1px rgba(255,255,255,.4);
-    --toast-bg:rgba(0, 0, 0, .9);
-    --scanline:repeating-linear-gradient(to bottom, rgba(0,255,65,.03), rgba(0,255,65,.03) 1px, transparent 1px, transparent 2px);
-    --sel-bg:#00ff41;
-    --sel-fg:#000000;
-    --sb-track:#000000;
-    --sb-thumb:#008f11;
-    --sb-thumb-hover:#00ff41;
-  }
-  body[data-theme="light"]{
-    --bg:#f5f5f5;
-    --fg:#333333;
-    --fg-bright:#0000aa;
-    --muted:#777777;
-    --alert:#d32f2f;
-    --drag-bg:rgba(0, 0, 170, 0.05);
-    --glow:none;
-    --toast-bg:rgba(220, 220, 220, .95);
-    --scanline:none;
-    --sel-bg:#333333;
-    --sel-fg:#ffffff;
-    --sb-track:#e0e0e0;
-    --sb-thumb:#aaaaaa;
-    --sb-thumb-hover:#777777;
-  }
-
   *{box-sizing:border-box}
   html,body{height:100%}
   body{
@@ -194,7 +111,7 @@
     border:none; outline:none; font:inherit; font-size:clamp(12px,2.5vw,14px);
     padding:4px 6px; caret-color:var(--fg-bright); border-radius:0;
   }
-  .text-input:focus { background: rgba(128,128,128,0.1); }
+  .text-input:focus { background: rgba(255,255,255,0.03); }
   .text-input::placeholder{color:var(--muted);opacity:0.6;}
   
   select.link {
@@ -1200,6 +1117,7 @@ const Base85Engine = (() => {
         const len = bytes.length;
         const extra = len % 4;
         
+        // 【修正1】 Z85 / RFC 1924 はパディングを禁止しているため、4の倍数以外の長さはエラーにする
         if (!isAscii85 && extra !== 0) {
             throw new Error(variant + ' requires input length to be a multiple of 4 bytes');
         }
@@ -1221,10 +1139,12 @@ const Base85Engine = (() => {
              val = val >>> 0;
           }
 
+          // ASCII85 の 'z' (0x00000000) 圧縮
           if (isAscii85 && val === 0 && paddingBytes === 0) {
             resArr.push('z');
             continue;
           }
+          // 【修正2】 ASCII85 の 'y' (0x20202020) 圧縮対応を追加
           if (isAscii85 && val === 0x20202020 && paddingBytes === 0) {
             resArr.push('y');
             continue;
@@ -1265,6 +1185,7 @@ const Base85Engine = (() => {
         clean = clean.replace(/\\s+/g, '');
         if (isAscii85) {
             clean = clean.replace(/z/g, '!!!!!');
+            // 【修正2】 ASCII85 の 'y' 解凍対応 (+<VdL = 0x20202020)
             clean = clean.replace(/y/g, '+<VdL');
         }
         
@@ -1283,6 +1204,7 @@ const Base85Engine = (() => {
         const len = clean.length;
         const extraChars = len % 5;
         
+        // 【修正1】 Z85 / RFC 1924 はパディングを禁止しているため、5の倍数以外の長さはエラーにする
         if (!isAscii85 && extraChars !== 0) {
             throw new Error(variant + ' requires valid encoded string length to be a multiple of 5');
         }
@@ -1303,6 +1225,7 @@ const Base85Engine = (() => {
           for(let j = 0; j < 5; j++) {
             val = val * 85 + decodeMap[workStr.charCodeAt(i+j)];
           }
+          // 【修正3】 32-bit (UInt32) のオーバーフロー検査を追加
           if (val > 4294967295) {
             throw new Error('Base85 Integer Overflow: Invalid encoded chunk');
           }
@@ -2557,14 +2480,8 @@ const UI = (() => {
     const THEMES = [
       { id: 'default', label: 'DEFAULT' },
       { id: 'cmd', label: 'Command Prompt' },
-      { id: 'ps', label: 'PowerShell' },
-      { id: 'amber', label: 'Amber CRT' },
-      { id: 'ubuntu', label: 'Ubuntu Console' },
-      { id: 'solarized', label: 'Solarized Dark' },
-      { id: 'matrix', label: 'Matrix' },
-      { id: 'light', label: 'Light Terminal' }
+      { id: 'ps', label: 'PowerShell' }
     ];
-    
     function applyTheme() {
       document.body.setAttribute('data-theme', AppState.theme);
       const t = THEMES.find(x => x.id === AppState.theme) || THEMES[0];
