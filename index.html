@@ -607,7 +607,7 @@ const Core = (() => {
       a=gg(a,b,c,d,x[i+13],5,0xa9e3e905); d=gg(d,a,b,c,x[i+2],9,0xfcefa3f8); c=gg(c,d,a,b,x[i+7],14,0x676f02d9); b=gg(b,c,d,a,x[i+12],20,0x8d2a4c8a);
       a=hh(a,b,c,d,x[i+5],4,0xfffa3942); d=hh(d,a,b,c,x[i+8],11,0x8771f681); c=hh(c,d,a,b,x[i+11],16,0x6d9d6122); b=hh(b,c,d,a,x[i+14],23,0xfde5380c);
       a=hh(a,b,c,d,x[i+1],4,0xa4beea44); d=hh(d,a,b,c,x[i+4],11,0x4bdecfa9); c=hh(c,d,a,b,x[i+7],16,0xf6bb4b60); b=hh(b,c,d,a,x[i+10],23,0xbebfbc70);
-      a=hh(a,b,c,d,x[i+13],4,0x289b7ec6); d=hh(d,a,b,c,x[i+0],11,0xeaa127fa); c=hh(c,d,a,b,x[3],16,0xd4ef3085); b=hh(b,c,d,a,x[6],23,0x04881d05);
+      a=hh(a,b,c,d,x[i+13],4,0x289b7ec6); d=hh(d,a,b,c,x[i+0],11,0xeaa127fa); c=hh(c,d,a,b,x[i+3],16,0xd4ef3085); b=hh(b,c,d,a,x[i+6],23,0x04881d05);
       a=hh(a,b,c,d,x[i+9],4,0xd9d4d039); d=hh(d,a,b,c,x[i+12],11,0xe6db99e5); c=hh(c,d,a,b,x[i+15],16,0x1fa27cf8); b=hh(b,c,d,a,x[i+2],23,0xc4ac5665);
       a=ii(a,b,c,d,x[i+0],6,0xf4292244); d=ii(d,a,b,c,x[i+7],10,0x432aff97); c=ii(c,d,a,b,x[i+14],15,0xab9423a7); b=ii(b,c,d,a,x[i+5],21,0xfc93a039);
       a=ii(a,b,c,d,x[i+12],6,0x655b59c3); d=ii(d,a,b,c,x[i+3],10,0x8f0ccc92); c=ii(c,d,a,b,x[i+10],15,0xffeff47d); b=ii(b,c,d,a,x[i+1],21,0x85845dd1);
@@ -1116,6 +1116,12 @@ const Base85Engine = (() => {
         const charset = CHARSETS[variant];
         const len = bytes.length;
         const extra = len % 4;
+        
+        // 【修正1】 Z85 / RFC 1924 はパディングを禁止しているため、4の倍数以外の長さはエラーにする
+        if (!isAscii85 && extra !== 0) {
+            throw new Error(variant + ' requires input length to be a multiple of 4 bytes');
+        }
+
         const paddedLen = extra === 0 ? len : len + (4 - extra);
         
         let resArr = [];
@@ -1133,8 +1139,14 @@ const Base85Engine = (() => {
              val = val >>> 0;
           }
 
+          // ASCII85 の 'z' (0x00000000) 圧縮
           if (isAscii85 && val === 0 && paddingBytes === 0) {
             resArr.push('z');
+            continue;
+          }
+          // 【修正2】 ASCII85 の 'y' (0x20202020) 圧縮対応を追加
+          if (isAscii85 && val === 0x20202020 && paddingBytes === 0) {
+            resArr.push('y');
             continue;
           }
 
@@ -1171,7 +1183,12 @@ const Base85Engine = (() => {
         }
 
         clean = clean.replace(/\\s+/g, '');
-        if (isAscii85) clean = clean.replace(/z/g, '!!!!!');
+        if (isAscii85) {
+            clean = clean.replace(/z/g, '!!!!!');
+            // 【修正2】 ASCII85 の 'y' 解凍対応 (+<VdL = 0x20202020)
+            clean = clean.replace(/y/g, '+<VdL');
+        }
+        
         if (!clean) return new Uint8Array(0);
 
         const charset = CHARSETS[variant];
@@ -1186,6 +1203,12 @@ const Base85Engine = (() => {
 
         const len = clean.length;
         const extraChars = len % 5;
+        
+        // 【修正1】 Z85 / RFC 1924 はパディングを禁止しているため、5の倍数以外の長さはエラーにする
+        if (!isAscii85 && extraChars !== 0) {
+            throw new Error(variant + ' requires valid encoded string length to be a multiple of 5');
+        }
+
         if (extraChars === 1) throw new Error('Invalid Base85 Length');
 
         const paddedLen = extraChars === 0 ? len : len + (5 - extraChars);
@@ -1201,6 +1224,10 @@ const Base85Engine = (() => {
           let val = 0;
           for(let j = 0; j < 5; j++) {
             val = val * 85 + decodeMap[workStr.charCodeAt(i+j)];
+          }
+          // 【修正3】 32-bit (UInt32) のオーバーフロー検査を追加
+          if (val > 4294967295) {
+            throw new Error('Base85 Integer Overflow: Invalid encoded chunk');
           }
           view.setUint32((i/5)*4, val, false);
         }
