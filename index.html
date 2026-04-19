@@ -106,9 +106,42 @@
     text-shadow:var(--glow);
   }
   
-  .text-input{background:transparent;color:var(--fg-bright);border:1px solid var(--muted);outline:none;font:inherit;font-size:clamp(12px,2.5vw,14px);padding:6px 10px;caret-color:var(--fg-bright);transition:border-color 0.2s;border-radius:2px;}
-  .text-input:focus{border-color:var(--fg-bright);box-shadow:0 0 4px rgba(124,255,124,0.3);}
+  .text-input{
+    background:transparent; color:var(--fg-bright);
+    border:none; outline:none; font:inherit; font-size:clamp(12px,2.5vw,14px);
+    padding:4px 6px; caret-color:var(--fg-bright); border-radius:0;
+  }
+  .text-input:focus { background: rgba(255,255,255,0.03); }
   .text-input::placeholder{color:var(--muted);opacity:0.6;}
+  
+  select.link {
+    appearance: none; -webkit-appearance: none; -moz-appearance: none;
+    background: transparent; border: none; outline: none; color: var(--muted);
+    cursor: pointer; padding-right: 14px;
+    background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2210%22%20height%3D%225%22%20viewBox%3D%220%200%2010%205%22%3E%3Cpath%20fill%3D%22%239fb4c6%22%20d%3D%22M0%200l5%205%205-5z%22%2F%3E%3C%2Fsvg%3E");
+    background-repeat: no-repeat; background-position: right center; background-size: 8px 4px;
+  }
+  select.link:focus { color: var(--fg-bright); }
+  select.link option { background: var(--bg); color: var(--fg); }
+
+  .number-wrap { position: relative; display: inline-flex; align-items: center; }
+  .number-input {
+    appearance: textfield; -moz-appearance: textfield;
+    width: 64px; text-align: right; padding-right: 16px;
+  }
+  .number-input::-webkit-outer-spin-button, .number-input::-webkit-inner-spin-button {
+    -webkit-appearance: none; margin: 0;
+  }
+  .spinner-controls {
+    position: absolute; right: 0px; display: flex; flex-direction: column;
+    justify-content: center; height: 100%; pointer-events: none;
+  }
+  .spinner-btn {
+    font-size: 8px; line-height: 1; color: var(--muted); cursor: pointer;
+    pointer-events: auto; user-select: none; padding: 2px;
+  }
+  .spinner-btn:hover { color: var(--fg-bright); }
+  .spinner-btn:active { transform: scale(0.9); }
 
   .hint{color:var(--muted);font-size:clamp(11px,2.6vw,13px);margin-top:6px}
   .toolbar{display:flex;align-items:center;gap:12px;padding:0 clamp(12px,3vw,18px);flex-wrap:wrap}
@@ -117,6 +150,12 @@
   @media (min-width:720px){ .list{grid-template-columns:1fr 1fr} }
   .row{display:flex;gap:10px;align-items:flex-start;padding:2px 0}
   .label{width:90px;flex:0 0 90px;color:var(--muted)}
+  
+  .result-col{display:flex;flex-direction:column;flex:1;min-width:0;}
+  .prog-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;height:14px;}
+  .prog-text{margin:0;font-size:10px;line-height:1;}
+  .stop-btn{margin:0;font-size:10px;line-height:1;display:none;padding:0 4px;}
+  
   .value{flex:1;color:var(--fg-bright);word-break:break-all;user-select:text}
   .value:focus{outline:1px dashed var(--fg-bright); outline-offset:2px}
   .value[data-empty="1"]{opacity:.6}
@@ -135,48 +174,54 @@
   }
   .brandline{color:var(--fg-bright);font-weight:600}
   #f-hidden{display:none}
+  
+  /* セキュア警告表示用 */
+  #sec-warn {
+    display: none; background: var(--alert); color: #fff; padding: 6px 12px; font-size: 12px; font-weight: bold; text-align: center; letter-spacing: 1px;
+  }
 </style>
 </head>
 <body>
+  <div id="sec-warn">【制限モード】 セキュアな環境（HTTPS）ではないため、高度な暗号化処理（SHA-384 / SHA-512）は無効化されています。</div>
   <header>
     <h1>SONY HASH</h1>
     <div>
-      <button id="themeToggle" class="link" aria-label="テーマ切替">テーマ: DEFAULT</button>
-      <button id="fs" class="link" aria-label="全画面">全画面</button>
+      <button id="themeToggle" class="link" aria-label="テーマ切替" data-action="toggleTheme">テーマ: DEFAULT</button>
+      <button id="fs" class="link" aria-label="全画面" data-action="toggleFullscreen">全画面</button>
     </div>
   </header>
   <main class="container" role="main">
     <section class="input-wrap" id="drop-zone">
-      <textarea id="in" placeholder="ここに入力、またはファイルをドロップして計算します"></textarea>
+      <textarea id="in" placeholder="ここに入力、またはファイルをドロップして計算します" autocomplete="off" spellcheck="false" autocorrect="off"></textarea>
       <div id="meta" class="hint">文字数 0｜正規化: NFC｜HEX: lowercase｜区切り: 連結｜ステータス: 待機</div>
       <input type="file" id="f-hidden" />
     </section>
     
-    <section class="input-wrap" id="adv-inputs" style="padding-top:0; padding-bottom:10px; display:none; gap:10px; flex-wrap:wrap;">
-      <input type="text" id="salt-in" class="text-input" placeholder="ソルト (Salt)" style="flex:1; min-width:200px; display:none;">
-      <input type="text" id="hmac-in" class="text-input" placeholder="HMAC キー (Key)" style="flex:1; min-width:200px; display:none;">
+    <section class="input-wrap" id="adv-inputs" style="padding-top:0; padding-bottom:10px; display:none; gap:20px; flex-wrap:wrap;">
+      <input type="text" id="salt-in" class="text-input" placeholder="ソルト (Salt)" autocomplete="new-password" spellcheck="false" autocorrect="off" style="flex:1; min-width:200px; display:none;">
+      <input type="text" id="hmac-in" class="text-input" placeholder="HMAC キー (Key)" autocomplete="new-password" spellcheck="false" autocorrect="off" style="flex:1; min-width:200px; display:none;">
     </section>
 
     <div class="toolbar">
       <span class="hint">オプション:</span>
-      <button id="norm" class="link" aria-label="正規化の切替">正規化: NFC</button><span class="sep hint">/</span>
-      <button id="hexcase" class="link" aria-label="HEX大小の切替">HEX: lowercase</button>
+      <button id="norm" class="link" aria-label="正規化の切替" data-action="toggleNorm">正規化: NFC</button><span class="sep hint">/</span>
+      <button id="hexcase" class="link" aria-label="HEX大小の切替" data-action="toggleHex">HEX: lowercase</button>
       <span class="sep hint">/</span>
-      <button id="saltToggle" class="link" aria-label="Saltの切替">Salt: オフ</button>
+      <button id="saltToggle" class="link" aria-label="Saltの切替" data-action="toggleSalt">Salt: オフ</button>
       <span class="sep hint">/</span>
-      <button id="hmacToggle" class="link" aria-label="HMACの切替">HMAC: オフ</button>
+      <button id="hmacToggle" class="link" aria-label="HMACの切替" data-action="toggleHmac">HMAC: オフ</button>
       <span class="sep hint">/</span>
-      <button id="Base64EncToggle" class="link" aria-label="Base64エンコードの切替">Base64 Enc: オフ</button>
+      <button id="Base64EncToggle" class="link" aria-label="Base64エンコードの切替" data-action="toggleBase64Enc">Base64 Enc: オフ</button>
       <span class="sep hint">/</span>
-      <button id="Base64DecToggle" class="link" aria-label="Base64デコードの切替">Base64 Dec: オフ</button>
+      <button id="Base64DecToggle" class="link" aria-label="Base64デコードの切替" data-action="toggleBase64Dec">Base64 Dec: オフ</button>
       <span class="sep hint">/</span>
-      <button id="Base85EncToggle" class="link" aria-label="Base85エンコードの切替">Base85 Enc: オフ</button>
+      <button id="Base85EncToggle" class="link" aria-label="Base85エンコードの切替" data-action="toggleBase85Enc">Base85 Enc: オフ</button>
       <span class="sep hint">/</span>
-      <button id="Base85DecToggle" class="link" aria-label="Base85デコードの切替">Base85 Dec: オフ</button>
+      <button id="Base85DecToggle" class="link" aria-label="Base85デコードの切替" data-action="toggleBase85Dec">Base85 Dec: オフ</button>
       
       <span class="sep hint">/</span>
-      <label for="grouping" class="hint">区切り:</label>
-      <select id="grouping" class="link" style="text-decoration:none">
+      <label for="grouping" class="hint" style="margin-right: -4px;">区切り:</label>
+      <select id="grouping" class="link">
         <option value="0">連結</option>
         <option value="2">2字</option>
         <option value="4">4字</option>
@@ -184,36 +229,121 @@
         <option value="16">16字</option>
       </select>
       <span class="sep hint">|</span>
-      <button id="f-trigger" class="link">ファイル読込</button>
+      <button id="f-trigger" class="link" data-action="triggerFile">ファイル読込</button>
       <span class="sep hint">|</span>
       
-      <span class="hint">テスト:</span>
-      <select id="tv" class="link" style="text-decoration:none">
+      <button id="iterModeToggle" class="link" aria-label="反復モードの切替" data-action="toggleIterMode">反復: 標準 (Raw)</button>
+      <span class="sep hint">/</span>
+      <label for="iter" class="hint" style="margin-right: -4px;">回数:</label>
+      <div class="number-wrap">
+        <input type="number" id="iter" class="text-input number-input" value="1" min="1" max="999999999" autocomplete="off" spellcheck="false" autocorrect="off">
+        <div class="spinner-controls">
+          <span class="spinner-btn" id="iter-up" data-action="iterUp">△</span>
+          <span class="spinner-btn" id="iter-down" data-action="iterDown">▽</span>
+        </div>
+      </div>
+      <span class="sep hint">|</span>
+
+      <span class="hint" style="margin-right: -4px;">テスト:</span>
+      <select id="tv" class="link">
         <option value="empty">空</option>
         <option value="abc">abc</option>
       </select>
-      <button id="apply" class="link">適用</button>
-      <button id="verify" class="link">検証</button>
+      <button id="apply" class="link" data-action="applyTest">適用</button>
+      <button id="verify" class="link" data-action="verifyTest">検証</button>
       <span class="sep hint">|</span>
-      <button id="save" class="link">保存</button>
+      <button id="save" class="link" data-action="saveResults">保存</button>
       <span class="sep hint">|</span>
-      <button id="geoToggle" class="link" aria-label="位置情報の照会">位置: オフ</button>
+      <button id="geoToggle" class="link" aria-label="位置情報の照会" data-action="toggleGeo">位置: オフ</button>
       <span class="sep hint">|</span>
-      <button id="zessToggle" class="link" aria-label="ZESS隔離モード">ZESS: オフ</button>
+      <button id="zessToggle" class="link" aria-label="ZESS隔離モード" data-action="toggleZess">ZESS: オフ</button>
     </div>
+    
     <section class="list mono" aria-live="polite" aria-busy="false">
-      <div class="row"><div class="label">CRC32</div>                         <div id="CRC32"   class="value" data-alg="CRC32" tabindex="0">入力待ち</div></div>
-      <div class="row"><div class="label" id="label-CRC64">CRC64</div>        <div id="CRC64"   class="value" data-alg="CRC64" tabindex="0">入力待ち</div></div>
-      <div class="row"><div class="label" id="label-MD5">MD5</div>            <div id="MD5"     class="value" data-alg="MD5" tabindex="0">入力待ち</div></div>
-      <div class="row"><div class="label" id="label-SHA-1">SHA-1</div>        <div id="SHA-1"   class="value" data-alg="SHA-1" tabindex="0">入力待ち</div></div>
-      <div class="row"><div class="label" id="label-SHA-224">SHA-224</div>    <div id="SHA-224" class="value" data-alg="SHA-224" tabindex="0">入力待ち</div></div>
-      <div class="row"><div class="label" id="label-SHA-256">SHA-256</div>    <div id="SHA-256" class="value" data-alg="SHA-256" tabindex="0">入力待ち</div></div>
-      <div class="row"><div class="label" id="label-SHA-384">SHA-384</div>    <div id="SHA-384" class="value" data-alg="SHA-384" tabindex="0">入力待ち</div></div>
-      <div class="row"><div class="label" id="label-SHA-512">SHA-512</div>    <div id="SHA-512" class="value" data-alg="SHA-512" tabindex="0">入力待ち</div></div>
-      <div class="row" id="row-Base64-enc" style="display:none;"><div class="label">Base64 Enc</div> <div id="Base64-Enc" class="value" data-alg="Base64 Enc" tabindex="0">入力待ち</div></div>
-      <div class="row" id="row-Base64-dec" style="display:none;"><div class="label">Base64 Dec</div> <div id="Base64-Dec" class="value" data-alg="Base64 Dec" tabindex="0">入力待ち</div></div>
-      <div class="row" id="row-Base85-enc" style="display:none;"><div class="label" id="label-Base85-Enc">Base85 Enc</div> <div id="Base85-Enc" class="value" data-alg="Base85 Enc" tabindex="0">入力待ち</div></div>
-      <div class="row" id="row-Base85-dec" style="display:none;"><div class="label" id="label-Base85-Dec">Base85 Dec</div> <div id="Base85-Dec" class="value" data-alg="Base85 Dec" tabindex="0">入力待ち</div></div>
+      <div class="row">
+        <div class="label">CRC32</div>
+        <div class="result-col">
+          <div class="prog-bar"><span id="prog-CRC32" class="hint prog-text">待機</span><button class="link stop-btn warn" data-alg="CRC32" data-action="stopAlg">[停止]</button></div>
+          <div id="CRC32" class="value" data-alg="CRC32" tabindex="0" data-action="copyValue">入力待ち</div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="label" id="label-CRC64" data-action="cycleCrc64" style="cursor:pointer;text-decoration:underline;" title="クリックでCRC-64の規格を切り替えます">CRC64</div>
+        <div class="result-col">
+          <div class="prog-bar"><span id="prog-CRC64" class="hint prog-text">待機</span><button class="link stop-btn warn" data-alg="CRC64" data-action="stopAlg">[停止]</button></div>
+          <div id="CRC64" class="value" data-alg="CRC64" tabindex="0" data-action="copyValue">入力待ち</div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="label" id="label-MD5">MD5</div>
+        <div class="result-col">
+          <div class="prog-bar"><span id="prog-MD5" class="hint prog-text">待機</span><button class="link stop-btn warn" data-alg="MD5" data-action="stopAlg">[停止]</button></div>
+          <div id="MD5" class="value" data-alg="MD5" tabindex="0" data-action="copyValue">入力待ち</div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="label" id="label-SHA-1">SHA-1</div>
+        <div class="result-col">
+          <div class="prog-bar"><span id="prog-SHA-1" class="hint prog-text">待機</span><button class="link stop-btn warn" data-alg="SHA-1" data-action="stopAlg">[停止]</button></div>
+          <div id="SHA-1" class="value" data-alg="SHA-1" tabindex="0" data-action="copyValue">入力待ち</div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="label" id="label-SHA-224">SHA-224</div>
+        <div class="result-col">
+          <div class="prog-bar"><span id="prog-SHA-224" class="hint prog-text">待機</span><button class="link stop-btn warn" data-alg="SHA-224" data-action="stopAlg">[停止]</button></div>
+          <div id="SHA-224" class="value" data-alg="SHA-224" tabindex="0" data-action="copyValue">入力待ち</div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="label" id="label-SHA-256">SHA-256</div>
+        <div class="result-col">
+          <div class="prog-bar"><span id="prog-SHA-256" class="hint prog-text">待機</span><button class="link stop-btn warn" data-alg="SHA-256" data-action="stopAlg">[停止]</button></div>
+          <div id="SHA-256" class="value" data-alg="SHA-256" tabindex="0" data-action="copyValue">入力待ち</div>
+        </div>
+      </div>
+      <div class="row" id="row-SHA-384">
+        <div class="label" id="label-SHA-384">SHA-384</div>
+        <div class="result-col">
+          <div class="prog-bar"><span id="prog-SHA-384" class="hint prog-text">待機</span><button class="link stop-btn warn" data-alg="SHA-384" data-action="stopAlg">[停止]</button></div>
+          <div id="SHA-384" class="value" data-alg="SHA-384" tabindex="0" data-action="copyValue">入力待ち</div>
+        </div>
+      </div>
+      <div class="row" id="row-SHA-512">
+        <div class="label" id="label-SHA-512">SHA-512</div>
+        <div class="result-col">
+          <div class="prog-bar"><span id="prog-SHA-512" class="hint prog-text">待機</span><button class="link stop-btn warn" data-alg="SHA-512" data-action="stopAlg">[停止]</button></div>
+          <div id="SHA-512" class="value" data-alg="SHA-512" tabindex="0" data-action="copyValue">入力待ち</div>
+        </div>
+      </div>
+      <div class="row" id="row-Base64-enc" style="display:none;">
+        <div class="label">Base64 Enc</div>
+        <div class="result-col">
+          <div class="prog-bar"><span id="prog-Base64-Enc" class="hint prog-text">待機</span></div>
+          <div id="Base64-Enc" class="value" data-alg="Base64 Enc" tabindex="0" data-action="copyValue">入力待ち</div>
+        </div>
+      </div>
+      <div class="row" id="row-Base64-dec" style="display:none;">
+        <div class="label">Base64 Dec</div>
+        <div class="result-col">
+          <div class="prog-bar"><span id="prog-Base64-Dec" class="hint prog-text">待機</span></div>
+          <div id="Base64-Dec" class="value" data-alg="Base64 Dec" tabindex="0" data-action="copyValue">入力待ち</div>
+        </div>
+      </div>
+      <div class="row" id="row-Base85-enc" style="display:none;">
+        <div class="label" id="label-Base85-Enc" data-action="cycleBase85" style="cursor:pointer;text-decoration:underline;" title="クリックでBase85の規格を切り替えます">Base85 Enc</div>
+        <div class="result-col">
+          <div class="prog-bar"><span id="prog-Base85-Enc" class="hint prog-text">待機</span></div>
+          <div id="Base85-Enc" class="value" data-alg="Base85 Enc" tabindex="0" data-action="copyValue">入力待ち</div>
+        </div>
+      </div>
+      <div class="row" id="row-Base85-dec" style="display:none;">
+        <div class="label" id="label-Base85-Dec" data-action="cycleBase85" style="cursor:pointer;text-decoration:underline;" title="クリックでBase85の規格を切り替えます">Base85 Dec</div>
+        <div class="result-col">
+          <div class="prog-bar"><span id="prog-Base85-Dec" class="hint prog-text">待機</span></div>
+          <div id="Base85-Dec" class="value" data-alg="Base85 Dec" tabindex="0" data-action="copyValue">入力待ち</div>
+        </div>
+      </div>
     </section>
   </main>
   <aside id="sys" class="sys">
@@ -232,17 +362,41 @@ const Security = (() => {
       document.body.classList.add('U-571');
       window.fetch = async () => { throw new Error('ZESS: Egress Network Blocked'); };
       window.XMLHttpRequest = function() { throw new Error('ZESS: Egress Network Blocked'); };
-      try { window.localStorage.clear(); } catch(e){}
-      try { window.sessionStorage.clear(); } catch(e){}
-      const dummyStorage = { getItem:()=>null, setItem:()=>{}, removeItem:()=>{}, clear:()=>{} };
-      Object.defineProperty(window, 'localStorage', { value: dummyStorage, writable: false });
-      Object.defineProperty(window, 'sessionStorage', { value: dummyStorage, writable: false });
+      
+      const memStore = new Map();
+      const dummyStorage = new Proxy({}, {
+          get: (_, prop) => {
+              if (prop === 'getItem') return k => memStore.has(k) ? memStore.get(k) : null;
+              if (prop === 'setItem') return (k, v) => memStore.set(k, String(v));
+              if (prop === 'removeItem') return k => memStore.delete(k);
+              if (prop === 'clear') return () => memStore.clear();
+              if (prop === 'length') return memStore.size;
+              if (prop === 'key') return i => Array.from(memStore.keys())[i] || null;
+              return memStore.get(prop);
+          },
+          set: (_, prop, value) => { memStore.set(prop, String(value)); return true; },
+          deleteProperty: (_, prop) => { memStore.delete(prop); return true; }
+      });
+      Object.defineProperty(window, 'localStorage', { get: () => dummyStorage, configurable: true });
+      Object.defineProperty(window, 'sessionStorage', { get: () => dummyStorage, configurable: true });
+
       if (navigator.serviceWorker) navigator.serviceWorker.getRegistrations().then(r => r.forEach(x => x.unregister()));
       if (window.caches) { try { caches.keys().then(k => k.forEach(name => caches.delete(name))); } catch(e){} }
       if (window.indexedDB && window.indexedDB.databases) { try { indexedDB.databases().then(dbs => dbs.forEach(db => indexedDB.deleteDatabase(db.name))); } catch(e){} }
     }
   }
   return { init };
+})();
+
+/* =========================================================
+   EVENT BUS — Publish/Subscribe for Decoupling Engine and UI
+========================================================= */
+const EventBus = (() => {
+  const events = {};
+  return {
+    on: (event, listener) => { (events[event] || (events[event] = [])).push(listener); },
+    emit: (event, data) => { (events[event] || []).forEach(l => l(data)); }
+  };
 })();
 
 /* =========================================================
@@ -253,6 +407,7 @@ const AppState = {
   normalization: 'NFC',
   hexUpper: false,
   grouping: 0,
+  iterMode: 'raw',
   showSalt: false,
   showHmac: false,
   Base64Encode: false,
@@ -264,7 +419,6 @@ const AppState = {
   salt: '',
   hmacKey: '',
   currentFile: null,
-  seq: 0,
   geoEnabled: false,
   geoLabel: '照会オフ',
   geoTs: 0,
@@ -280,16 +434,11 @@ const Core = (() => {
   const seg = (window.Intl?.Segmenter) ? new Intl.Segmenter('ja',{granularity:'grapheme'}) : null;
 
   const HEX_LUT = Array.from({length: 256}, (_, i) => i.toString(16).padStart(2, '0'));
-  
-  const B64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  const B64_MAP = new Uint8Array(256);
-  for (let i = 0; i < 64; i++) B64_MAP[B64_CHARS.charCodeAt(i)] = i;
 
   async function safeAsync(fn, fallback = null) {
     try { return await fn(); } catch { return fallback; }
   }
 
-  /* --- Pure JS UTF-8 Encoder (Surrogate Pair Safe) --- */
   function utf8Encode(str) {
     const arr = [];
     for (let i = 0; i < str.length; i++) {
@@ -309,8 +458,7 @@ const Core = (() => {
     return new Uint8Array(arr);
   }
 
-  /* --- Pure JS UTF-8 Decoder (Control Char Detection) --- */
-  function utf8Decode(bytes) {
+  function _manualUtf8Decode(bytes) {
     let str = '';
     let i = 0;
     while (i < bytes.length) {
@@ -336,6 +484,19 @@ const Core = (() => {
     return str;
   }
 
+  function utf8Decode(bytes) {
+    try {
+      for(let i=0; i<Math.min(bytes.length, 512); i++) {
+          let c = bytes[i];
+          if (c < 0x20 && c !== 0x09 && c !== 0x0A && c !== 0x0D) throw new Error('binary');
+      }
+      return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    } catch (e) {
+      if (e.message === 'binary') throw e;
+      return _manualUtf8Decode(bytes);
+    }
+  }
+
   const toHex = buf => {
     const u8 = new Uint8Array(buf);
     let s = '';
@@ -347,30 +508,6 @@ const Core = (() => {
     const bytes = new Uint8Array(hex.length / 2);
     for(let i=0; i<hex.length; i+=2) bytes[i/2] = parseInt(hex.substring(i, i+2), 16);
     return bytes;
-  }
-
-  /* --- Pure JS Base64 Encoder --- */
-  function encodeBase64(bytes) {
-    let result = '';
-    let i;
-    let l = bytes.length;
-    for (i = 2; i < l; i += 3) {
-      result += B64_CHARS[bytes[i - 2] >> 2];
-      result += B64_CHARS[((bytes[i - 2] & 0x03) << 4) | (bytes[i - 1] >> 4)];
-      result += B64_CHARS[((bytes[i - 1] & 0x0F) << 2) | (bytes[i] >> 6)];
-      result += B64_CHARS[bytes[i] & 0x3F];
-    }
-    if (i === l + 1) { 
-      result += B64_CHARS[bytes[i - 2] >> 2];
-      result += B64_CHARS[(bytes[i - 2] & 0x03) << 4];
-      result += "==";
-    } else if (i === l) { 
-      result += B64_CHARS[bytes[i - 2] >> 2];
-      result += B64_CHARS[((bytes[i - 2] & 0x03) << 4) | (bytes[i - 1] >> 4)];
-      result += B64_CHARS[(bytes[i - 1] & 0x0F) << 2];
-      result += "=";
-    }
-    return result;
   }
 
   const ZIP_SIGS = [
@@ -426,46 +563,6 @@ const Core = (() => {
     return {ext: 'bin', mime: 'application/octet-stream'};
   }
 
-  /* --- Pure JS Base64 Decoder Info --- */
-  function decodeBase64Info(str) {
-    try {
-      let clean = str.replace(/\s+/g, '');
-      if (!clean) return { type: 'empty' };
-      if (/[^A-Za-z0-9+/=_\-]/.test(clean)) return { type: 'error' };
-      clean = clean.replace(/-/g, '+').replace(/_/g, '/');
-      while (clean.length % 4 !== 0) clean += '=';
-
-      let l = clean.length;
-      if (l === 0) return { type: 'empty' };
-
-      let p = 0;
-      let j = l;
-      if (clean[l-1] === '=') j--;
-      if (clean[l-2] === '=') j--;
-      let outLen = (l * 3 / 4) - (l - j);
-      let bytes = new Uint8Array(outLen);
-
-      for (let i = 0; i < l; i += 4) {
-        let e1 = B64_MAP[clean.charCodeAt(i)];
-        let e2 = B64_MAP[clean.charCodeAt(i + 1)];
-        let e3 = B64_MAP[clean.charCodeAt(i + 2)];
-        let e4 = B64_MAP[clean.charCodeAt(i + 3)];
-        bytes[p++] = (e1 << 2) | (e2 >> 4);
-        if (i + 2 < j) bytes[p++] = ((e2 & 15) << 4) | (e3 >> 2);
-        if (i + 3 < j) bytes[p++] = ((e3 & 3) << 6) | e4;
-      }
-
-      try {
-        const text = utf8Decode(bytes);
-        return { type: 'text', value: text };
-      } catch (e) {
-        return { type: 'binary', bytes };
-      }
-    } catch (e) {
-      return { type: 'error' };
-    }
-  }
-
   function applyGrouping(hex, groupSize) {
     const n = groupSize | 0;
     if(!n) return hex;
@@ -479,11 +576,7 @@ const Core = (() => {
 
   const CRC_TABLE = (()=>{const t=new Uint32Array(256);for(let i=0;i<256;i++){let c=i;for(let j=0;j<8;j++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[i]=c>>>0;}return t;})();
   function crc32Hex(bytes){let c=0xFFFFFFFF;for(let i=0;i<bytes.length;i++){c=CRC_TABLE[(c^bytes[i])&0xFF]^(c>>>8);}return ((c^0xFFFFFFFF)>>>0).toString(16).padStart(8,'0');}
-
-  // NOTE: CRC-64 is now entirely handled within the background Worker to support dynamic module loading (Strategy Pattern).
-  function crc64Hex(bytes) {
-     return "計算中…";
-  }
+  function crc64Hex(bytes) { return "計算中…"; }
 
   function md5Hex(bytes){
     function rol(x,c){return (x<<c)|(x>>> (32-c))}
@@ -526,7 +619,6 @@ const Core = (() => {
     let res=''; for(let i=0; i<16; i++) res+=HEX_LUT[out[i]]; return res;
   }
 
-  /* --- Pure JS SHA-224 --- */
   function sha224Hex(bytes) {
     const h = new Uint32Array([0xc1059ed8, 0x367cd507, 0x3070dd17, 0xf70e5939, 0xffc00b31, 0x68581511, 0x64f98fa7, 0xbefa4fa4]);
     const k = new Uint32Array([0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2]);
@@ -626,7 +718,7 @@ const Core = (() => {
     try{ return s.normalize(normMode); } catch{ return s; } 
   }
 
-  return { utf8Encode, safeAsync, hexToBytes, encodeBase64, decodeBase64Info, getFileInfo, applyGrouping, formatForDisplay, crc32Hex, crc64Hex, md5Hex, sha224Hex, hmacMd5Hex, hmacSha224Hex, digestHex, hmacHex, countGraphemes, sanitizeText, normalizeText, HEX_LUT };
+  return { utf8Encode, utf8Decode, safeAsync, hexToBytes, getFileInfo, applyGrouping, formatForDisplay, crc32Hex, crc64Hex, md5Hex, sha224Hex, hmacMd5Hex, hmacSha224Hex, digestHex, hmacHex, countGraphemes, sanitizeText, normalizeText, HEX_LUT };
 })();
 
 /* =========================================================
@@ -833,6 +925,165 @@ const SysUtils = (() => {
 })();
 
 /* =========================================================
+   BASE64 ENGINE LAYER — Dedicated Worker
+========================================================= */
+const Base64Engine = (() => {
+  let worker = null;
+  function init() {
+    if(worker) return;
+    const code = `
+      const B64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+      const B64_MAP = new Uint8Array(256);
+      for (let i = 0; i < 64; i++) B64_MAP[B64_CHARS.charCodeAt(i)] = i;
+
+      function encodeBase64(bytes) {
+        let result = '';
+        let i;
+        let l = bytes.length;
+        for (i = 2; i < l; i += 3) {
+          result += B64_CHARS[bytes[i - 2] >> 2];
+          result += B64_CHARS[((bytes[i - 2] & 0x03) << 4) | (bytes[i - 1] >> 4)];
+          result += B64_CHARS[((bytes[i - 1] & 0x0F) << 2) | (bytes[i] >> 6)];
+          result += B64_CHARS[bytes[i] & 0x3F];
+        }
+        if (i === l + 1) { 
+          result += B64_CHARS[bytes[i - 2] >> 2];
+          result += B64_CHARS[(bytes[i - 2] & 0x03) << 4];
+          result += "==";
+        } else if (i === l) { 
+          result += B64_CHARS[bytes[i - 2] >> 2];
+          result += B64_CHARS[((bytes[i - 2] & 0x03) << 4) | (bytes[i - 1] >> 4)];
+          result += B64_CHARS[(bytes[i - 1] & 0x0F) << 2];
+          result += "=";
+        }
+        return result;
+      }
+
+      function _manualUtf8Decode(bytes) {
+        let str = ''; let i = 0;
+        while (i < bytes.length) {
+          let c = bytes[i++];
+          if (c < 0x80) {
+            if (c >= 0x00 && c <= 0x1F && c !== 0x09 && c !== 0x0A && c !== 0x0D) throw new Error('binary');
+            str += String.fromCharCode(c);
+          } else if ((c >> 5) === 0x06) {
+            let c2 = bytes[i++]; str += String.fromCharCode(((c & 0x1F) << 6) | (c2 & 0x3F));
+          } else if ((c >> 4) === 0x0E) {
+            let c2 = bytes[i++], c3 = bytes[i++]; str += String.fromCharCode(((c & 0x0F) << 12) | ((c2 & 0x3F) << 6) | (c3 & 0x3F));
+          } else if ((c >> 3) === 0x1E) {
+            let c2 = bytes[i++], c3 = bytes[i++], c4 = bytes[i++];
+            let cp = ((c & 0x07) << 18) | ((c2 & 0x3F) << 12) | ((c3 & 0x3F) << 6) | (c4 & 0x3F); cp -= 0x10000;
+            str += String.fromCharCode(0xD800 | (cp >> 10), 0xDC00 | (cp & 0x3FF));
+          } else { throw new Error('binary'); }
+        }
+        return str;
+      }
+
+      function utf8Decode(bytes) {
+        try {
+          for(let i=0; i<Math.min(bytes.length, 512); i++) {
+              let c = bytes[i];
+              if (c < 0x20 && c !== 0x09 && c !== 0x0A && c !== 0x0D) throw new Error('binary');
+          }
+          return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+        } catch (e) {
+          if (e.message === 'binary') throw e;
+          return _manualUtf8Decode(bytes);
+        }
+      }
+
+      function decodeBase64(str) {
+        let clean = str.replace(/\\s+/g, '');
+        if (!clean) return { type: 'empty' };
+        if (/[^A-Za-z0-9+/=_\\-]/.test(clean)) throw new Error('Invalid Base64 Characters');
+        clean = clean.replace(/-/g, '+').replace(/_/g, '/');
+        while (clean.length % 4 !== 0) clean += '=';
+
+        let l = clean.length;
+        if (l === 0) return { type: 'empty' };
+
+        let p = 0; let j = l;
+        if (clean[l-1] === '=') j--;
+        if (clean[l-2] === '=') j--;
+        let outLen = (l * 3 / 4) - (l - j);
+        let bytes = new Uint8Array(outLen);
+
+        for (let i = 0; i < l; i += 4) {
+          let e1 = B64_MAP[clean.charCodeAt(i)];
+          let e2 = B64_MAP[clean.charCodeAt(i + 1)];
+          let e3 = B64_MAP[clean.charCodeAt(i + 2)];
+          let e4 = B64_MAP[clean.charCodeAt(i + 3)];
+          bytes[p++] = (e1 << 2) | (e2 >> 4);
+          if (i + 2 < j) bytes[p++] = ((e2 & 15) << 4) | (e3 >> 2);
+          if (i + 3 < j) bytes[p++] = ((e3 & 3) << 6) | e4;
+        }
+        return bytes;
+      }
+
+      onmessage = async function(e) {
+        const { action, payload, reqId } = e.data;
+        try {
+          if(action === 'encode') {
+            const str = encodeBase64(payload);
+            postMessage({ reqId, status: 'ok', result: { type: 'text', value: str } });
+          } else if(action === 'decode') {
+            const result = decodeBase64(payload);
+            if(result.type === 'empty') {
+               postMessage({ reqId, status: 'ok', result });
+               return;
+            }
+            try {
+              const text = utf8Decode(result);
+              postMessage({ reqId, status: 'ok', result: { type: 'text', value: text } });
+            } catch(err) {
+              postMessage({ reqId, status: 'ok', result: { type: 'binary', bytes: result } }, [result.buffer]);
+            }
+          }
+        } catch(err) {
+          postMessage({ reqId, status: 'error', error: err.message });
+        }
+      };
+    `;
+    const blob = new Blob([code], {type:'application/javascript'});
+    const url = URL.createObjectURL(blob);
+    worker = new Worker(url);
+    URL.revokeObjectURL(url); // Memory Leak Fix
+  }
+
+  function run(action, payload) {
+    return new Promise((resolve) => {
+      init();
+      const reqId = Date.now() + Math.random();
+      const handler = (e) => {
+        if(e.data.reqId === reqId) {
+          worker.removeEventListener('message', handler);
+          if(e.data.status === 'ok') resolve(e.data.result);
+          else resolve({ type: 'error', message: e.data.error });
+        }
+      };
+      worker.addEventListener('message', handler);
+      
+      if(action === 'encode') {
+        const copy = new Uint8Array(payload).buffer;
+        worker.postMessage({ action, payload: new Uint8Array(copy), reqId }, [copy]);
+      } else {
+        worker.postMessage({ action, payload, reqId });
+      }
+    });
+  }
+
+  function terminate() {
+    if(worker) { worker.terminate(); worker = null; }
+  }
+
+  return { 
+    encode: (bytes) => run('encode', bytes), 
+    decode: (str) => run('decode', str), 
+    terminate 
+  };
+})();
+
+/* =========================================================
    BASE85 ENGINE LAYER — Dedicated Worker (Multi-Variant)
 ========================================================= */
 const Base85Engine = (() => {
@@ -866,25 +1117,24 @@ const Base85Engine = (() => {
         const len = bytes.length;
         const extra = len % 4;
         const paddedLen = extra === 0 ? len : len + (4 - extra);
-        const data = new Uint8Array(paddedLen);
-        data.set(bytes);
-        const view = new DataView(data.buffer);
-        let res = '';
-
+        
+        let resArr = [];
         for(let i = 0; i < len; i += 4) {
           let val = 0;
           let paddingBytes = 0;
           if (i + 4 <= len) {
-             val = view.getUint32(i, false);
+             val = (bytes[i]<<24) | (bytes[i+1]<<16) | (bytes[i+2]<<8) | bytes[i+3];
+             val = val >>> 0;
           } else {
              paddingBytes = 4 - (len - i);
              let temp = new Uint8Array(4);
              for(let k = 0; k < len - i; k++) temp[k] = bytes[i + k];
-             val = new DataView(temp.buffer).getUint32(0, false);
+             val = (temp[0]<<24) | (temp[1]<<16) | (temp[2]<<8) | temp[3];
+             val = val >>> 0;
           }
 
           if (isAscii85 && val === 0 && paddingBytes === 0) {
-            res += 'z';
+            resArr.push('z');
             continue;
           }
 
@@ -896,9 +1146,10 @@ const Base85Engine = (() => {
           if (paddingBytes > 0) {
              chunk = chunk.substring(0, 5 - paddingBytes);
           }
-          res += chunk;
+          resArr.push(chunk);
         }
 
+        let res = resArr.join('');
         if (variant === 'Adobe ASCII85') {
           return '<~' + res + '~>';
         }
@@ -960,7 +1211,7 @@ const Base85Engine = (() => {
         return out;
       }
 
-      function utf8Decode(bytes) {
+      function _manualUtf8Decode(bytes) {
         let str = '';
         let i = 0;
         while (i < bytes.length) {
@@ -986,7 +1237,22 @@ const Base85Engine = (() => {
         return str;
       }
 
-      onmessage = function(e) {
+      function utf8Decode(bytes) {
+        try {
+          for (let i = 0; i < Math.min(bytes.length, 512); i++) {
+            let c = bytes[i];
+            if (c < 0x20 && c !== 0x09 && c !== 0x0A && c !== 0x0D) {
+              throw new Error('binary');
+            }
+          }
+          return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+        } catch (e) {
+          if (e.message === 'binary') throw e;
+          return _manualUtf8Decode(bytes);
+        }
+      }
+
+      onmessage = async function(e) {
         const { action, payload, variant, reqId } = e.data;
         try {
           if(action === 'encode') {
@@ -1007,7 +1273,9 @@ const Base85Engine = (() => {
       };
     `;
     const blob = new Blob([code], {type:'application/javascript'});
-    worker = new Worker(URL.createObjectURL(blob));
+    const url = URL.createObjectURL(blob);
+    worker = new Worker(url);
+    URL.revokeObjectURL(url); // Memory Leak Fix
   }
 
   function run(action, payload, variant) {
@@ -1030,7 +1298,7 @@ const Base85Engine = (() => {
       }
     });
   }
-  
+
   function terminate() {
     if(worker) { worker.terminate(); worker = null; }
   }
@@ -1043,20 +1311,65 @@ const Base85Engine = (() => {
 })();
 
 /* =========================================================
-   ENGINE LAYER — Hash Execution & Worker Control (Strategy Pattern)
+   ENGINE LAYER — Hash Execution & Task Control
 ========================================================= */
 const Engine = (() => {
   const WORKER_THRESHOLD = 200000;
   const hasWorker = !!window.Worker;
-  let workerUrl = null;
   let worker = null;
 
+  const TaskManager = (() => {
+    let master = new AbortController();
+    const algs = new Map();
+    return {
+      get masterSignal() { return master.signal; },
+      resetMaster: () => {
+        master.abort();
+        master = new AbortController();
+        algs.forEach(ctrl => ctrl.abort());
+        algs.clear();
+      },
+      startAlg: (id) => {
+        if (algs.has(id)) algs.get(id).abort();
+        const ctrl = new AbortController();
+        algs.set(id, ctrl);
+        master.signal.addEventListener('abort', () => { if (!ctrl.signal.aborted) ctrl.abort(); });
+        ctrl.signal.addEventListener('abort', () => {
+            if (worker) worker.postMessage({ action: 'abort', algId: id });
+        });
+        return ctrl.signal;
+      },
+      cancelAlg: (id) => {
+        if (algs.has(id)) { algs.get(id).abort(); }
+      }
+    };
+  })();
+
   function createWorkerBlob() {
-    if (workerUrl) { try { URL.revokeObjectURL(workerUrl); } catch(e){} }
     const code = `
       const HEX_LUT = [${Array.from({length: 256}, (_, i) => "'" + i.toString(16).padStart(2, '0') + "'").join(',')}];
 
-      /* --- CRC-64 Multi-Variant Engines --- */
+      function utf8Encode(str) {
+        const arr = [];
+        for (let i = 0; i < str.length; i++) {
+          let charcode = str.charCodeAt(i);
+          if (charcode < 0x80) arr.push(charcode);
+          else if (charcode < 0x800) arr.push(0xc0 | (charcode >> 6), 0x80 | (charcode & 0x3f));
+          else if (charcode < 0xd800 || charcode >= 0xe000) arr.push(0xe0 | (charcode >> 12), 0x80 | ((charcode >> 6) & 0x3f), 0x80 | (charcode & 0x3f));
+          else {
+            i++; charcode = 0x10000 + (((charcode & 0x3ff) << 10) | (str.charCodeAt(i) & 0x3ff));
+            arr.push(0xf0 | (charcode >> 18), 0x80 | ((charcode >> 12) & 0x3f), 0x80 | ((charcode >> 6) & 0x3f), 0x80 | (charcode & 0x3f));
+          }
+        }
+        return new Uint8Array(arr);
+      }
+      
+      function hexToBytes(hex) {
+        const bytes = new Uint8Array(hex.length / 2);
+        for(let i=0; i<hex.length; i+=2) bytes[i/2] = parseInt(hex.substring(i, i+2), 16);
+        return bytes;
+      }
+
       class Crc64XzEngine {
         constructor() {
           this.table = new Uint32Array(512);
@@ -1187,12 +1500,6 @@ const Engine = (() => {
 
       const CRC32_TABLE = (()=>{const t=new Uint32Array(256);for(let i=0;i<256;i++){let c=i;for(let j=0;j<8;j++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[i]=c>>>0;}return t;})();
 
-      function hexToBytes(hex) {
-        const bytes = new Uint8Array(hex.length / 2);
-        for(let i=0; i<hex.length; i+=2) bytes[i/2] = parseInt(hex.substring(i, i+2), 16);
-        return bytes;
-      }
-
       function rol(x,c){return (x<<c)|(x>>> (32-c))}
       function ff(a,b,c,d,x,s,t){return b+rol((a+((b&c)|(~b&d))+x+t)|0,s)|0}
       function gg(a,b,c,d,x,s,t){return b+rol((a+((b&d)|(c&~d))+x+t)|0,s)|0}
@@ -1259,7 +1566,32 @@ const Engine = (() => {
           this.wMD5 = new Uint32Array(16);
           this.wSHA = new Uint32Array(80);
           this.isHmac = false;
+          this._saveBaseState();
         }
+
+        _saveBaseState() {
+          this.base_md5_h = new Uint32Array(this.md5_h);
+          this.base_sha1_h = new Uint32Array(this.sha1_h);
+          this.base_sha224_h = new Uint32Array(this.sha224_h);
+          this.base_sha256_h = new Uint32Array(this.sha256_h);
+          this.base_crc = this.crc;
+          this.base_crc64_hi = this.crc64Engine.hi;
+          this.base_crc64_lo = this.crc64Engine.lo;
+          this.base_totalLen = this.totalLen;
+        }
+
+        reset() {
+          this.md5_h.set(this.base_md5_h);
+          this.sha1_h.set(this.base_sha1_h);
+          this.sha224_h.set(this.base_sha224_h);
+          this.sha256_h.set(this.base_sha256_h);
+          this.crc = this.base_crc;
+          this.crc64Engine.hi = this.base_crc64_hi;
+          this.crc64Engine.lo = this.base_crc64_lo;
+          this.totalLen = this.base_totalLen;
+          this.bufLen = 0;
+        }
+
         initHmac(key) {
           this.isHmac = true;
           let K_md5 = key, K_sha1 = key, K_sha224 = key, K_sha256 = key;
@@ -1282,6 +1614,7 @@ const Engine = (() => {
           let hSHA224 = new IncrementalHasher('XZ (ECMA, Reflected)'); hSHA224.update(ipad_sha224); this.sha224_h = hSHA224.sha224_h;
           let hSHA256 = new IncrementalHasher('XZ (ECMA, Reflected)'); hSHA256.update(ipad_sha256); this.sha256_h = hSHA256.sha256_h;
           this.totalLen = 64;
+          this._saveBaseState();
         }
         update(bytes) {
           let crc = this.crc;
@@ -1327,9 +1660,10 @@ const Engine = (() => {
           a=ii(a,b,c,d,x[12],6,0x655b59c3); d=ii(d,a,b,c,x[3],10,0x8f0ccc92); c=ii(c,d,a,b,x[10],15,0xffeff47d); b=ii(b,c,d,a,x[1],21,0x85845dd1);
           a=ii(a,b,c,d,x[8],6,0x6fa87e4f); d=ii(d,a,b,c,x[15],10,0xfe2ce6e0); c=ii(c,d,a,b,x[6],15,0xa3014314); b=ii(b,c,d,a,x[13],21,0x4e0811a1);
           this.md5_h[0]=(this.md5_h[0]+a)|0; this.md5_h[1]=(this.md5_h[1]+b)|0; this.md5_h[2]=(this.md5_h[2]+c)|0; this.md5_h[3]=(this.md5_h[3]+d)|0;
-          sha1Process(this.sha1_h, wSHA);
-          sha256Process(this.sha224_h, wSHA);
-          sha256Process(this.sha256_h, wSHA);
+          
+          sha1Process(this.sha1_h, new Uint32Array(wSHA));
+          sha256Process(this.sha224_h, new Uint32Array(wSHA));
+          sha256Process(this.sha256_h, new Uint32Array(wSHA));
         }
         _finalize() {
           const md5Final = this._finalizeMD5();
@@ -1421,9 +1755,33 @@ const Engine = (() => {
         }
       }
 
+      async function digestHexSubtle(alg, bytes) {
+        const hash = await self.crypto.subtle.digest(alg, bytes);
+        const u8 = new Uint8Array(hash);
+        let s=''; for(let i=0;i<u8.length;i++) s+=HEX_LUT[u8[i]]; return s;
+      }
+      async function hmacHexSubtle(alg, keyBytes, dataBytes) {
+        const cryptoKey = await self.crypto.subtle.importKey("raw", keyBytes, {name:"HMAC", hash:alg}, false, ["sign"]);
+        const hash = await self.crypto.subtle.sign("HMAC", cryptoKey, dataBytes);
+        const u8 = new Uint8Array(hash);
+        let s=''; for(let i=0;i<u8.length;i++) s+=HEX_LUT[u8[i]]; return s;
+      }
+
+      let cancelFlags = {};
       let hasher = null;
+
       onmessage = e => {
-        const { action, bytes, key, crc64Variant } = e.data;
+        const { action, bytes, key, crc64Variant, iterations, algorithms, saltBytes, algId, iterMode, reqId } = e.data;
+        
+        if (action === 'abort_all') {
+            for (let k in cancelFlags) cancelFlags[k] = true;
+            return;
+        }
+        if (action === 'abort') {
+            cancelFlags[algId] = true;
+            return;
+        }
+        
         if (action === 'init') {
           hasher = new IncrementalHasher(crc64Variant);
           if(key && key.length) hasher.initHmac(key);
@@ -1437,261 +1795,284 @@ const Engine = (() => {
           if(key && key.length) temp.initHmac(key);
           temp.update(bytes);
           postMessage(temp.finalizeHmacOrNormal());
+        } else if (action === 'verifyTest') {
+          const temp = new IncrementalHasher(crc64Variant);
+          temp.update(bytes);
+          postMessage({ action: 'verify_result', reqId, results: temp.finalizeHmacOrNormal() });
+        } else if (action === 'hashIterative') {
+            for (const alg of algorithms) {
+                cancelFlags[alg] = false;
+                (async () => {
+                    let currentBytes = bytes;
+                    let finalHex = '';
+                    let lastPostTime = performance.now();
+                    
+                    const isSubtle = alg === 'SHA-384' || alg === 'SHA-512';
+                    const hasSubtle = !!(self.crypto && self.crypto.subtle);
+                    
+                    let temp;
+                    if (!isSubtle) {
+                        temp = new IncrementalHasher(crc64Variant);
+                        if (key && key.length) temp.initHmac(key);
+                    }
+
+                    for (let i = 1; i <= iterations; i++) {
+                        if (cancelFlags[alg]) {
+                            postMessage({ action: 'iter_progress', algId: alg, status: 'aborted', hex: finalHex, iter: i - 1, total: iterations });
+                            return;
+                        }
+                        
+                        let payload = currentBytes;
+                        if (saltBytes && saltBytes.length > 0) {
+                            payload = new Uint8Array(currentBytes.length + saltBytes.length);
+                            payload.set(currentBytes, 0);
+                            payload.set(saltBytes, currentBytes.length);
+                        }
+                        
+                        if (isSubtle) {
+                            if (!hasSubtle) {
+                                finalHex = '未対応/エラー';
+                                postMessage({ action: 'iter_progress', algId: alg, status: 'done', hex: finalHex, iter: iterations, total: iterations });
+                                return;
+                            }
+                            try {
+                                finalHex = (key && key.length) 
+                                    ? await hmacHexSubtle(alg, key, payload) 
+                                    : await digestHexSubtle(alg, payload);
+                            } catch(e) {
+                                finalHex = 'エラー';
+                                postMessage({ action: 'iter_progress', algId: alg, status: 'done', hex: finalHex, iter: iterations, total: iterations });
+                                return;
+                            }
+                        } else {
+                            temp.reset();
+                            temp.update(payload);
+                            const res = temp.finalizeHmacOrNormal();
+                            
+                            if (alg === 'CRC32') finalHex = res.crc;
+                            else if (alg === 'CRC64') finalHex = res.crc64;
+                            else if (alg === 'MD5') finalHex = res.md5;
+                            else if (alg === 'SHA-1') finalHex = res.sha1;
+                            else if (alg === 'SHA-224') finalHex = res.sha224;
+                            else if (alg === 'SHA-256') finalHex = res.sha256;
+                        }
+
+                        const now = performance.now();
+                        if (now - lastPostTime >= 16 || i === iterations) {
+                            postMessage({ action: 'iter_progress', algId: alg, status: i === iterations ? 'done' : 'progress', hex: finalHex, iter: i, total: iterations });
+                            lastPostTime = now;
+                            await new Promise(r => setTimeout(r, 0));
+                        }
+                        if (i < iterations) {
+                            currentBytes = (iterMode === 'raw') ? hexToBytes(finalHex) : utf8Encode(finalHex);
+                        }
+                    }
+                })();
+            }
         }
       };
     `;
     const blob = new Blob([code], {type:'application/javascript'});
-    workerUrl = URL.createObjectURL(blob);
-    return new Worker(workerUrl);
+    const url = URL.createObjectURL(blob);
+    const w = new Worker(url);
+    URL.revokeObjectURL(url); // Memory Leak Fix
+    return w;
   }
 
   function ensureWorker() {
-    if (hasWorker && !worker) { worker = createWorkerBlob(); }
+    if (hasWorker && !worker) {
+      worker = createWorkerBlob();
+      worker.onmessage = ev => {
+          const data = ev.data;
+          if (data.action === 'iter_progress') {
+              EventBus.emit('hash:render', {
+                  algId: data.algId, hex: data.hex, iter: data.iter, total: data.total,
+                  isDone: data.status === 'done', isAborted: data.status === 'aborted', isOOM: false
+              });
+          } else if (data.md5) {
+              EventBus.emit('hash:results', {
+                  'CRC32': data.crc,
+                  'CRC64': data.crc64,
+                  'MD5': data.md5,
+                  'SHA-1': data.sha1,
+                  'SHA-224': data.sha224,
+                  'SHA-256': data.sha256
+              });
+          } else if (data.crc64 && !data.md5) {
+              EventBus.emit('hash:results', {'CRC64': data.crc64});
+          }
+      };
+      worker.onerror = () => {
+          EventBus.emit('hash:results', {'CRC32':'ワーカーエラー', 'CRC64':'ワーカーエラー', 'MD5':'ワーカーエラー', 'SHA-1':'ワーカーエラー', 'SHA-224':'ワーカーエラー', 'SHA-256':'ワーカーエラー', 'SHA-384':'ワーカーエラー', 'SHA-512':'ワーカーエラー'});
+          terminateWorker(); ensureWorker();
+      };
+    }
   }
+  
   function terminateWorker() {
     if (worker) { worker.terminate(); worker = null; }
   }
+  
+  function verifyTestBytes(bytes, crc64Variant) {
+    return new Promise((resolve) => {
+        if (!hasWorker) return resolve(null);
+        const reqId = Date.now() + Math.random();
+        const handler = (ev) => {
+            if (ev.data.action === 'verify_result' && ev.data.reqId === reqId) {
+                worker.removeEventListener('message', handler);
+                resolve(ev.data.results);
+            }
+        };
+        worker.addEventListener('message', handler);
+        worker.postMessage({ action: 'verifyTest', bytes, crc64Variant, reqId });
+    });
+  }
 
-  async function hashFile(file, curSeq, onUpdate, saltBytes, hmacKeyBytes) {
+  async function hashFile(file, saltBytes, hmacKeyBytes) {
     const isSmallFile = file.size <= 50 * 1024 * 1024;
+    const signal = TaskManager.masterSignal;
+    
     return new Promise(async resolve => {
-      let completed = 0;
-      const target = isSmallFile ? 2 : 1;
-      const checkDone = () => {
-        completed++;
-        if (completed >= target) resolve();
-      };
-
-      if (hasWorker && file.stream) {
-        worker.onerror = () => {
-          const errRes = {'CRC32':'ワーカーエラー', 'CRC64':'ワーカーエラー', 'MD5':'ワーカーエラー', 'SHA-1':'ワーカーエラー', 'SHA-224':'ワーカーエラー', 'SHA-256':'ワーカーエラー'};
-          if (isSmallFile) {
-            errRes['SHA-384'] = 'ワーカーエラー';
-            errRes['SHA-512'] = 'ワーカーエラー';
-            if (AppState.Base64Encode) errRes['Base64-Enc'] = 'ワーカーエラー';
-            if (AppState.Base85Encode) errRes['Base85-Enc'] = 'ワーカーエラー';
-          }
-          onUpdate(errRes); checkDone();
-          if (isSmallFile) checkDone();
-          terminateWorker(); ensureWorker();
-        };
-        worker.onmessage = ev => {
-          const {md5, sha1, sha224, sha256, crc, crc64} = ev.data;
-          onUpdate({'CRC32': crc, 'CRC64': crc64, 'MD5': md5, 'SHA-1': sha1, 'SHA-224': sha224, 'SHA-256': sha256});
-          checkDone();
-        };
-        worker.postMessage({action: 'init', key: hmacKeyBytes, crc64Variant: AppState.crc64Variant});
-
-        const stream = file.stream();
-        const reader = stream.getReader();
-        let fullBuffer = isSmallFile ? new Uint8Array(file.size) : null;
-        let offset = 0;
-        let bytesSinceLastYield = 0;
-        const YIELD_THRESHOLD = 50 * 1024 * 1024;
-
-        (async function readAll() {
-          try {
-            while (true) {
-              if (curSeq !== AppState.seq) { await reader.cancel(); return; }
-              const {done, value} = await reader.read();
-              if (done) {
-                if (saltBytes && saltBytes.length > 0) { worker.postMessage({action: 'update', bytes: saltBytes}); }
-                worker.postMessage({action: 'finalize'});
-                if (isSmallFile && fullBuffer) {
-                  let finalBuffer = (offset === fullBuffer.length) ? fullBuffer : fullBuffer.subarray(0, offset);
-                  if (AppState.Base64Encode) onUpdate({'Base64-Enc': Core.encodeBase64(finalBuffer)});
-                  if (AppState.Base85Encode) {
-                    Base85Engine.encode(finalBuffer, AppState.base85Variant).then(res => {
-                      if (curSeq === AppState.seq) {
-                        if (res.type === 'error') onUpdate({'Base85-Enc': 'エラー'});
-                        else onUpdate({'Base85-Enc': res.value});
-                      }
+      if (isSmallFile) {
+        try {
+            const arrayBuf = await file.arrayBuffer();
+            if (signal.aborted) return resolve();
+            let bytes = new Uint8Array(arrayBuf);
+            
+            if (AppState.Base64Encode) {
+                if (bytes.length > 37500000) EventBus.emit('hash:results', {'Base64-Enc': 'サイズ超過 (50MB上限)'});
+                else {
+                    Base64Engine.encode(bytes).then(res => {
+                        if (!signal.aborted) EventBus.emit('hash:results', {'Base64-Enc': res.type==='error'?'エラー':res.value});
                     });
-                  }
-                  if (saltBytes && saltBytes.length > 0) {
-                    const newFinal = new Uint8Array(finalBuffer.length + saltBytes.length);
-                    newFinal.set(finalBuffer, 0); newFinal.set(saltBytes, finalBuffer.length);
-                    finalBuffer = newFinal;
-                  }
-                  const tasks = [['SHA-384','SHA-384'], ['SHA-512','SHA-512']].map(async ([id, alg]) => {
-                    try {
-                      const hex = hmacKeyBytes ? await Core.hmacHex(alg, hmacKeyBytes, finalBuffer) : await Core.digestHex(alg, finalBuffer);
-                      onUpdate({[id]: hex});
-                    } catch { onUpdate({[id]: '未対応/エラー'}); }
-                  });
-                  Promise.allSettled(tasks).then(checkDone);
                 }
-                break;
-              }
-              if (!isSmallFile) {
-                worker.postMessage({action: 'update', bytes: value}, [value.buffer]);
-              } else {
-                worker.postMessage({action: 'update', bytes: value});
-                if (fullBuffer) {
-                  if (offset + value.length > fullBuffer.length) {
-                    const newBuf = new Uint8Array(offset + value.length + Math.max(1024 * 1024, value.length));
-                    newBuf.set(fullBuffer.subarray(0, offset), 0);
-                    fullBuffer = newBuf;
-                  }
-                  fullBuffer.set(value, offset);
-                  offset += value.length;
+            }
+            if (AppState.Base85Encode) {
+                if (bytes.length > 37500000) EventBus.emit('hash:results', {'Base85-Enc': 'サイズ超過 (50MB上限)'});
+                else {
+                    Base85Engine.encode(bytes, AppState.base85Variant).then(res => {
+                        if (!signal.aborted) EventBus.emit('hash:results', {'Base85-Enc': res.type==='error'?'エラー':res.value});
+                    });
                 }
-              }
-              bytesSinceLastYield += value.length;
-              if (bytesSinceLastYield >= YIELD_THRESHOLD) {
-                await new Promise(r => setTimeout(r, 0));
-                bytesSinceLastYield = 0;
-              }
             }
-          } catch (e) {
-            const errRes = {'CRC32':'読込エラー', 'CRC64':'読込エラー', 'MD5':'読込エラー', 'SHA-1':'読込エラー', 'SHA-224':'読込エラー', 'SHA-256':'読込エラー'};
-            if (isSmallFile) {
-              errRes['SHA-384'] = '読込エラー'; errRes['SHA-512'] = '読込エラー';
-              if (AppState.Base64Encode) errRes['Base64-Enc'] = '読込エラー';
-              if (AppState.Base85Encode) errRes['Base85-Enc'] = '読込エラー';
+
+            if (saltBytes && saltBytes.length > 0) {
+                const nb = new Uint8Array(bytes.length + saltBytes.length);
+                nb.set(bytes, 0); nb.set(saltBytes, bytes.length);
+                bytes = nb;
             }
-            onUpdate(errRes); checkDone();
-            if (isSmallFile) checkDone();
-            terminateWorker(); ensureWorker();
-          }
-        })();
+
+            if (hmacKeyBytes) {
+                EventBus.emit('hash:results', {'CRC32': Core.crc32Hex(bytes), 'CRC64': "処理中…", 'MD5': Core.hmacMd5Hex(hmacKeyBytes, bytes), 'SHA-224': Core.hmacSha224Hex(hmacKeyBytes, bytes)});
+            } else {
+                EventBus.emit('hash:results', {'CRC32': Core.crc32Hex(bytes), 'CRC64': "処理中…", 'MD5': Core.md5Hex(bytes), 'SHA-224': Core.sha224Hex(bytes)});
+            }
+
+            if (hasWorker) {
+                worker.postMessage({action: 'hashAll', bytes: bytes, key: hmacKeyBytes, crc64Variant: AppState.crc64Variant});
+            }
+
+            const tasks = [['SHA-1','SHA-1'], ['SHA-256','SHA-256'], ['SHA-384','SHA-384'], ['SHA-512','SHA-512']].map(async ([id, alg]) => {
+                try {
+                    if (signal.aborted) return;
+                    const hex = hmacKeyBytes ? await Core.hmacHex(alg, hmacKeyBytes, bytes) : await Core.digestHex(alg, bytes);
+                    if (!signal.aborted) EventBus.emit('hash:results', {[id]: hex});
+                } catch { if (!signal.aborted) EventBus.emit('hash:results', {[id]: '未対応/エラー'}); }
+            });
+            await Promise.allSettled(tasks);
+            resolve();
+        } catch (e) {
+            const errRes = {};
+            ['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','Base64-Enc','Base85-Enc'].forEach(id => errRes[id] = '読込エラー');
+            EventBus.emit('hash:results', errRes);
+            resolve();
+        }
       } else {
-        if (!isSmallFile) {
+        if (!hasWorker || !file.stream) {
           const errRes = {'CRC32':'サイズ超過 (旧環境/50MB制限)', 'CRC64':'サイズ超過', 'MD5':'サイズ超過', 'SHA-1':'サイズ超過', 'SHA-224':'サイズ超過', 'SHA-256':'サイズ超過'};
           if (AppState.Base64Encode) errRes['Base64-Enc'] = 'サイズ超過';
           if (AppState.Base85Encode) errRes['Base85-Enc'] = 'サイズ超過';
-          onUpdate(errRes);
-          checkDone();
-          return;
+          EventBus.emit('hash:results', errRes); resolve(); return;
         }
-        const reader = new FileReader();
-        reader.onload = async e => {
-          if (curSeq !== AppState.seq) return;
-          let bytes = new Uint8Array(e.target.result);
-          if (AppState.Base64Encode) onUpdate({'Base64-Enc': Core.encodeBase64(bytes)});
-          if (AppState.Base85Encode) {
-            Base85Engine.encode(bytes, AppState.base85Variant).then(res => {
-              if (curSeq === AppState.seq) {
-                if(res.type === 'error') onUpdate({'Base85-Enc': 'エラー'});
-                else onUpdate({'Base85-Enc': res.value});
-              }
-            });
-          }
-          if (saltBytes && saltBytes.length > 0) {
-            const newBytes = new Uint8Array(bytes.length + saltBytes.length);
-            newBytes.set(bytes, 0); newBytes.set(saltBytes, bytes.length);
-            bytes = newBytes;
-          }
-          
-          if (hmacKeyBytes) {
-            onUpdate({'CRC32': Core.crc32Hex(bytes), 'CRC64': "処理中…", 'MD5': Core.hmacMd5Hex(hmacKeyBytes, bytes), 'SHA-224': Core.hmacSha224Hex(hmacKeyBytes, bytes)});
-          } else {
-            onUpdate({'CRC32': Core.crc32Hex(bytes), 'CRC64': "処理中…", 'MD5': Core.md5Hex(bytes), 'SHA-224': Core.sha224Hex(bytes)});
-          }
-          
-          if (hasWorker) {
-              worker.onerror = () => { onUpdate({'CRC64': 'エラー'}); terminateWorker(); ensureWorker(); };
-              worker.onmessage = ev => {
-                  if (curSeq === AppState.seq) onUpdate({'CRC64': ev.data.crc64});
-              };
-              worker.postMessage({action: 'hashAll', bytes: bytes, key: hmacKeyBytes, crc64Variant: AppState.crc64Variant});
-          }
+        worker.postMessage({action: 'init', key: hmacKeyBytes, crc64Variant: AppState.crc64Variant});
+        const stream = file.stream();
+        const reader = stream.getReader();
+        let bytesSinceLastYield = 0;
+        const YIELD_THRESHOLD = 50 * 1024 * 1024;
 
-          checkDone();
-          if (isSmallFile) {
-            const tasks = [['SHA-1','SHA-1'], ['SHA-256','SHA-256'], ['SHA-384','SHA-384'], ['SHA-512','SHA-512']].map(async ([id, alg]) => {
-              try {
-                const hex = hmacKeyBytes ? await Core.hmacHex(alg, hmacKeyBytes, bytes) : await Core.digestHex(alg, bytes);
-                onUpdate({[id]: hex});
-              } catch { onUpdate({[id]: '未対応/エラー'}); }
-            });
-            await Promise.allSettled(tasks);
-            checkDone();
+        try {
+          while (true) {
+            if (signal.aborted) { await reader.cancel(); return resolve(); }
+            const {done, value} = await reader.read();
+            if (done) {
+              if (saltBytes && saltBytes.length > 0) { worker.postMessage({action: 'update', bytes: saltBytes}); }
+              worker.postMessage({action: 'finalize'});
+              break;
+            }
+            worker.postMessage({action: 'update', bytes: value}, [value.buffer]);
+            bytesSinceLastYield += value.length;
+            if (bytesSinceLastYield >= YIELD_THRESHOLD) {
+              await new Promise(r => setTimeout(r, 0));
+              bytesSinceLastYield = 0;
+            }
           }
-        };
-        reader.onerror = () => {
-          const errRes = {};
-          ['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','Base64-Enc','Base64-Dec','Base85-Enc','Base85-Dec'].forEach(id => errRes[id] = '読込エラー');
-          onUpdate(errRes); checkDone();
-          if (isSmallFile) checkDone();
-        };
-        reader.readAsArrayBuffer(file);
+        } catch (e) {
+          const errRes = {'CRC32':'読込エラー', 'CRC64':'読込エラー', 'MD5':'読込エラー', 'SHA-1':'読込エラー', 'SHA-224':'読込エラー', 'SHA-256':'読込エラー'};
+          EventBus.emit('hash:results', errRes);
+          terminateWorker(); ensureWorker();
+        }
+        resolve();
       }
     });
   }
 
-  async function hashText(bytesToHash, curSeq, onUpdate, saltBytes, hmacKeyBytes) {
-    if (AppState.Base64Encode) onUpdate({'Base64-Enc': Core.encodeBase64(bytesToHash)});
-    if (AppState.Base85Encode) {
-      Base85Engine.encode(bytesToHash, AppState.base85Variant).then(res => {
-        if (curSeq === AppState.seq) {
-          if(res.type === 'error') onUpdate({'Base85-Enc': 'エラー'});
-          else onUpdate({'Base85-Enc': res.value});
+  async function hashText(bytesToHash, saltBytes, hmacKeyBytes, iterations) {
+    if (AppState.Base64Encode) {
+        if (bytesToHash.length > 37500000) {
+            EventBus.emit('hash:render', {algId: 'Base64-Enc', hex: 'サイズ超過 (50MB上限)', iter: 1, total: 1, isDone: true});
+        } else {
+            Base64Engine.encode(bytesToHash).then(res => {
+                if (!TaskManager.masterSignal.aborted) {
+                    if (res.type === 'error') EventBus.emit('hash:render', {algId: 'Base64-Enc', hex: 'エラー', iter: 1, total: 1, isDone: true});
+                    else EventBus.emit('hash:render', {algId: 'Base64-Enc', hex: res.value, iter: 1, total: 1, isDone: true});
+                }
+            });
         }
-      });
-    }
-    let finalBytes = bytesToHash;
-    if (saltBytes && saltBytes.length > 0) {
-      finalBytes = new Uint8Array(bytesToHash.length + saltBytes.length);
-      finalBytes.set(bytesToHash, 0); finalBytes.set(saltBytes, bytesToHash.length);
-    }
-    if (hasWorker && finalBytes.length > WORKER_THRESHOLD) {
-      return new Promise(async resolve => {
-        let workerDone = false; let mainDone = false;
-        const checkFinished = () => { if (workerDone && mainDone) resolve(); };
-        worker.onerror = () => {
-          onUpdate({'CRC32':'ワーカーエラー', 'CRC64':'ワーカーエラー', 'MD5':'ワーカーエラー', 'SHA-1':'ワーカーエラー', 'SHA-224':'ワーカーエラー', 'SHA-256':'ワーカーエラー'});
-          terminateWorker(); ensureWorker();
-          workerDone = true; checkFinished();
-        };
-        worker.onmessage = ev => {
-          const {md5, sha1, sha224, sha256, crc, crc64} = ev.data;
-          onUpdate({'CRC32': crc, 'CRC64': crc64, 'MD5': md5, 'SHA-1': sha1, 'SHA-224': sha224, 'SHA-256': sha256});
-          workerDone = true; checkFinished();
-        };
-        worker.postMessage({action: 'hashAll', bytes: finalBytes, key: hmacKeyBytes, crc64Variant: AppState.crc64Variant});
-        const tasks = [['SHA-384','SHA-384'], ['SHA-512','SHA-512']].map(async ([id, alg]) => {
-          try {
-            const hex = hmacKeyBytes ? await Core.hmacHex(alg, hmacKeyBytes, finalBytes) : await Core.digestHex(alg, finalBytes);
-            onUpdate({[id]: hex});
-          } catch { onUpdate({[id]: '未対応/エラー'}); }
-        });
-        await Promise.allSettled(tasks);
-        mainDone = true; checkFinished();
-      });
     } else {
-      if (hmacKeyBytes) {
-        onUpdate({
-          'CRC32': Core.crc32Hex(finalBytes), 'CRC64': '処理中…',
-          'MD5': Core.hmacMd5Hex(hmacKeyBytes, finalBytes), 'SHA-224': Core.hmacSha224Hex(hmacKeyBytes, finalBytes)
-        });
-      } else {
-        onUpdate({
-          'CRC32': Core.crc32Hex(finalBytes), 'CRC64': '処理中…',
-          'MD5': Core.md5Hex(finalBytes), 'SHA-224': Core.sha224Hex(finalBytes)
-        });
-      }
-      
-      if(hasWorker) {
-        worker.onerror = () => { onUpdate({'CRC64':'ワーカーエラー'}); terminateWorker(); ensureWorker(); };
-        worker.onmessage = ev => {
-          if (curSeq === AppState.seq) onUpdate({'CRC64': ev.data.crc64});
-        };
-        worker.postMessage({action: 'hashAll', bytes: finalBytes, key: hmacKeyBytes, crc64Variant: AppState.crc64Variant});
-      }
+        EventBus.emit('hash:render', {algId: 'Base64-Enc', hex: '', iter: 0, total: iterations, isDone: true});
+    }
+    
+    if (AppState.Base85Encode) {
+        if (bytesToHash.length > 40000000) {
+            EventBus.emit('hash:render', {algId: 'Base85-Enc', hex: 'サイズ超過 (50MB上限)', iter: 1, total: 1, isDone: true});
+        } else {
+            Base85Engine.encode(bytesToHash, AppState.base85Variant).then(res => {
+                if (!TaskManager.masterSignal.aborted) {
+                    if (res.type === 'error') EventBus.emit('hash:render', {algId: 'Base85-Enc', hex: 'エラー', iter: 1, total: 1, isDone: true});
+                    else EventBus.emit('hash:render', {algId: 'Base85-Enc', hex: res.value, iter: 1, total: 1, isDone: true});
+                }
+            });
+        }
+    } else {
+        EventBus.emit('hash:render', {algId: 'Base85-Enc', hex: '', iter: 0, total: iterations, isDone: true});
+    }
 
-      const tasks = [['SHA-1','SHA-1'], ['SHA-256','SHA-256'], ['SHA-384','SHA-384'], ['SHA-512','SHA-512']].map(async ([id, alg]) => {
-        try {
-          const hex = hmacKeyBytes ? await Core.hmacHex(alg, hmacKeyBytes, finalBytes) : await Core.digestHex(alg, finalBytes);
-          onUpdate({[id]: hex});
-        } catch { onUpdate({[id]: '未対応/エラー'}); }
-      });
-      await Promise.allSettled(tasks);
+    const activeAlgs = ['CRC32', 'CRC64', 'MD5', 'SHA-1', 'SHA-224', 'SHA-256', 'SHA-384', 'SHA-512'];
+    activeAlgs.forEach(alg => TaskManager.startAlg(alg));
+    if (hasWorker) {
+        worker.postMessage({
+            action: 'hashIterative', bytes: bytesToHash, saltBytes, key: hmacKeyBytes, crc64Variant: AppState.crc64Variant, iterations, algorithms: activeAlgs, iterMode: AppState.iterMode
+        });
     }
   }
 
   function init() { ensureWorker(); }
-  return { init, hasWorker, WORKER_THRESHOLD, hashFile, hashText, terminateWorker };
+  return { 
+      init, hasWorker, WORKER_THRESHOLD, hashFile, hashText, terminateWorker, verifyTestBytes,
+      get masterSignal() { return TaskManager.masterSignal; },
+      resetMasterTask: () => TaskManager.resetMaster(),
+      cancelTask: (algId) => TaskManager.cancelAlg(algId)
+  };
 })();
 
 /* =========================================================
@@ -1700,6 +2081,10 @@ const Engine = (() => {
 const UI = (() => {
   const els = {};
   let scheduled = false;
+
+  const renderState = {};
+  let isRendering = false;
+  const LIMIT_100KB = 102400;
 
   const TEST_VECTORS = {
     empty:{text:'',expect:{'CRC32':'00000000','CRC64':'0000000000000000','MD5':'d41d8cd98f00b204e9800998ecf8427e','SHA-1':'da39a3ee5e6b4b0d3255bfef95601890afd80709','SHA-224':'d14a028c2a3a2bc9476102bb288234c415a2b01f828ea62ac5b3e42f','SHA-256':'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855','SHA-384':'38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b','SHA-512':'cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e'}},
@@ -1715,15 +2100,11 @@ const UI = (() => {
     els.hexBtn = document.getElementById('hexcase');
     els.toastEl = document.getElementById('toast');
     els.tvSel = document.getElementById('tv');
-    els.applyBtn = document.getElementById('apply');
-    els.verifyBtn = document.getElementById('verify');
-    els.saveBtn = document.getElementById('save');
     els.groupingSel = document.getElementById('grouping');
     els.geoBtn = document.getElementById('geoToggle');
     els.zessBtn = document.getElementById('zessToggle');
     els.dropZone = document.getElementById('drop-zone');
     els.fileInput = document.getElementById('f-hidden');
-    els.fileTrigger = document.getElementById('f-trigger');
     els.advInputs = document.getElementById('adv-inputs');
     els.saltToggleBtn = document.getElementById('saltToggle');
     els.hmacToggleBtn = document.getElementById('hmacToggle');
@@ -1737,10 +2118,26 @@ const UI = (() => {
     els.Base85DecToggleBtn = document.getElementById('Base85DecToggle');
     els.rowBase85Enc = document.getElementById('row-Base85-enc');
     els.rowBase85Dec = document.getElementById('row-Base85-dec');
-    els.labelBase85Enc = document.getElementById('label-Base85-Enc');
-    els.labelBase85Dec = document.getElementById('label-Base85-Dec');
-    els.labelCrc64 = document.getElementById('label-CRC64');
     els.sysEl = document.getElementById('sys');
+    els.iterModeToggleBtn = document.getElementById('iterModeToggle');
+    els.iterIn = document.getElementById('iter');
+    
+    // セキュア環境チェック (HTTP警告)
+    if (!window.crypto || !window.crypto.subtle) {
+        const warnEl = document.getElementById('sec-warn');
+        if(warnEl) warnEl.style.display = 'block';
+        
+        const row384 = document.getElementById('label-SHA-384');
+        const row512 = document.getElementById('label-SHA-512');
+        if(row384 && row384.parentElement) {
+            row384.parentElement.style.opacity = '0.4';
+            row384.parentElement.style.pointerEvents = 'none';
+        }
+        if(row512 && row512.parentElement) {
+            row512.parentElement.style.opacity = '0.4';
+            row512.parentElement.style.pointerEvents = 'none';
+        }
+    }
   }
 
   function showToast(msg) {
@@ -1766,15 +2163,85 @@ const UI = (() => {
       `日付: ${dateStr}`
     ];
     
-    if (!window.isSecureContext) {
-      parts.unshift('【 警告: 非セキュア接続 (HTTP) - ハードウェア暗号化アクセラレータ停止 】');
-    }
-    if (window.__ZESS_MODE__) {
-      parts.unshift('【 ZESS (ZERO-EGRESS STATELESS SANDBOX) 稼働中 】');
-    }
+    if (!window.isSecureContext) parts.unshift('【 警告: 非セキュア接続 (HTTP) - ハードウェア暗号化アクセラレータ停止 】');
+    if (window.__ZESS_MODE__) parts.unshift('【 ZESS (ZERO-EGRESS STATELESS SANDBOX) 稼働中 】');
 
     els.sysEl.textContent = parts.join('\n');
     setSysOffset();
+  }
+
+  function queueRender(algId, value, currentIter, totalIter, isDone = false, isAborted = false, isOOM = false) {
+    if (typeof value === 'object') {
+        renderResults({[algId]: value});
+        const progEl = document.getElementById(`prog-${algId}`);
+        const btnEl = document.querySelector(`.stop-btn[data-alg="${algId}"]`);
+        if (progEl) progEl.textContent = `完了 (1/1)`;
+        if (btnEl) btnEl.style.display = 'none';
+        return;
+    }
+    renderState[algId] = { valueString: value, currentIter, totalIter, isDone, isAborted, isOOM };
+    if (!isRendering) {
+        isRendering = true;
+        requestAnimationFrame(renderLoop);
+    }
+  }
+
+  EventBus.on('hash:render', data => {
+      queueRender(data.algId, data.hex, data.iter, data.total, data.isDone, data.isAborted, data.isOOM);
+  });
+  EventBus.on('hash:results', res => {
+      for (const [id, val] of Object.entries(res)) {
+          if (typeof val === 'string' && val.includes('エラー')) queueRender(id, val, 0, 1, true);
+          else queueRender(id, val, 1, 1, true);
+      }
+  });
+
+  function renderLoop() {
+    for (const [algId, state] of Object.entries(renderState)) {
+        const el = document.getElementById(algId);
+        const progEl = document.getElementById(`prog-${algId}`);
+        const stopBtn = document.querySelector(`.stop-btn[data-alg="${algId}"]`);
+        if (!el) continue;
+
+        if (progEl) {
+            if (state.isAborted) progEl.textContent = `停止 (${state.currentIter}/${state.totalIter})`;
+            else if (state.isOOM) progEl.textContent = `上限到達 (${state.currentIter}/${state.totalIter})`;
+            else if (state.isDone) progEl.textContent = `完了 (${state.totalIter}/${state.totalIter})`;
+            else progEl.textContent = `${state.currentIter} / ${state.totalIter}`;
+        }
+        if (stopBtn) {
+            stopBtn.style.display = (state.isDone || state.isAborted || state.isOOM) ? 'none' : 'inline-block';
+        }
+
+        if (typeof state.valueString === 'string' && state.valueString.length > LIMIT_100KB) {
+            const sizeMB = (state.valueString.length / 1048576).toFixed(2);
+            el.textContent = `[巨大データ: ${sizeMB} MB] クリックしてTXT保存`;
+            el.dataset.raw = '';
+            el.dataset.isBinary = '0';
+            el.dataset.isTextBlob = '1';
+            el.dataset.empty = '0';
+            el._hugeString = state.valueString;
+            el.style.textDecoration = 'underline';
+            el.style.cursor = 'pointer';
+            el.style.color = 'var(--fg)';
+        } else if (state.valueString) {
+            el.textContent = Core.formatForDisplay(state.valueString, AppState.hexUpper, AppState.grouping);
+            el.dataset.raw = state.valueString;
+            el.dataset.empty = '0';
+            el.dataset.isBinary = '0';
+            el.dataset.isTextBlob = '0';
+            el.style.textDecoration = '';
+            el.style.cursor = '';
+            el.style.color = '';
+        } else {
+            el.textContent = '入力待ち';
+            el.dataset.empty = '1';
+        }
+
+        if (state.isDone || state.isAborted || state.isOOM) delete renderState[algId];
+    }
+    if (Object.keys(renderState).length > 0) requestAnimationFrame(renderLoop);
+    else isRendering = false;
   }
 
   function renderResults(res, isPreview = false) {
@@ -1782,8 +2249,10 @@ const UI = (() => {
       const el = document.getElementById(id);
       if (!el) continue;
       el.dataset.isBinary = '0';
+      el.dataset.isTextBlob = '0';
       delete el._binBytes;
       delete el._fileInfo;
+      delete el._hugeString;
 
       if (!value) {
         el.dataset.raw = ''; el.textContent = '入力待ち'; el.dataset.empty = '1';
@@ -1822,7 +2291,7 @@ const UI = (() => {
     }
   }
 
-  function updateMeta(count, isFile, statusText) {
+  function updateMeta(count, isFile, statusText, iterations = 1) {
     const normLabel = isFile ? 'なし' : AppState.normalization;
     const countLabel = isFile ? 'ファイル' : '文字数';
     const countUnit = isFile ? ' bytes' : '';
@@ -1834,7 +2303,8 @@ const UI = (() => {
     activeOpts.push(`CRC64: ${AppState.crc64Variant}`);
     if (AppState.Base85Encode || AppState.Base85Decode) activeOpts.push(`Base85: ${AppState.base85Variant}`);
     const optLabel = activeOpts.length ? `｜${activeOpts.join('｜')}` : '';
-    els.metaEl.textContent = `${countLabel} ${count}${countUnit}｜正規化: ${normLabel}｜HEX: ${hexLabel}｜区切り: ${groupLabel}${optLabel}｜ステータス: ${statusText}`;
+    const iterLabel = iterations > 1 ? `｜反復: ${iterations}回 (${AppState.iterMode === 'raw' ? '標準' : '旧互換'})` : '';
+    els.metaEl.textContent = `${countLabel} ${count}${countUnit}｜正規化: ${normLabel}｜HEX: ${hexLabel}｜区切り: ${groupLabel}${optLabel}${iterLabel}｜ステータス: ${statusText}`;
   }
 
   async function updateAll() {
@@ -1856,9 +2326,16 @@ const UI = (() => {
     let displayCount = 0;
     let isEmptyInput = false;
     const raw = els.inputEl.value;
-
+    
+    let iterations = parseInt(els.iterIn.value, 10) || 1;
+    if (iterations < 1) {
+        iterations = 1;
+        els.iterIn.value = 1;
+    }
+    
     if (AppState.currentFile && raw.startsWith('[File:')) {
       isFile = true; displayCount = AppState.currentFile.size;
+      iterations = 1; 
     } else {
       AppState.currentFile = null;
       const cleaned = Core.sanitizeText(raw);
@@ -1875,9 +2352,15 @@ const UI = (() => {
           isEmptyInput = true; bytesToHash = new Uint8Array(0); displayCount = 0;
         } else {
           const emptyRes = {};
-          ['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','Base64-Enc','Base64-Dec','Base85-Enc','Base85-Dec'].forEach(id => emptyRes[id] = '');
+          ['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','Base64-Enc','Base64-Dec','Base85-Enc','Base85-Dec'].forEach(id => {
+              emptyRes[id] = '';
+              const prog = document.getElementById(`prog-${id}`);
+              if (prog) prog.textContent = '待機';
+              const btn = document.querySelector(`.stop-btn[data-alg="${id}"]`);
+              if (btn) btn.style.display = 'none';
+          });
           renderResults(emptyRes);
-          updateMeta(0, false, '待機');
+          updateMeta(0, false, '待機', 1);
           return;
         }
       } else {
@@ -1886,25 +2369,37 @@ const UI = (() => {
       }
     }
 
-    AppState.seq++; const curSeq = AppState.seq;
-    updateMeta(displayCount, isFile, '計算中');
+    Engine.resetMasterTask();
+    
+    document.querySelectorAll('.prog-text').forEach(el => el.textContent = '計算中...');
+    document.querySelectorAll('.stop-btn').forEach(el => {
+        if (el.dataset.alg.includes('Base')) el.style.display = 'none';
+        else el.style.display = iterations > 1 ? 'inline-block' : 'none';
+    });
+    updateMeta(displayCount, isFile, '計算中', iterations);
 
     if (AppState.Base64Decode && !isFile) {
-      const decInfo = Core.decodeBase64Info(raw);
-      if (decInfo.type === 'empty') renderResults({'Base64-Dec': ''});
-      else if (decInfo.type === 'error') renderResults({'Base64-Dec': 'デコード不可'});
-      else if (decInfo.type === 'binary') renderResults({'Base64-Dec': decInfo});
-      else renderResults({'Base64-Dec': decInfo.value});
+      if(!raw.trim()) {
+        queueRender('Base64-Dec', '', 1, 1, true);
+      } else {
+        Base64Engine.decode(raw).then(res => {
+          if (!Engine.masterSignal.aborted) {
+            if (res.type === 'error') queueRender('Base64-Dec', 'デコード不可', 1, 1, true);
+            else if (res.type === 'binary') queueRender('Base64-Dec', res, 1, 1, true);
+            else queueRender('Base64-Dec', res.value, 1, 1, true);
+          }
+        });
+      }
     }
     if (AppState.Base85Decode && !isFile) {
       if(!raw.trim()) {
-        renderResults({'Base85-Dec': ''});
+        queueRender('Base85-Dec', '', 1, 1, true);
       } else {
         Base85Engine.decode(raw, AppState.base85Variant).then(res => {
-          if (curSeq === AppState.seq) {
-            if (res.type === 'error') renderResults({'Base85-Dec': 'デコード不可'});
-            else if (res.type === 'binary') renderResults({'Base85-Dec': res});
-            else renderResults({'Base85-Dec': res.value});
+          if (!Engine.masterSignal.aborted) {
+            if (res.type === 'error') queueRender('Base85-Dec', 'デコード不可', 1, 1, true);
+            else if (res.type === 'binary') queueRender('Base85-Dec', res, 1, 1, true);
+            else queueRender('Base85-Dec', res.value, 1, 1, true);
           }
         });
       }
@@ -1912,33 +2407,27 @@ const UI = (() => {
 
     if (isFile) {
       const isSmallFile = AppState.currentFile.size <= 50 * 1024 * 1024;
-      const initRes = {'CRC32': '計算中…', 'CRC64': '計算中…', 'MD5': '計算中…', 'SHA-1': '計算中…', 'SHA-224': '計算中…', 'SHA-256': '計算中…'};
-      if (AppState.Base64Decode) initRes['Base64-Dec'] = 'ファイル非対応';
-      if (AppState.Base85Decode) initRes['Base85-Dec'] = 'ファイル非対応';
+      const idsToClear = ['CRC32', 'CRC64', 'MD5', 'SHA-1', 'SHA-224', 'SHA-256'];
       if (!isSmallFile) {
-        initRes['SHA-384'] = 'サイズ超過 (50MB以下のみ)';
-        initRes['SHA-512'] = 'サイズ超過 (50MB以下のみ)';
-        if(AppState.Base64Encode) initRes['Base64-Enc'] = 'サイズ超過 (50MB以下のみ)';
-        if(AppState.Base85Encode) initRes['Base85-Enc'] = 'サイズ超過 (50MB以下のみ)';
+          queueRender('SHA-384', 'サイズ超過 (50MB以下のみ)', 1, 1, true);
+          queueRender('SHA-512', 'サイズ超過 (50MB以下のみ)', 1, 1, true);
+          if (AppState.Base64Encode) queueRender('Base64-Enc', 'サイズ超過', 1, 1, true);
+          if (AppState.Base85Encode) queueRender('Base85-Enc', 'サイズ超過', 1, 1, true);
       } else {
-        initRes['SHA-384'] = '計算中…'; initRes['SHA-512'] = '計算中…';
-        if(AppState.Base64Encode) initRes['Base64-Enc'] = '計算中…';
-        if(AppState.Base85Encode) initRes['Base85-Enc'] = '計算中…';
+          idsToClear.push('SHA-384', 'SHA-512');
+          if (AppState.Base64Encode) idsToClear.push('Base64-Enc');
+          if (AppState.Base85Encode) idsToClear.push('Base85-Enc');
       }
-      renderResults(initRes);
-      await Engine.hashFile(AppState.currentFile, curSeq, res => {
-        if (curSeq === AppState.seq) renderResults(res);
-      }, saltBytes, hmacKeyBytes);
-      if (curSeq === AppState.seq) updateMeta(displayCount, isFile, '完了');
+      if (AppState.Base64Decode) queueRender('Base64-Dec', 'ファイル非対応', 1, 1, true);
+      if (AppState.Base85Decode) queueRender('Base85-Dec', 'ファイル非対応', 1, 1, true);
+      
+      idsToClear.forEach(id => queueRender(id, '計算中…', 0, 1, false));
+
+      await Engine.hashFile(AppState.currentFile, saltBytes, hmacKeyBytes);
+      if (!Engine.masterSignal.aborted) updateMeta(displayCount, isFile, '完了', 1);
     } else {
-      const initRes = {'CRC32': '計算中…', 'CRC64': '計算中…', 'MD5': '計算中…', 'SHA-1': '計算中…', 'SHA-224': '計算中…', 'SHA-256': '計算中…', 'SHA-384': '計算中…', 'SHA-512': '計算中…'};
-      if(AppState.Base64Encode) initRes['Base64-Enc'] = '計算中…';
-      if(AppState.Base85Encode) initRes['Base85-Enc'] = '計算中…';
-      if(Engine.hasWorker && bytesToHash.length > Engine.WORKER_THRESHOLD) renderResults(initRes, isEmptyInput);
-      await Engine.hashText(bytesToHash, curSeq, res => {
-        if (curSeq === AppState.seq) renderResults(res, isEmptyInput);
-      }, saltBytes, hmacKeyBytes);
-      if (curSeq === AppState.seq) updateMeta(displayCount, isFile, isEmptyInput ? '空値プレビュー' : '完了');
+      await Engine.hashText(bytesToHash, saltBytes, hmacKeyBytes, iterations);
+      if (!Engine.masterSignal.aborted) updateMeta(displayCount, isFile, isEmptyInput ? '空値プレビュー' : '完了', iterations);
     }
   }
 
@@ -1974,14 +2463,6 @@ const UI = (() => {
     AppState.theme = localStorage.getItem('sonyHash.theme') || 'default';
     applyTheme();
 
-    els.themeBtn.addEventListener('click', () => {
-      const idx = THEMES.findIndex(x => x.id === AppState.theme);
-      AppState.theme = THEMES[(idx + 1) % THEMES.length].id;
-      localStorage.setItem('sonyHash.theme', AppState.theme);
-      applyTheme();
-    });
-
-    els.fileTrigger.addEventListener('click', () => els.fileInput.click());
     els.fileInput.addEventListener('change', e => handleFiles(e.target.files));
 
     els.dropZone.addEventListener('dragover', e => { e.preventDefault(); els.dropZone.classList.add('dragover'); });
@@ -2006,119 +2487,10 @@ const UI = (() => {
       scheduleUpdate();
     });
     els.inputEl.addEventListener('compositionend', scheduleUpdate);
-    els.saltIn.addEventListener('input', scheduleUpdate);
-    els.hmacIn.addEventListener('input', scheduleUpdate);
 
-    document.querySelectorAll('.value').forEach(el => {
-      el.addEventListener('click', async () => {
-        if (el.dataset.isBinary === '1' && el._binBytes) {
-          const fi = el._fileInfo || {ext: 'bin', mime: 'application/octet-stream'};
-          const blob = new Blob([el._binBytes], {type: fi.mime});
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          const ts = new Date(); const pad = n => String(n).padStart(2,'0');
-          a.href = url;
-          a.download = `decoded_${ts.getFullYear()}${pad(ts.getMonth()+1)}${pad(ts.getDate())}_${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}.${fi.ext}`;
-          document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-          showToast(`保存開始: ${a.download}`);
-          return;
-        }
-        const raw = el.dataset.raw || el.textContent.trim();
-        if (!raw || el.dataset.empty === '1') return;
-        try { await navigator.clipboard.writeText(raw); showToast(`コピー: ${el.dataset.alg}`); } catch(_) {}
-      });
-      el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); } });
-    });
-
-    const base85Variants = ['ZeroMQ (Z85)', 'Standard ASCII85', 'Adobe ASCII85', 'RFC 1924'];
-    function cycleBase85Variant() {
-      const idx = base85Variants.indexOf(AppState.base85Variant);
-      AppState.base85Variant = base85Variants[(idx + 1) % base85Variants.length];
-      scheduleUpdate();
-      showToast(`Base85 モード切替: ${AppState.base85Variant}`);
-    }
-
-    [els.labelBase85Enc, els.labelBase85Dec].forEach(label => {
-      if(label) {
-        label.style.cursor = 'pointer';
-        label.style.textDecoration = 'underline';
-        label.title = 'クリックでBase85の規格を切り替えます';
-        label.addEventListener('click', cycleBase85Variant);
-      }
-    });
-
-    const crc64Variants = [
-        'XZ (ECMA, Reflected)',
-        'WE (ECMA, Non-Reflected)',
-        'ISO (HDLC, Non-Reflected)',
-        'Redis (Jones, Reflected)'
-    ];
-    function cycleCrc64Variant() {
-        const idx = crc64Variants.indexOf(AppState.crc64Variant);
-        AppState.crc64Variant = crc64Variants[(idx + 1) % crc64Variants.length];
-        scheduleUpdate();
-        showToast(`CRC64 モード切替: ${AppState.crc64Variant}`);
-    }
-    
-    if (els.labelCrc64) {
-        els.labelCrc64.style.cursor = 'pointer';
-        els.labelCrc64.style.textDecoration = 'underline';
-        els.labelCrc64.title = 'クリックでCRC-64の規格を切り替えます';
-        els.labelCrc64.addEventListener('click', cycleCrc64Variant);
-    }
-
-    els.normBtn.addEventListener('click', () => {
-      AppState.normalization = AppState.normalization === 'NFC' ? 'NFKC' : AppState.normalization === 'NFKC' ? 'none' : 'NFC';
-      els.normBtn.textContent = `正規化: ${AppState.normalization}`;
-      scheduleUpdate();
-    });
-
-    els.hexBtn.addEventListener('click', () => {
-      AppState.hexUpper = !AppState.hexUpper;
-      els.hexBtn.textContent = `HEX: ${AppState.hexUpper ? 'UPPERCASE' : 'lowercase'}`;
-      reformatAll();
-      els.metaEl.textContent = els.metaEl.textContent.replace(/HEX:\s*(UPPERCASE|lowercase)/, `HEX: ${AppState.hexUpper ? 'UPPERCASE' : 'lowercase'}`);
-    });
-
-    els.saltToggleBtn.addEventListener('click', () => {
-      AppState.showSalt = !AppState.showSalt;
-      els.saltToggleBtn.textContent = `Salt: ${AppState.showSalt ? 'オン' : 'オフ'}`;
-      els.saltIn.style.display = AppState.showSalt ? 'block' : 'none';
-      els.advInputs.style.display = (AppState.showSalt || AppState.showHmac) ? 'flex' : 'none';
-      if (!AppState.showSalt) { els.saltIn.value = ''; AppState.salt = ''; scheduleUpdate(); }
-    });
-    els.hmacToggleBtn.addEventListener('click', () => {
-      AppState.showHmac = !AppState.showHmac;
-      els.hmacToggleBtn.textContent = `HMAC: ${AppState.showHmac ? 'オン' : 'オフ'}`;
-      els.hmacIn.style.display = AppState.showHmac ? 'block' : 'none';
-      els.advInputs.style.display = (AppState.showSalt || AppState.showHmac) ? 'flex' : 'none';
-      if (!AppState.showHmac) { els.hmacIn.value = ''; AppState.hmacKey = ''; scheduleUpdate(); }
-    });
-
-    els.Base64EncToggleBtn.addEventListener('click', () => {
-      AppState.Base64Encode = !AppState.Base64Encode;
-      els.Base64EncToggleBtn.textContent = `Base64 Enc: ${AppState.Base64Encode ? 'オン' : 'オフ'}`;
-      els.rowBase64Enc.style.display = AppState.Base64Encode ? 'flex' : 'none';
-      if (AppState.Base64Encode) scheduleUpdate(); else renderResults({'Base64-Enc': ''});
-    });
-    els.Base64DecToggleBtn.addEventListener('click', () => {
-      AppState.Base64Decode = !AppState.Base64Decode;
-      els.Base64DecToggleBtn.textContent = `Base64 Dec: ${AppState.Base64Decode ? 'オン' : 'オフ'}`;
-      els.rowBase64Dec.style.display = AppState.Base64Decode ? 'flex' : 'none';
-      if (AppState.Base64Decode) scheduleUpdate(); else renderResults({'Base64-Dec': ''});
-    });
-    els.Base85EncToggleBtn.addEventListener('click', () => {
-      AppState.Base85Encode = !AppState.Base85Encode;
-      els.Base85EncToggleBtn.textContent = `Base85 Enc: ${AppState.Base85Encode ? 'オン' : 'オフ'}`;
-      els.rowBase85Enc.style.display = AppState.Base85Encode ? 'flex' : 'none';
-      if (AppState.Base85Encode) scheduleUpdate(); else { renderResults({'Base85-Enc': ''}); updateMeta(Core.countGraphemes(els.inputEl.value), !!AppState.currentFile, '完了'); }
-    });
-    els.Base85DecToggleBtn.addEventListener('click', () => {
-      AppState.Base85Decode = !AppState.Base85Decode;
-      els.Base85DecToggleBtn.textContent = `Base85 Dec: ${AppState.Base85Decode ? 'オン' : 'オフ'}`;
-      els.rowBase85Dec.style.display = AppState.Base85Decode ? 'flex' : 'none';
-      if (AppState.Base85Decode) scheduleUpdate(); else { renderResults({'Base85-Dec': ''}); updateMeta(Core.countGraphemes(els.inputEl.value), !!AppState.currentFile, '完了'); }
-    });
+    els.saltIn.addEventListener('keydown', (e) => { if(e.key === 'Enter') { e.preventDefault(); scheduleUpdate(); } });
+    els.hmacIn.addEventListener('keydown', (e) => { if(e.key === 'Enter') { e.preventDefault(); scheduleUpdate(); } });
+    els.iterIn.addEventListener('keydown', (e) => { if(e.key === 'Enter') { e.preventDefault(); scheduleUpdate(); } });
 
     els.groupingSel.addEventListener('change', () => {
       AppState.grouping = parseInt(els.groupingSel.value, 10) || 0;
@@ -2126,73 +2498,230 @@ const UI = (() => {
       els.metaEl.textContent = els.metaEl.textContent.replace(/区切り:\s*(連結|\d+字)/, `区切り: ${AppState.grouping ? AppState.grouping + '字' : '連結'}`);
     });
 
-    els.applyBtn.addEventListener('click', () => {
-      els.inputEl.value = TEST_VECTORS[els.tvSel.value].text;
-      els.saltIn.value = ''; AppState.salt = '';
-      els.hmacIn.value = ''; AppState.hmacKey = '';
-      if (AppState.showSalt) { AppState.showSalt = false; els.saltToggleBtn.textContent = 'Salt: オフ'; els.saltIn.style.display = 'none'; }
-      if (AppState.showHmac) { AppState.showHmac = false; els.hmacToggleBtn.textContent = 'HMAC: オフ'; els.hmacIn.style.display = 'none'; }
-      els.advInputs.style.display = 'none';
-      scheduleUpdate();
-    });
+    // EVENT DELEGATION FOR ALL BUTTONS AND CLICKABLE LABELS
+    document.body.addEventListener('click', async e => {
+        const actionEl = e.target.closest('[data-action]');
+        if (!actionEl) return;
+        const action = actionEl.dataset.action;
 
-    els.verifyBtn.addEventListener('click', async () => {
-      const v = Core.normalizeText(Core.sanitizeText(TEST_VECTORS[els.tvSel.value].text), AppState.normalization);
-      const bytes = Core.utf8Encode(v);
-      const results = {
-        'CRC32': Core.crc32Hex(bytes), 'CRC64': Core.crc64Hex(bytes),
-        'MD5': Core.md5Hex(bytes), 'SHA-224': Core.sha224Hex(bytes)
-      };
-      
-      const tempEngine = new (eval(Engine.toString() + ' return IncrementalHasher;'))(AppState.crc64Variant);
-      tempEngine.update(bytes);
-      results['CRC64'] = tempEngine.finalizeHmacOrNormal().crc64;
-
-      results['SHA-1'] = await Core.safeAsync(() => Core.digestHex('SHA-1', bytes), '');
-      results['SHA-256'] = await Core.safeAsync(() => Core.digestHex('SHA-256', bytes), '');
-      results['SHA-384'] = await Core.safeAsync(() => Core.digestHex('SHA-384', bytes), '');
-      results['SHA-512'] = await Core.safeAsync(() => Core.digestHex('SHA-512', bytes), '');
-      let ok = 0; let total = 0;
-      for (const k of ['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512']) {
-        if (TEST_VECTORS[els.tvSel.value].expect[k] !== undefined) {
-          total++;
-          if (String(results[k]||'').toLowerCase() === TEST_VECTORS[els.tvSel.value].expect[k]) ok++;
+        switch(action) {
+            case 'toggleTheme':
+                const idx = THEMES.findIndex(x => x.id === AppState.theme);
+                AppState.theme = THEMES[(idx + 1) % THEMES.length].id;
+                localStorage.setItem('sonyHash.theme', AppState.theme);
+                applyTheme();
+                break;
+            case 'toggleFullscreen':
+                const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+                try {
+                  if (!isFs) await (document.documentElement.requestFullscreen?.() || document.documentElement.webkitRequestFullscreen?.());
+                  else await (document.exitFullscreen?.() || document.webkitExitFullscreen?.());
+                } catch(_) {}
+                break;
+            case 'toggleNorm':
+                AppState.normalization = AppState.normalization === 'NFC' ? 'NFKC' : AppState.normalization === 'NFKC' ? 'none' : 'NFC';
+                els.normBtn.textContent = `正規化: ${AppState.normalization}`;
+                scheduleUpdate();
+                break;
+            case 'toggleHex':
+                AppState.hexUpper = !AppState.hexUpper;
+                els.hexBtn.textContent = `HEX: ${AppState.hexUpper ? 'UPPERCASE' : 'lowercase'}`;
+                reformatAll();
+                els.metaEl.textContent = els.metaEl.textContent.replace(/HEX:\s*(UPPERCASE|lowercase)/, `HEX: ${AppState.hexUpper ? 'UPPERCASE' : 'lowercase'}`);
+                break;
+            case 'toggleSalt':
+                AppState.showSalt = !AppState.showSalt;
+                els.saltToggleBtn.textContent = `Salt: ${AppState.showSalt ? 'オン' : 'オフ'}`;
+                els.saltIn.style.display = AppState.showSalt ? 'block' : 'none';
+                els.advInputs.style.display = (AppState.showSalt || AppState.showHmac) ? 'flex' : 'none';
+                if (!AppState.showSalt) { els.saltIn.value = ''; AppState.salt = ''; scheduleUpdate(); }
+                break;
+            case 'toggleHmac':
+                AppState.showHmac = !AppState.showHmac;
+                els.hmacToggleBtn.textContent = `HMAC: ${AppState.showHmac ? 'オン' : 'オフ'}`;
+                els.hmacIn.style.display = AppState.showHmac ? 'block' : 'none';
+                els.advInputs.style.display = (AppState.showSalt || AppState.showHmac) ? 'flex' : 'none';
+                if (!AppState.showHmac) { els.hmacIn.value = ''; AppState.hmacKey = ''; scheduleUpdate(); }
+                break;
+            case 'toggleBase64Enc':
+                AppState.Base64Encode = !AppState.Base64Encode;
+                els.Base64EncToggleBtn.textContent = `Base64 Enc: ${AppState.Base64Encode ? 'オン' : 'オフ'}`;
+                els.rowBase64Enc.style.display = AppState.Base64Encode ? 'flex' : 'none';
+                if (AppState.Base64Encode) scheduleUpdate(); else queueRender('Base64-Enc', '', 1, 1, true);
+                break;
+            case 'toggleBase64Dec':
+                AppState.Base64Decode = !AppState.Base64Decode;
+                els.Base64DecToggleBtn.textContent = `Base64 Dec: ${AppState.Base64Decode ? 'オン' : 'オフ'}`;
+                els.rowBase64Dec.style.display = AppState.Base64Decode ? 'flex' : 'none';
+                if (AppState.Base64Decode) scheduleUpdate(); else queueRender('Base64-Dec', '', 1, 1, true);
+                break;
+            case 'toggleBase85Enc':
+                AppState.Base85Encode = !AppState.Base85Encode;
+                els.Base85EncToggleBtn.textContent = `Base85 Enc: ${AppState.Base85Encode ? 'オン' : 'オフ'}`;
+                els.rowBase85Enc.style.display = AppState.Base85Encode ? 'flex' : 'none';
+                if (AppState.Base85Encode) scheduleUpdate(); else { queueRender('Base85-Enc', '', 1, 1, true); updateMeta(Core.countGraphemes(els.inputEl.value), !!AppState.currentFile, '完了', parseInt(els.iterIn.value,10)||1); }
+                break;
+            case 'toggleBase85Dec':
+                AppState.Base85Decode = !AppState.Base85Decode;
+                els.Base85DecToggleBtn.textContent = `Base85 Dec: ${AppState.Base85Decode ? 'オン' : 'オフ'}`;
+                els.rowBase85Dec.style.display = AppState.Base85Decode ? 'flex' : 'none';
+                if (AppState.Base85Decode) scheduleUpdate(); else { queueRender('Base85-Dec', '', 1, 1, true); updateMeta(Core.countGraphemes(els.inputEl.value), !!AppState.currentFile, '完了', parseInt(els.iterIn.value,10)||1); }
+                break;
+            case 'triggerFile':
+                els.fileInput.click();
+                break;
+            case 'toggleIterMode':
+                AppState.iterMode = AppState.iterMode === 'raw' ? 'hex' : 'raw';
+                els.iterModeToggleBtn.textContent = `反復: ${AppState.iterMode === 'raw' ? '標準 (Raw)' : '旧互換 (Hex)'}`;
+                scheduleUpdate();
+                break;
+            case 'iterUp':
+                els.iterIn.value = (parseInt(els.iterIn.value, 10) || 1) + 1;
+                scheduleUpdate();
+                break;
+            case 'iterDown':
+                els.iterIn.value = Math.max(1, (parseInt(els.iterIn.value, 10) || 1) - 1);
+                scheduleUpdate();
+                break;
+            case 'applyTest':
+                els.inputEl.value = TEST_VECTORS[els.tvSel.value].text;
+                els.saltIn.value = ''; AppState.salt = '';
+                els.hmacIn.value = ''; AppState.hmacKey = '';
+                if (AppState.showSalt) { AppState.showSalt = false; els.saltToggleBtn.textContent = 'Salt: オフ'; els.saltIn.style.display = 'none'; }
+                if (AppState.showHmac) { AppState.showHmac = false; els.hmacToggleBtn.textContent = 'HMAC: オフ'; els.hmacIn.style.display = 'none'; }
+                els.advInputs.style.display = 'none';
+                els.iterIn.value = 1;
+                AppState.iterMode = 'raw';
+                els.iterModeToggleBtn.textContent = '反復: 標準 (Raw)';
+                scheduleUpdate();
+                break;
+            case 'verifyTest':
+                const vT = Core.normalizeText(Core.sanitizeText(TEST_VECTORS[els.tvSel.value].text), AppState.normalization);
+                const bytes = Core.utf8Encode(vT);
+                const expected = TEST_VECTORS[els.tvSel.value].expect;
+                
+                // 検証中はUIを計算中ステータスにする
+                const tempRes = {'CRC32':'処理中…','CRC64':'処理中…','MD5':'処理中…','SHA-1':'処理中…','SHA-224':'処理中…','SHA-256':'処理中…','SHA-384':'処理中…','SHA-512':'処理中…'};
+                EventBus.emit('hash:results', tempRes);
+                
+                const resultsRaw = await Engine.verifyTestBytes(bytes, AppState.crc64Variant);
+                if (!resultsRaw) return;
+                
+                const results = {
+                  'CRC32': resultsRaw.crc,
+                  'CRC64': resultsRaw.crc64,
+                  'MD5': resultsRaw.md5,
+                  'SHA-1': resultsRaw.sha1,
+                  'SHA-224': resultsRaw.sha224,
+                  'SHA-256': resultsRaw.sha256,
+                };
+                
+                results['SHA-384'] = await Core.safeAsync(() => Core.digestHex('SHA-384', bytes), '未対応/エラー');
+                results['SHA-512'] = await Core.safeAsync(() => Core.digestHex('SHA-512', bytes), '未対応/エラー');
+                
+                let ok = 0; let total = 0;
+                for (const k of ['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512']) {
+                  if (expected[k] !== undefined) {
+                    total++;
+                    if (String(results[k]||'').toLowerCase() === expected[k]) ok++;
+                  }
+                }
+                showToast(ok===total ? `検証OK ${ok}/${total} (HMAC/Salt無効時)` : `検証NG ${ok}/${total}`);
+                EventBus.emit('hash:results', results);
+                break;
+            case 'saveResults':
+                const ts = new Date(); const pad = n => String(n).padStart(2,'0');
+                const fn = `sony-hash-${ts.getFullYear()}${pad(ts.getMonth()+1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}.txt`;
+                const lines = [];
+                lines.push('SONY HASH export');
+                lines.push('製造: ソニーグループ株式会社 / インターナショナル・ビジネス・マシーンズ・コーポレーション（IBM） 2026');
+                lines.push(`正規化: ${AppState.currentFile ? 'なし' : AppState.normalization}｜HEX: ${AppState.hexUpper ? 'UPPERCASE' : 'lowercase'}｜区切り: ${AppState.grouping ? AppState.grouping+'字' : '連結'}｜反復: ${els.iterIn.value} (${AppState.iterMode === 'raw' ? '標準' : '旧互換'})`);
+                if (AppState.salt) lines.push(`Salt: ${AppState.salt}`);
+                if (AppState.hmacKey) lines.push(`HMAC Key: ${AppState.hmacKey}`);
+                lines.push(`CRC64 モード: ${AppState.crc64Variant}`);
+                if (AppState.Base85Encode || AppState.Base85Decode) lines.push(`Base85 モード: ${AppState.base85Variant}`);
+                lines.push('---');
+                for (const id of ['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','Base64-Enc','Base64-Dec','Base85-Enc','Base85-Dec']) {
+                  const el = document.getElementById(id);
+                  if (!el || !el.dataset.raw) continue;
+                  const raw = el.dataset.raw;
+                  const prefix = AppState.hmacKey && !id.includes('Base') && !id.includes('CRC') ? `HMAC-${id}` : id;
+                  lines.push(`${prefix}: ${raw}`);
+                }
+                const blob = new Blob([lines.join('\n')], {type:'text/plain'});
+                const url = URL.createObjectURL(blob); const a = document.createElement('a');
+                a.href = url; a.download = fn; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+                break;
+            case 'toggleGeo':
+                if (window.__ZESS_MODE__) break;
+                AppState.geoEnabled = !AppState.geoEnabled;
+                localStorage.setItem('sonyHash.geo', AppState.geoEnabled ? 'on' : 'off');
+                AppState.geoLabel = AppState.geoEnabled ? '照会中…' : '照会オフ';
+                AppState.geoTs = 0;
+                els.geoBtn.textContent = `位置: ${AppState.geoEnabled ? 'オン' : 'オフ'}`;
+                updateSysPanel();
+                break;
+            case 'toggleZess':
+                const locationUrl = new URL(window.location.href);
+                if (window.__ZESS_MODE__) {
+                    locationUrl.searchParams.delete('U-571'); locationUrl.hash = ''; window.location.href = locationUrl.toString();
+                } else {
+                    locationUrl.searchParams.set('U-571', '1'); window.location.href = locationUrl.toString();
+                }
+                break;
+            case 'stopAlg':
+                Engine.cancelTask(actionEl.dataset.alg);
+                actionEl.style.display = 'none';
+                break;
+            case 'copyValue':
+                const el = actionEl;
+                if (el.dataset.isBinary === '1' && el._binBytes) {
+                  const fi = el._fileInfo || {ext: 'bin', mime: 'application/octet-stream'};
+                  const bblob = new Blob([el._binBytes], {type: fi.mime});
+                  const burl = URL.createObjectURL(bblob);
+                  const aa = document.createElement('a');
+                  const tss = new Date(); const ppad = n => String(n).padStart(2,'0');
+                  aa.href = burl;
+                  aa.download = `decoded_${tss.getFullYear()}${ppad(tss.getMonth()+1)}${ppad(tss.getDate())}_${ppad(tss.getHours())}${ppad(tss.getMinutes())}${ppad(tss.getSeconds())}.${fi.ext}`;
+                  document.body.appendChild(aa); aa.click(); aa.remove(); URL.revokeObjectURL(burl);
+                  showToast(`保存開始: ${aa.download}`);
+                  return;
+                }
+                if (el.dataset.isTextBlob === '1' && el._hugeString) {
+                  const hblob = new Blob([el._hugeString], { type: 'text/plain' });
+                  const hurl = URL.createObjectURL(hblob);
+                  const ha = document.createElement('a');
+                  ha.href = hurl;
+                  ha.download = `SONY_HASH_${el.id}.txt`;
+                  document.body.appendChild(ha); ha.click(); ha.remove(); URL.revokeObjectURL(hurl);
+                  showToast(`保存開始: ${ha.download}`);
+                  return;
+                }
+                const elRaw = el.dataset.raw || el.textContent.trim();
+                if (!elRaw || el.dataset.empty === '1') return;
+                try { await navigator.clipboard.writeText(elRaw); showToast(`コピー: ${el.dataset.alg}`); } catch(_) {}
+                break;
+            case 'cycleBase85':
+                const base85Variants = ['ZeroMQ (Z85)', 'Standard ASCII85', 'Adobe ASCII85', 'RFC 1924'];
+                const bIdx = base85Variants.indexOf(AppState.base85Variant);
+                AppState.base85Variant = base85Variants[(bIdx + 1) % base85Variants.length];
+                scheduleUpdate();
+                showToast(`Base85 モード切替: ${AppState.base85Variant}`);
+                break;
+            case 'cycleCrc64':
+                const crc64Variants = ['XZ (ECMA, Reflected)', 'WE (ECMA, Non-Reflected)', 'ISO (HDLC, Non-Reflected)', 'Redis (Jones, Reflected)'];
+                const cIdx = crc64Variants.indexOf(AppState.crc64Variant);
+                AppState.crc64Variant = crc64Variants[(cIdx + 1) % crc64Variants.length];
+                scheduleUpdate();
+                showToast(`CRC64 モード切替: ${AppState.crc64Variant}`);
+                break;
         }
-      }
-      showToast(ok===total ? `検証OK ${ok}/${total} (HMAC/Salt無効時)` : `検証NG ${ok}/${total}`);
     });
 
-    els.saveBtn.addEventListener('click', () => {
-      const ts = new Date(); const pad = n => String(n).padStart(2,'0');
-      const fn = `sony-hash-${ts.getFullYear()}${pad(ts.getMonth()+1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}.txt`;
-      const lines = [];
-      lines.push('SONY HASH export');
-      lines.push('製造: ソニーグループ株式会社 / インターナショナル・ビジネス・マシーンズ・コーポレーション（IBM） 2026');
-      lines.push(`正規化: ${AppState.currentFile ? 'なし' : AppState.normalization}｜HEX: ${AppState.hexUpper ? 'UPPERCASE' : 'lowercase'}｜区切り: ${AppState.grouping ? AppState.grouping+'字' : '連結'}`);
-      if (AppState.salt) lines.push(`Salt: ${AppState.salt}`);
-      if (AppState.hmacKey) lines.push(`HMAC Key: ${AppState.hmacKey}`);
-      lines.push(`CRC64 モード: ${AppState.crc64Variant}`);
-      if (AppState.Base85Encode || AppState.Base85Decode) lines.push(`Base85 モード: ${AppState.base85Variant}`);
-      lines.push('---');
-      for (const id of ['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','Base64-Enc','Base64-Dec','Base85-Enc','Base85-Dec']) {
-        const el = document.getElementById(id);
-        if (!el || !el.dataset.raw) continue;
-        const raw = el.dataset.raw;
-        const prefix = AppState.hmacKey && !id.includes('Base') && !id.includes('CRC') ? `HMAC-${id}` : id;
-        lines.push(`${prefix}: ${raw}`);
-      }
-      const blob = new Blob([lines.join('\n')], {type:'text/plain'});
-      const url = URL.createObjectURL(blob); const a = document.createElement('a');
-      a.href = url; a.download = fn; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    document.querySelectorAll('.value').forEach(el => {
+      el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); } });
     });
 
-    els.fsBtn.addEventListener('click', async () => {
-      const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
-      try {
-        if (!isFs) await (document.documentElement.requestFullscreen?.() || document.documentElement.webkitRequestFullscreen?.());
-        else await (document.exitFullscreen?.() || document.webkitExitFullscreen?.());
-      } catch(_) {}
-    });
     document.addEventListener('fullscreenchange', () => {
       const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
       els.fsBtn.textContent = isFs ? '通常表示' : '全画面';
@@ -2203,26 +2732,9 @@ const UI = (() => {
       els.zessBtn.textContent = 'ZESS: 稼働中 (解除はリロード)';
       els.zessBtn.classList.add('warn');
       els.geoBtn.style.display = 'none';
-      els.zessBtn.addEventListener('click', () => {
-        const url = new URL(window.location.href); url.searchParams.delete('U-571'); url.hash = ''; window.location.href = url.toString();
-      });
     } else {
-      els.zessBtn.addEventListener('click', () => {
-        const url = new URL(window.location.href); url.searchParams.set('U-571', '1'); window.location.href = url.toString();
-      });
-    }
-
-    if (!window.__ZESS_MODE__) {
       AppState.geoEnabled = (localStorage.getItem('sonyHash.geo') || 'off') === 'on';
       els.geoBtn.textContent = `位置: ${AppState.geoEnabled ? 'オン' : 'オフ'}`;
-      els.geoBtn.addEventListener('click', async () => {
-        AppState.geoEnabled = !AppState.geoEnabled;
-        localStorage.setItem('sonyHash.geo', AppState.geoEnabled ? 'on' : 'off');
-        AppState.geoLabel = AppState.geoEnabled ? '照会中…' : '照会オフ';
-        AppState.geoTs = 0;
-        els.geoBtn.textContent = `位置: ${AppState.geoEnabled ? 'オン' : 'オフ'}`;
-        updateSysPanel();
-      });
 
       if ('getBattery' in navigator) {
         navigator.getBattery().then(b => {
@@ -2246,7 +2758,8 @@ const UI = (() => {
 
     window.addEventListener('resize', () => { setSysOffset(); });
     window.addEventListener('load', () => { els.inputEl.focus(); setSysOffset(); });
-    window.addEventListener('beforeunload', () => { Engine.terminateWorker(); Base85Engine.terminate(); });
+    // 全てのWorkerを終了させる
+    window.addEventListener('beforeunload', () => { Engine.terminateWorker(); Base64Engine.terminate(); Base85Engine.terminate(); });
   }
 
   function init() {
