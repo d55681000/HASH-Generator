@@ -22,7 +22,7 @@
     --alert:#ff4747;
     --drag-bg:rgba(124,255,124,0.08);
     --glow:0 0 1px rgba(124,255,124,.25);
-    --glow-bright:0 0 2px rgba(57,255,20,0.6), 0 0 10px rgba(57,255,20,0.3); /* Theme 1: Enhanced Glow */
+    --glow-bright:-1px 0 2px rgba(255,0,0,0.4), 1px 0 2px rgba(0,255,255,0.4), 0 0 2px rgba(57,255,20,0.6), 0 0 10px rgba(57,255,20,0.3); /* Theme 1: Enhanced Glow + Chromatic Aberration */
     --toast-bg:rgba(10,42,69,.8);
     --sys-offset:120px;
     --scanline:repeating-linear-gradient(to bottom,rgba(255,255,255,.025),rgba(255,255,255,.025) 1px,transparent 1px,transparent 3px);
@@ -56,6 +56,7 @@
     text-rendering: optimizeSpeed;
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.035'/%3E%3C/svg%3E");
     background-repeat: repeat;
+    animation: static-noise 0.2s steps(2) infinite;
   }
   
   body[data-theme="ps"]{
@@ -88,13 +89,14 @@
     -webkit-font-smoothing:antialiased;
     image-rendering:pixelated;
     /* Immersive Transition */
-    transition: background-color 0.4s ease, color 0.4s ease, text-shadow 0.4s ease;
+    transition: background-color 0.4s ease, color 0.4s ease;
   }
   
   /* Theme 1: Default Scanline Setup */
   body[data-theme="default"] {
     background-image: var(--scanline);
-    animation: crt-scan 4s linear infinite, crt-flicker 0.15s infinite;
+    background-blend-mode: overlay;
+    animation: crt-scan 8s linear infinite, crt-flicker 0.15s infinite;
   }
   
   /* Theme 1: Vignette / CRT Edge Shadow */
@@ -106,7 +108,7 @@
   }
   body[data-theme="default"]::before { opacity: 1; }
 
-  /* Theme 1 Animations */
+  /* Theme Animations */
   @keyframes crt-scan {
     from { background-position-y: 0; }
     to { background-position-y: 3px; }
@@ -114,6 +116,16 @@
   @keyframes crt-flicker {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.98; }
+  }
+  @keyframes static-noise {
+    0% { background-position: 0 0; }
+    100% { background-position: 100% 100%; }
+  }
+
+  /* Theme 2: Focused Input Setup */
+  body[data-theme="cmd"] textarea:focus, 
+  body[data-theme="cmd"] .text-input:focus {
+    outline: 2px solid var(--fg); outline-offset: 0px; background: rgba(255,255,255,0.05);
   }
 
   body.U-571 {
@@ -134,7 +146,7 @@
   textarea::-moz-selection { background: var(--sel-bg); color: var(--sel-fg); text-shadow: none; }
 
   header{display:flex;align-items:center;justify-content:space-between;padding:12px clamp(12px,3vw,24px);color:var(--fg)}
-  h1{margin:0;font-size:clamp(18px,4.5vw,28px);letter-spacing:.06em; transition: text-shadow 0.4s ease;}
+  h1{margin:0;font-size:clamp(18px,4.5vw,28px);letter-spacing:.06em; transition: color 0.4s ease;}
   
   body[data-theme="default"] h1,
   body[data-theme="default"] .brandline { text-shadow: var(--glow-bright); }
@@ -142,7 +154,7 @@
   .link{
     background:none;border:none;padding:0;margin-left:12px;color:var(--muted);
     text-decoration:underline;cursor:pointer;font-size:clamp(12px,3.2vw,14px);
-    transition: color 0.2s ease, text-shadow 0.2s ease;
+    transition: color 0.2s ease;
   }
   .link:hover { color: var(--fg-bright); text-shadow: var(--glow); }
   .link.warn { color: var(--alert); text-shadow: none; }
@@ -157,7 +169,7 @@
     border:none;outline:none;caret-color:var(--fg-bright);
     font:inherit;font-size:clamp(14px,2.8vw,18px);line-height:1.65;resize:vertical;
     text-shadow:var(--glow);
-    transition: color 0.4s ease, text-shadow 0.4s ease;
+    transition: color 0.4s ease;
   }
   /* Theme 2: Block Caret */
   body[data-theme="cmd"] textarea, body[data-theme="cmd"] input { caret-shape: block; }
@@ -216,7 +228,7 @@
   
   .value{
     flex:1;color:var(--fg-bright);word-break:break-all;user-select:text;
-    transition: color 0.4s ease, text-shadow 0.4s ease, opacity 0.3s;
+    transition: color 0.4s ease, opacity 0.3s;
   }
   body[data-theme="default"] .value:not([data-empty="1"]) { text-shadow: var(--glow-bright); }
   
@@ -243,7 +255,7 @@
     color:var(--muted);font-size:12px;line-height:1.35;white-space:pre-wrap;text-align:right;
     pointer-events:auto; user-select:text; transition: color 0.4s ease;
   }
-  .brandline{color:var(--fg-bright);font-weight:600; transition: color 0.4s ease, text-shadow 0.4s ease;}
+  .brandline{color:var(--fg-bright);font-weight:600; transition: color 0.4s ease;}
   #f-hidden{display:none}
   
   /* セキュア警告表示用 */
@@ -1188,7 +1200,6 @@ const Base85Engine = (() => {
         const len = bytes.length;
         const extra = len % 4;
         
-        // 【修正1】 Z85 / RFC 1924 はパディングを禁止しているため、4の倍数以外の長さはエラーにする
         if (!isAscii85 && extra !== 0) {
             throw new Error(variant + ' requires input length to be a multiple of 4 bytes');
         }
@@ -1210,12 +1221,10 @@ const Base85Engine = (() => {
              val = val >>> 0;
           }
 
-          // ASCII85 の 'z' (0x00000000) 圧縮
           if (isAscii85 && val === 0 && paddingBytes === 0) {
             resArr.push('z');
             continue;
           }
-          // 【修正2】 ASCII85 の 'y' (0x20202020) 圧縮対応を追加
           if (isAscii85 && val === 0x20202020 && paddingBytes === 0) {
             resArr.push('y');
             continue;
@@ -1256,7 +1265,6 @@ const Base85Engine = (() => {
         clean = clean.replace(/\\s+/g, '');
         if (isAscii85) {
             clean = clean.replace(/z/g, '!!!!!');
-            // 【修正2】 ASCII85 の 'y' 解凍対応 (+<VdL = 0x20202020)
             clean = clean.replace(/y/g, '+<VdL');
         }
         
@@ -1275,7 +1283,6 @@ const Base85Engine = (() => {
         const len = clean.length;
         const extraChars = len % 5;
         
-        // 【修正1】 Z85 / RFC 1924 はパディングを禁止しているため、5の倍数以外の長さはエラーにする
         if (!isAscii85 && extraChars !== 0) {
             throw new Error(variant + ' requires valid encoded string length to be a multiple of 5');
         }
@@ -1296,7 +1303,6 @@ const Base85Engine = (() => {
           for(let j = 0; j < 5; j++) {
             val = val * 85 + decodeMap[workStr.charCodeAt(i+j)];
           }
-          // 【修正3】 32-bit (UInt32) のオーバーフロー検査を追加
           if (val > 4294967295) {
             throw new Error('Base85 Integer Overflow: Invalid encoded chunk');
           }
@@ -2222,7 +2228,6 @@ const UI = (() => {
     els.iterModeToggleBtn = document.getElementById('iterModeToggle');
     els.iterIn = document.getElementById('iter');
     
-    // セキュア環境チェック (HTTP警告)
     if (!window.crypto || !window.crypto.subtle) {
         const warnEl = document.getElementById('sec-warn');
         if(warnEl) warnEl.style.display = 'block';
@@ -2715,7 +2720,6 @@ const UI = (() => {
                 const bytes = Core.utf8Encode(vT);
                 const expected = TEST_VECTORS[els.tvSel.value].expect;
                 
-                // 検証中はUIを計算中ステータスにする
                 const tempRes = {'CRC32':'処理中…','CRC64':'処理中…','MD5':'処理中…','SHA-1':'処理中…','SHA-224':'処理中…','SHA-256':'処理中…','SHA-384':'処理中…','SHA-512':'処理中…'};
                 EventBus.emit('hash:results', tempRes);
                 
@@ -2897,7 +2901,6 @@ const UI = (() => {
 
     window.addEventListener('resize', () => { setSysOffset(); });
     window.addEventListener('load', () => { els.inputEl.focus(); setSysOffset(); });
-    // 全てのWorkerを終了させる
     window.addEventListener('beforeunload', () => { Engine.terminateWorker(); Base64Engine.terminate(); Base85Engine.terminate(); });
   }
 
