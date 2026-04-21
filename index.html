@@ -26,7 +26,8 @@
     --glow-bright:-1px 0 1px rgba(255,0,0,0.5), 1px 0 1px rgba(0,100,255,0.5), 0 0 2px rgba(57,255,20,0.6), 0 0 10px rgba(57,255,20,0.3);
     --toast-bg:rgba(10,42,69,.9);
     --sys-offset:120px;
-    --scanline:repeating-linear-gradient(to bottom,rgba(255,255,255,.025),rgba(255,255,255,.025) 1px,transparent 1px,transparent 3px);
+    /* Theme 1: Physical CRT Phosphor Shadow Mask */
+    --scanline: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
     --font-stack:ui-monospace,SFMono-Regular,Menlo,Consolas,"MS Gothic",monospace;
     --sel-bg:rgba(124,255,124,0.3);
     --sel-fg:#ffffff;
@@ -57,6 +58,8 @@
     text-rendering: optimizeSpeed;
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.035'/%3E%3C/svg%3E");
     background-repeat: repeat;
+    /* Animated White Noise */
+    animation: noise-jitter 0.2s step-end infinite;
   }
   
   body[data-theme="ps"]{
@@ -97,31 +100,60 @@
   /* Theme 1: Default Scanline Setup */
   body[data-theme="default"] {
     background-image: var(--scanline);
-    animation: crt-scan 4s linear infinite, crt-flicker 0.15s infinite;
+    background-size: 100% 2px, 3px 100%;
+    animation: crt-flicker 0.15s infinite;
   }
   
-  /* Theme 1: Vignette / CRT Edge Shadow */
+  /* Theme 1: Vignette / CRT Edge Shadow & Convex Glare */
   body::before {
     content: ""; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-    background: radial-gradient(circle at center, transparent 50%, rgba(0,0,0,0.4) 100%);
+    background: 
+      radial-gradient(ellipse 80% 30% at 50% 0%, rgba(255,255,255,0.04) 0%, transparent 100%),
+      radial-gradient(circle at center, transparent 50%, rgba(0,0,0,0.5) 100%);
     pointer-events: none; z-index: 999;
     opacity: 0; transition: opacity 0.5s ease;
   }
   body[data-theme="default"]::before { opacity: 1; }
 
-  /* Theme 1 Animations */
-  @keyframes crt-scan {
-    from { background-position-y: 0; }
-    to { background-position-y: 3px; }
+  /* Theme 1: V-Sync Rolling Bar */
+  body[data-theme="default"]::after {
+    content: ""; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+    background: linear-gradient(to bottom, transparent 0%, rgba(255,255,255,0.03) 50%, transparent 100%);
+    background-size: 100% 20vh;
+    background-repeat: no-repeat;
+    pointer-events: none; z-index: 998;
+    animation: v-sync-roll 6s linear infinite;
   }
+
+  /* Micro-dynamics & Animations */
   @keyframes crt-flicker {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.98; }
+  }
+  @keyframes v-sync-roll {
+    0% { background-position: 0 -20vh; }
+    100% { background-position: 0 120vh; }
+  }
+  @keyframes noise-jitter {
+    0% { background-position: 0 0; }
+    25% { background-position: 10% -15%; }
+    50% { background-position: -20% 5%; }
+    75% { background-position: 5% 25%; }
+    100% { background-position: -5% -5%; }
+  }
+  @keyframes emergency-pulse {
+    0%, 100% { box-shadow: inset 0 0 20px rgba(255,71,71,0.05); border-color: rgba(255,71,71,0.2); }
+    50% { box-shadow: inset 0 0 80px rgba(255,71,71,0.15); border-color: rgba(255,71,71,0.6); }
+  }
+  @keyframes drop-pulse {
+    0%, 100% { background: var(--drag-bg); outline-color: var(--fg-bright); }
+    50% { background: rgba(124,255,124,0.15); outline-color: var(--fg); }
   }
 
   body.U-571 {
     background-image:repeating-linear-gradient(to bottom,rgba(255,71,71,.05),rgba(255,71,71,.05) 1px,transparent 1px,transparent 3px) !important;
     border: 1px solid rgba(255,71,71,.3);
+    animation: emergency-pulse 3s ease-in-out infinite !important;
   }
   body.U-571 .brandline { color: var(--alert); }
 
@@ -155,7 +187,11 @@
   
   /* Input Wrapping entirely transparent to blend with background */
   .input-wrap{position:relative;padding:10px clamp(12px,3vw,18px);transition:background 0.2s; background:transparent;}
-  .input-wrap.dragover{background:var(--drag-bg);outline:2px dashed var(--fg-bright)}
+  .input-wrap.dragover{
+    outline:2px dashed var(--fg-bright);
+    outline-offset:-4px;
+    animation: drop-pulse 0.8s ease-in-out infinite;
+  }
   
   textarea{
     width:100%;min-height:28vh;background:transparent;color:var(--fg);
