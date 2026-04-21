@@ -102,7 +102,7 @@
     line-height:1.55; display:flex; flex-direction:column; min-height:100vh;
     -webkit-font-smoothing:antialiased;
     image-rendering:pixelated;
-    /* Immersive Transition */
+    /* Immersive Transition Fallback */
     transition: background-color 0.4s ease, color 0.4s ease, text-shadow 0.4s ease;
   }
   
@@ -120,19 +120,21 @@
       radial-gradient(ellipse 80% 30% at 50% 0%, rgba(255,255,255,0.04) 0%, transparent 100%),
       radial-gradient(circle at center, transparent 50%, rgba(0,0,0,0.5) 100%);
     pointer-events: none; z-index: 999;
-    opacity: 0; transition: opacity 0.5s ease;
+    opacity: 0; transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1);
   }
   body[data-theme="default"]::before { opacity: 1; }
 
   /* V-Sync Rolling Bar */
-  body[data-theme="default"]::after {
+  body::after {
     content: ""; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
     background: linear-gradient(to bottom, transparent 0%, rgba(255,255,255,0.03) 50%, transparent 100%);
     background-size: 100% 20vh;
     background-repeat: no-repeat;
     pointer-events: none; z-index: 998;
     animation: v-sync-roll 6s linear infinite;
+    opacity: 0; transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1);
   }
+  body[data-theme="default"]::after { opacity: 1; }
 
   /* Theme 1 Animations */
   @keyframes crt-scan {
@@ -300,6 +302,7 @@
     padding:8px 12px;border-radius:0;font-size:12px;pointer-events:none;
     opacity:0;transition: opacity .15s, background-color 0.4s ease, box-shadow 0.4s ease;
     z-index: 1000;
+    view-transition-name: toast-panel;
   }
   
   /* Theme 3 (PS): Sharp engineering terminal style, no acrylic */
@@ -318,6 +321,7 @@
     position:fixed;right:10px;bottom:10px;width:min(56ch,92vw);
     color:var(--muted);font-size:12px;line-height:1.35;white-space:pre-wrap;text-align:right;
     pointer-events:auto; user-select:text; transition: color 0.4s ease;
+    view-transition-name: sys-panel;
   }
   .brandline{color:var(--fg-bright);font-weight:600; transition: color 0.4s ease, text-shadow 0.4s ease;}
   #f-hidden{display:none}
@@ -325,6 +329,27 @@
   /* セキュア警告表示用 */
   #sec-warn {
     display: none; background: var(--alert); color: #fff; padding: 6px 12px; font-size: 12px; font-weight: bold; text-align: center; letter-spacing: 1px;
+  }
+
+  /* View Transitions API Custom Animations */
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 0.5s;
+    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  ::view-transition-old(root) {
+    animation-name: fade-out-scale;
+  }
+  ::view-transition-new(root) {
+    animation-name: fade-in;
+  }
+  @keyframes fade-out-scale {
+    from { opacity: 1; transform: scale(1); }
+    to { opacity: 0; transform: scale(1.02); }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 </style>
 </head>
@@ -2682,10 +2707,18 @@ const UI = (() => {
 
         switch(action) {
             case 'toggleTheme': {
-                const idx = THEMES.findIndex(x => x.id === AppState.theme);
-                AppState.theme = THEMES[(idx + 1) % THEMES.length].id;
-                localStorage.setItem('sonyHash.theme', AppState.theme);
-                applyTheme();
+                const switchTheme = () => {
+                    const idx = THEMES.findIndex(x => x.id === AppState.theme);
+                    AppState.theme = THEMES[(idx + 1) % THEMES.length].id;
+                    localStorage.setItem('sonyHash.theme', AppState.theme);
+                    applyTheme();
+                };
+
+                if (document.startViewTransition) {
+                    document.startViewTransition(() => switchTheme());
+                } else {
+                    switchTheme();
+                }
                 break;
             }
             case 'toggleFullscreen': {
