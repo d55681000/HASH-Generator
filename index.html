@@ -22,11 +22,11 @@
     --alert:#ff4747;
     --drag-bg:rgba(124,255,124,0.08);
     --glow:0 0 1px rgba(124,255,124,.25);
-    /* Theme 1: Enhanced Glow + Chromatic Aberration for CRT Realism */
+    /* Theme 1: Enhanced Glow + Chromatic Aberration */
     --glow-bright:-1px 0 1px rgba(255,0,0,0.5), 1px 0 1px rgba(0,100,255,0.5), 0 0 2px rgba(57,255,20,0.6), 0 0 10px rgba(57,255,20,0.3);
     --toast-bg:rgba(10,42,69,.9);
     --sys-offset:120px;
-    /* Theme 1: Physical CRT Phosphor Shadow Mask */
+    /* Theme 1: Phosphor Shadow Mask + Scanline */
     --scanline: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
     --font-stack:ui-monospace,SFMono-Regular,Menlo,Consolas,"MS Gothic",monospace;
     --sel-bg:rgba(124,255,124,0.3);
@@ -37,7 +37,7 @@
   }
   
   body[data-theme="cmd"]{
-    --bg:#000000; /* Theme 2: Pure Black */
+    --bg:#000000;
     --fg:#cccccc;
     --fg-bright:#ffffff;
     --muted:#888888;
@@ -47,19 +47,26 @@
     --toast-bg:rgba(0,0,0,1);
     --scanline:none;
     --font-stack:Consolas,"MS Gothic","ＭＳ ゴシック",monospace;
-    --sel-bg:#ffffff; /* Theme 2: Harsh selection */
+    --sel-bg:#ffffff;
     --sel-fg:#000000;
     --sb-track:#0c0c0c;
     --sb-thumb:#888888;
     --sb-thumb-hover:#cccccc;
-    /* Theme 2: Anti-aliasing off & Noise Background */
     -webkit-font-smoothing: none;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeSpeed;
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.035'/%3E%3C/svg%3E");
     background-repeat: repeat;
-    /* Animated White Noise */
+    /* Theme 2: Animated White Noise */
     animation: noise-jitter 0.2s step-end infinite;
+  }
+  
+  @keyframes noise-jitter {
+    0% { background-position: 0 0; }
+    25% { background-position: 10% -15%; }
+    50% { background-position: -20% 5%; }
+    75% { background-position: 5% 25%; }
+    100% { background-position: -5% -5%; }
   }
   
   body[data-theme="ps"]{
@@ -70,7 +77,6 @@
     --drag-bg:rgba(255,233,0,0.08);
     --glow:none;
     --glow-bright:none;
-    /* Theme 3: Pure solid color, removed acrylic blur for sharper terminal feel */
     --toast-bg:#01183b; 
     --scanline:none;
     --font-stack:Consolas,"MS Gothic","ＭＳ ゴシック",monospace;
@@ -79,7 +85,6 @@
     --sb-track:#012456;
     --sb-thumb:rgba(255,255,255,0.3);
     --sb-thumb-hover:rgba(255,255,255,0.6);
-    /* Theme 3: Radial Gradient Depth */
     background-image: radial-gradient(circle at 50% 10%, #013476 0%, #012456 80%);
     background-attachment: fixed;
   }
@@ -89,11 +94,10 @@
   body{
     margin:0;background-color:var(--bg);color:var(--fg);
     font-family:var(--font-stack);
-    font-variant-numeric: tabular-nums slashed-zero; /* Typography optimization */
+    font-variant-numeric: tabular-nums slashed-zero;
     line-height:1.55; display:flex; flex-direction:column; min-height:100vh;
     -webkit-font-smoothing:antialiased;
     image-rendering:pixelated;
-    /* Immersive Transition */
     transition: background-color 0.4s ease, color 0.4s ease, text-shadow 0.4s ease;
   }
   
@@ -104,12 +108,12 @@
     animation: crt-flicker 0.15s infinite;
   }
   
-  /* Theme 1: Vignette / CRT Edge Shadow & Convex Glare */
+  /* Theme 1: Vignette & Convex Glass Glare */
   body::before {
     content: ""; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
     background: 
       radial-gradient(ellipse 80% 30% at 50% 0%, rgba(255,255,255,0.04) 0%, transparent 100%),
-      radial-gradient(circle at center, transparent 50%, rgba(0,0,0,0.5) 100%);
+      radial-gradient(circle at center, transparent 50%, rgba(0,0,0,0.4) 100%);
     pointer-events: none; z-index: 999;
     opacity: 0; transition: opacity 0.5s ease;
   }
@@ -119,43 +123,38 @@
   body[data-theme="default"]::after {
     content: ""; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
     background: linear-gradient(to bottom, transparent 0%, rgba(255,255,255,0.03) 50%, transparent 100%);
-    background-size: 100% 20vh;
-    background-repeat: no-repeat;
+    background-size: 100% 20vh; background-repeat: no-repeat;
     pointer-events: none; z-index: 998;
     animation: v-sync-roll 6s linear infinite;
-  }
-
-  /* Micro-dynamics & Animations */
-  @keyframes crt-flicker {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.98; }
   }
   @keyframes v-sync-roll {
     0% { background-position: 0 -20vh; }
     100% { background-position: 0 120vh; }
   }
-  @keyframes noise-jitter {
-    0% { background-position: 0 0; }
-    25% { background-position: 10% -15%; }
-    50% { background-position: -20% 5%; }
-    75% { background-position: 5% 25%; }
-    100% { background-position: -5% -5%; }
-  }
-  @keyframes emergency-pulse {
-    0%, 100% { box-shadow: inset 0 0 20px rgba(255,71,71,0.05); border-color: rgba(255,71,71,0.2); }
-    50% { box-shadow: inset 0 0 80px rgba(255,71,71,0.15); border-color: rgba(255,71,71,0.6); }
-  }
-  @keyframes drop-pulse {
-    0%, 100% { background: var(--drag-bg); outline-color: var(--fg-bright); }
-    50% { background: rgba(124,255,124,0.15); outline-color: var(--fg); }
+
+  @keyframes crt-flicker {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.98; }
   }
 
+  /* ZESS U-571 Mode */
   body.U-571 {
     background-image:repeating-linear-gradient(to bottom,rgba(255,71,71,.05),rgba(255,71,71,.05) 1px,transparent 1px,transparent 3px) !important;
-    border: 1px solid rgba(255,71,71,.3);
-    animation: emergency-pulse 3s ease-in-out infinite !important;
+    background-size: auto !important;
   }
   body.U-571 .brandline { color: var(--alert); }
+
+  /* Emergency Pulse Overlay (Fixed precisely to Viewport) */
+  #zess-overlay { display: none; }
+  body.U-571 #zess-overlay {
+    display: block; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+    pointer-events: none; z-index: 9999;
+    animation: emergency-pulse 3s ease-in-out infinite;
+  }
+  @keyframes emergency-pulse {
+    0%, 100% { box-shadow: inset 0 0 20px rgba(255,71,71,0.05); border: 2px solid rgba(255,71,71,0.3); }
+    50% { box-shadow: inset 0 0 80px rgba(255,71,71,0.15); border: 2px solid rgba(255,71,71,0.7); }
+  }
 
   ::-webkit-scrollbar { width: 14px; height: 14px; }
   ::-webkit-scrollbar-track { background: var(--sb-track); transition: background 0.4s; }
@@ -180,16 +179,20 @@
     transition: color 0.1s ease, text-shadow 0.1s ease, transform 0.1s ease;
   }
   .link:hover { color: var(--fg-bright); text-shadow: var(--glow); }
-  .link:active { transform: translateY(1px); } /* Tactile Feedback */
+  .link:active { transform: translateY(1px); }
   .link.warn { color: var(--alert); text-shadow: none; }
   
   .container{width:min(1100px,96vw);margin:0 auto;flex:1;display:flex;flex-direction:column;gap:10px;padding:0 0 var(--sys-offset)}
   
-  /* Input Wrapping entirely transparent to blend with background */
   .input-wrap{position:relative;padding:10px clamp(12px,3vw,18px);transition:background 0.2s; background:transparent;}
-  .input-wrap.dragover{
-    outline:2px dashed var(--fg-bright);
-    outline-offset:-4px;
+  
+  /* Dropzone Magnetism */
+  @keyframes drop-pulse {
+    0%, 100% { background: var(--drag-bg); outline-color: var(--fg-bright); }
+    50% { background: rgba(124,255,124,0.15); outline-color: var(--fg); }
+  }
+  .input-wrap.dragover {
+    outline: 2px dashed var(--fg-bright); outline-offset: -4px;
     animation: drop-pulse 0.8s ease-in-out infinite;
   }
   
@@ -200,7 +203,6 @@
     text-shadow:var(--glow);
     transition: color 0.4s ease, text-shadow 0.4s ease;
   }
-  /* Theme 2: Hard Block Caret, replacing native */
   body[data-theme="cmd"] textarea, body[data-theme="cmd"] input { caret-shape: block; caret-color: var(--fg-bright); }
   
   .text-input{
@@ -209,7 +211,6 @@
     padding:4px 6px; caret-color:var(--fg-bright); border-radius:0;
     transition: color 0.4s ease, box-shadow 0.2s ease;
   }
-  /* Blend with background, subtle bottom line on focus instead of fill */
   .text-input:focus { background: transparent; box-shadow: 0 1px 0 var(--fg-bright); }
   .text-input::placeholder{color:var(--muted);opacity:0.6;}
   
@@ -262,8 +263,15 @@
   }
   body[data-theme="default"] .value:not([data-empty="1"]) { text-shadow: var(--glow-bright); }
   
-  /* Transparent Focus blending */
-  .value:focus{outline:none; box-shadow: inset 2px 0 0 var(--fg-bright); background:transparent;}
+  /* Blinking Caret on Focus */
+  @keyframes caret-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+  .value:focus { outline: none; background: transparent; box-shadow: none; }
+  .value:focus::before {
+    content: ''; display: inline-block; width: 8px; height: 1.2em;
+    background-color: var(--fg-bright); margin-right: 6px;
+    vertical-align: text-bottom; animation: caret-blink 1s step-end infinite;
+  }
+  
   .value[data-empty="1"]{opacity:.6}
   .value[data-is-binary="1"]{color:var(--fg);text-decoration:underline;cursor:pointer}
   
@@ -275,16 +283,8 @@
     z-index: 1000;
   }
   
-  /* Theme 3 (PS): Sharp engineering terminal style, no acrylic */
-  body[data-theme="ps"] .toast {
-    border: 1px solid var(--fg-bright); box-shadow: 4px 4px 0 rgba(0,0,0,0.5);
-  }
-  
-  /* Theme 2 (CMD): Pure box styling */
-  body[data-theme="cmd"] .toast {
-    border: 1px solid var(--fg-bright); box-shadow: none;
-  }
-
+  body[data-theme="ps"] .toast { border: 1px solid var(--fg-bright); box-shadow: 4px 4px 0 rgba(0,0,0,0.5); }
+  body[data-theme="cmd"] .toast { border: 1px solid var(--fg-bright); box-shadow: none; }
   .toast.show{opacity:1}
   
   .sys{
@@ -295,13 +295,11 @@
   .brandline{color:var(--fg-bright);font-weight:600; transition: color 0.4s ease, text-shadow 0.4s ease;}
   #f-hidden{display:none}
   
-  /* セキュア警告表示用 */
-  #sec-warn {
-    display: none; background: var(--alert); color: #fff; padding: 6px 12px; font-size: 12px; font-weight: bold; text-align: center; letter-spacing: 1px;
-  }
+  #sec-warn { display: none; background: var(--alert); color: #fff; padding: 6px 12px; font-size: 12px; font-weight: bold; text-align: center; letter-spacing: 1px; }
 </style>
 </head>
 <body>
+  <div id="zess-overlay"></div>
   <div id="sec-warn">【制限モード】 セキュアな環境（HTTPS）ではないため、高度な暗号化処理（SHA-384 / SHA-512）は無効化されています。</div>
   <header>
     <h1>SONY HASH</h1>
@@ -479,6 +477,7 @@
 const Security = (() => {
   function init() {
     if (window.__ZESS_MODE__) {
+      document.documentElement.classList.add('U-571');
       document.body.classList.add('U-571');
       window.fetch = async () => { throw new Error('ZESS: Egress Network Blocked'); };
       window.XMLHttpRequest = function() { throw new Error('ZESS: Egress Network Blocked'); };
@@ -1237,7 +1236,6 @@ const Base85Engine = (() => {
         const len = bytes.length;
         const extra = len % 4;
         
-        // 【修正1】 Z85 / RFC 1924 はパディングを禁止しているため、4の倍数以外の長さはエラーにする
         if (!isAscii85 && extra !== 0) {
             throw new Error(variant + ' requires input length to be a multiple of 4 bytes');
         }
@@ -1259,12 +1257,10 @@ const Base85Engine = (() => {
              val = val >>> 0;
           }
 
-          // ASCII85 の 'z' (0x00000000) 圧縮
           if (isAscii85 && val === 0 && paddingBytes === 0) {
             resArr.push('z');
             continue;
           }
-          // 【修正2】 ASCII85 の 'y' (0x20202020) 圧縮対応を追加
           if (isAscii85 && val === 0x20202020 && paddingBytes === 0) {
             resArr.push('y');
             continue;
@@ -1305,7 +1301,6 @@ const Base85Engine = (() => {
         clean = clean.replace(/\\s+/g, '');
         if (isAscii85) {
             clean = clean.replace(/z/g, '!!!!!');
-            // 【修正2】 ASCII85 の 'y' 解凍対応 (+<VdL = 0x20202020)
             clean = clean.replace(/y/g, '+<VdL');
         }
         
@@ -1324,7 +1319,6 @@ const Base85Engine = (() => {
         const len = clean.length;
         const extraChars = len % 5;
         
-        // 【修正1】 Z85 / RFC 1924 はパディングを禁止しているため、5の倍数以外の長さはエラーにする
         if (!isAscii85 && extraChars !== 0) {
             throw new Error(variant + ' requires valid encoded string length to be a multiple of 5');
         }
@@ -1345,7 +1339,6 @@ const Base85Engine = (() => {
           for(let j = 0; j < 5; j++) {
             val = val * 85 + decodeMap[workStr.charCodeAt(i+j)];
           }
-          // 【修正3】 32-bit (UInt32) のオーバーフロー検査を追加
           if (val > 4294967295) {
             throw new Error('Base85 Integer Overflow: Invalid encoded chunk');
           }
@@ -2271,7 +2264,6 @@ const UI = (() => {
     els.iterModeToggleBtn = document.getElementById('iterModeToggle');
     els.iterIn = document.getElementById('iter');
     
-    // セキュア環境チェック (HTTP警告)
     if (!window.crypto || !window.crypto.subtle) {
         const warnEl = document.getElementById('sec-warn');
         if(warnEl) warnEl.style.display = 'block';
@@ -2647,7 +2639,6 @@ const UI = (() => {
       els.metaEl.textContent = els.metaEl.textContent.replace(/区切り:\s*(連結|\d+字)/, `区切り: ${AppState.grouping ? AppState.grouping + '字' : '連結'}`);
     });
 
-    // EVENT DELEGATION FOR ALL BUTTONS AND CLICKABLE LABELS
     document.body.addEventListener('click', async e => {
         const actionEl = e.target.closest('[data-action]');
         if (!actionEl) return;
@@ -2764,7 +2755,6 @@ const UI = (() => {
                 const bytes = Core.utf8Encode(vT);
                 const expected = TEST_VECTORS[els.tvSel.value].expect;
                 
-                // 検証中はUIを計算中ステータスにする
                 const tempRes = {'CRC32':'処理中…','CRC64':'処理中…','MD5':'処理中…','SHA-1':'処理中…','SHA-224':'処理中…','SHA-256':'処理中…','SHA-384':'処理中…','SHA-512':'処理中…'};
                 EventBus.emit('hash:results', tempRes);
                 
@@ -2946,7 +2936,6 @@ const UI = (() => {
 
     window.addEventListener('resize', () => { setSysOffset(); });
     window.addEventListener('load', () => { els.inputEl.focus(); setSysOffset(); });
-    // 全てのWorkerを終了させる
     window.addEventListener('beforeunload', () => { Engine.terminateWorker(); Base64Engine.terminate(); Base85Engine.terminate(); });
   }
 
