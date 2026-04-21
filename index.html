@@ -149,14 +149,19 @@
   }
   
   @keyframes emergency-pulse {
-    0%, 100% { box-shadow: inset 0 0 20px rgba(255,71,71,0.05); border-color: rgba(255,71,71,0.2); }
-    50% { box-shadow: inset 0 0 80px rgba(255,71,71,0.15); border-color: rgba(255,71,71,0.6); }
+    0%, 100% { box-shadow: inset 0 0 20px rgba(255,71,71,0.05); }
+    50% { box-shadow: inset 0 0 80px rgba(255,71,71,0.15); }
   }
 
+  /* U-571 Mode Fix: Border is now fixed to window, background covers scrolling area */
   body.U-571 {
     background-image:repeating-linear-gradient(to bottom,rgba(255,71,71,.05),rgba(255,71,71,.05) 1px,transparent 1px,transparent 3px) !important;
+  }
+  body.U-571::after {
+    content: ""; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
     border: 1px solid rgba(255,71,71,.3);
     animation: emergency-pulse 3s ease-in-out infinite;
+    pointer-events: none; z-index: 999;
   }
   body.U-571 .brandline { color: var(--alert); }
 
@@ -268,19 +273,23 @@
   .value{
     flex:1;color:var(--fg-bright);word-break:break-all;user-select:text;
     transition: color 0.4s ease, text-shadow 0.4s ease, opacity 0.3s;
+    /* Use position relative so the absolutely positioned caret stays within bounds */
+    position: relative;
+    padding-left: 10px; /* Space for the absolute caret */
   }
   body[data-theme="default"] .value:not([data-empty="1"]) { text-shadow: var(--glow-bright); }
   
-  /* Transparent Focus blending with inline blinking caret */
+  /* Transparent Focus blending with absolute blinking caret */
   .value:focus{outline:none; background:transparent;}
   .value:focus::before {
     content: "█";
-    display: inline-block;
+    position: absolute;
+    left: 0;
+    top: 0;
     color: var(--fg-bright);
     animation: caret-blink 1s step-end infinite;
-    margin-right: 6px;
     font-size: 0.9em;
-    vertical-align: baseline;
+    line-height: 1.55; /* Match parent line-height to align with first line */
   }
   .value[data-empty="1"]{opacity:.6}
   .value[data-is-binary="1"]{color:var(--fg);text-decoration:underline;cursor:pointer}
