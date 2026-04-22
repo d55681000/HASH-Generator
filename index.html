@@ -263,6 +263,7 @@
     transition: color 0.4s ease, text-shadow 0.4s ease, opacity 0.3s;
     position: relative;
     padding-left: 10px;
+    white-space: pre-wrap;
   }
   body[data-theme="default"] .value:not([data-empty="1"]) { text-shadow: var(--glow-bright); }
   
@@ -509,7 +510,7 @@
 
 <script>
 /* =========================================================
-   SECURITY LAYER — ZESS / Isolation Controls
+   SECURITY LAYER
 ========================================================= */
 const Security = (() => {
   function init() {
@@ -543,9 +544,6 @@ const Security = (() => {
   return { init };
 })();
 
-/* =========================================================
-   EVENT BUS — Publish/Subscribe for Decoupling Engine and UI
-========================================================= */
 const EventBus = (() => {
   const events = {};
   return {
@@ -554,9 +552,6 @@ const EventBus = (() => {
   };
 })();
 
-/* =========================================================
-   STATE LAYER — Application State Container
-========================================================= */
 const AppState = {
   theme: 'default',
   normalization: 'none',
@@ -584,12 +579,11 @@ const AppState = {
 };
 
 /* =========================================================
-   CORE LAYER — Pure Algorithms (No DOM, No State)
+   CORE LAYER
 ========================================================= */
 const Core = (() => {
   const subtle = crypto?.subtle;
   const seg = (window.Intl?.Segmenter) ? new Intl.Segmenter('ja',{granularity:'grapheme'}) : null;
-
   const HEX_LUT = Array.from({length: 256}, (_, i) => i.toString(16).padStart(2, '0'));
 
   async function safeAsync(fn, fallback = null) {
@@ -673,8 +667,10 @@ const Core = (() => {
     { seq: [112, 112, 116, 47], ext: 'pptx', mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' },
     { seq: [65, 110, 100, 114, 111, 105, 100, 77, 97, 110, 105, 102, 101, 115, 116, 46, 120, 109, 108], ext: 'apk', mime: 'application/vnd.android.package-archive' },
     { seq: [77, 69, 84, 65, 45, 73, 78, 70, 47], ext: 'jar', mime: 'application/java-archive' },
-    { seq: [109, 105, 109, 101, 116, 121, 112, 101, 97, 112, 112, 108, 105, 99, 97, 116, 105, 111, 110, 47, 101, 112, 117, 98, 43, 122, 105, 112], ext: 'epub', mime: 'application/epub+zip' }
+    { seq: [109, 105, 109, 101, 116, 121, 112, 101, 97, 112, 112, 108, 105, 99, 97, 116, 105, 111, 110, 47, 101, 112, 117, 98, 43, 122, 105, 112], ext: 'epub', mime: 'application/epub+zip' },
+    { seq: [109, 105, 109, 101, 116, 121, 112, 101, 97, 112, 112, 108, 105, 99, 97, 116, 105, 111, 110, 47, 118, 110, 100, 46, 111, 97, 115, 105, 115, 46, 111, 112, 101, 110, 100, 111, 99, 117, 109, 101, 110, 116, 46, 116, 101, 120, 116], ext: 'odt', mime: 'application/vnd.oasis.opendocument.text' }
   ];
+
   function findByteSequence(haystack, needle, limit) {
     const max = Math.min(haystack.length, limit) - needle.length;
     const firstByte = needle[0];
@@ -687,36 +683,134 @@ const Core = (() => {
     return false;
   }
 
-  function getFileInfo(bytes) {
-    if (bytes.length >= 4) {
-      const h = Array.from(bytes.subarray(0, 8)).map(b=>b.toString(16).padStart(2,'0')).join('');
-      if (h.startsWith('89504e47')) return {ext: 'png', mime: 'image/png'};
-      if (h.startsWith('ffd8ff')) return {ext: 'jpg', mime: 'image/jpeg'};
-      if (h.startsWith('47494638')) return {ext: 'gif', mime: 'image/gif'};
-      if (h.startsWith('25504446')) return {ext: 'pdf', mime: 'application/pdf'};
-      if (h.startsWith('52617221')) return {ext: 'rar', mime: 'application/x-rar-compressed'};
-      if (h.startsWith('00000100')) return {ext: 'ico', mime: 'image/x-icon'};
-      if (h.startsWith('494433')) return {ext: 'mp3', mime: 'audio/mpeg'};
-      if (h.startsWith('1a45dfa3')) return {ext: 'webm', mime: 'video/webm'};
-      if (h.startsWith('4f676753')) return {ext: 'ogg', mime: 'audio/ogg'};
-      
-      if (bytes.length >= 12 && h.startsWith('52494646')) {
-        const t = String.fromCharCode(...bytes.subarray(8, 12));
-        if(t === 'WEBP') return {ext: 'webp', mime: 'image/webp'};
-        if(t === 'WAVE') return {ext: 'wav', mime: 'audio/wav'};
-        if(t === 'AVI ') return {ext: 'avi', mime: 'video/x-msvideo'};
-      }
+  const MAGIC_RULES = [
+    { o: 0, h: '89504E47', e: 'png', m: 'image/png' },
+    { o: 0, h: 'FFD8FF', e: 'jpg', m: 'image/jpeg' },
+    { o: 0, h: '47494638', e: 'gif', m: 'image/gif' },
+    { o: 0, h: '424D', e: 'bmp', m: 'image/bmp' },
+    { o: 0, h: '49492A00', e: 'tif', m: 'image/tiff' },
+    { o: 0, h: '4D4D002A', e: 'tif', m: 'image/tiff' },
+    { o: 0, h: '00000100', e: 'ico', m: 'image/x-icon' },
+    { o: 0, h: '00000200', e: 'cur', m: 'image/x-icon' },
+    { o: 0, h: '0000000C6A5020200D0A870A', e: 'jp2', m: 'image/jp2' },
+    { o: 0, h: '38425053', e: 'psd', m: 'image/vnd.adobe.photoshop' },
+    { o: 0, h: '44445320', e: 'dds', m: 'image/vnd.ms-dds' },
+    { o: 0, h: '762F3101', e: 'exr', m: 'image/x-exr' },
+    { o: 0, h: '494433', e: 'mp3', m: 'audio/mpeg' },
+    { o: 0, h: 'FFFB', e: 'mp3', m: 'audio/mpeg' },
+    { o: 0, h: 'FFF3', e: 'mp3', m: 'audio/mpeg' },
+    { o: 0, h: 'FFF2', e: 'mp3', m: 'audio/mpeg' },
+    { o: 0, h: 'FFF1', e: 'aac', m: 'audio/aac' },
+    { o: 0, h: 'FFF9', e: 'aac', m: 'audio/aac' },
+    { o: 0, h: '4F676753', e: 'ogg', m: 'audio/ogg' },
+    { o: 0, h: '664C6143', e: 'flac', m: 'audio/flac' },
+    { o: 0, h: '4D546864', e: 'mid', m: 'audio/midi' },
+    { o: 0, h: '44534420', e: 'dsf', m: 'audio/x-dsf' },
+    { o: 0, h: '54544131', e: 'tta', m: 'audio/x-tta' },
+    { o: 0, h: '4D414320', e: 'ape', m: 'audio/ape' },
+    { o: 0, h: '7776706B', e: 'wv', m: 'audio/wavpack' },
+    { o: 0, h: '1A45DFA3', e: 'mkv', m: 'video/x-matroska' },
+    { o: 0, h: '3026B2758E66CF11', e: 'wma', m: 'audio/x-ms-wma' },
+    { o: 0, h: '000001BA', e: 'mpg', m: 'video/mpeg' },
+    { o: 0, h: '000001B3', e: 'mpg', m: 'video/mpeg' },
+    { o: 0, h: '25504446', e: 'pdf', m: 'application/pdf' },
+    { o: 0, h: '52617221', e: 'rar', m: 'application/x-rar-compressed' },
+    { o: 0, h: '377ABCAF271C', e: '7z', m: 'application/x-7z-compressed' },
+    { o: 0, h: '1F8B08', e: 'gz', m: 'application/gzip' },
+    { o: 0, h: '425A68', e: 'bz2', m: 'application/x-bzip2' },
+    { o: 257, h: '7573746172', e: 'tar', m: 'application/x-tar' },
+    { o: 0, h: '4D5A', e: 'exe', m: 'application/x-msdownload' },
+    { o: 0, h: '4D534346', e: 'cab', m: 'application/vnd.ms-cab-compressed' },
+    { o: 0, h: 'D0CF11E0A1B11AE1', e: 'msi', m: 'application/x-msi' },
+    { o: 0, h: '4C00000001140200', e: 'lnk', m: 'application/x-ms-shortcut' },
+    { o: 0, h: '49545346', e: 'chm', m: 'application/vnd.ms-htmlhelp' },
+    { o: 0, h: '7668647866696C65', e: 'vhdx', m: 'application/x-vhd' },
+    { o: 0, h: '41433130', e: 'dwg', m: 'image/vnd.dwg' },
+    { o: 0, h: '424C454E444552', e: 'blend', m: 'application/x-blender' },
+    { o: 0, h: 'FFFE', e: 'txt', m: 'text/plain; charset=utf-16le' },
+    { o: 0, h: 'FEFF', e: 'txt', m: 'text/plain; charset=utf-16be' }
+  ];
 
-      if (h.startsWith('504b0304')) {
-        const SCAN_LIMIT = 65536;
-        for (let i = 0; i < ZIP_SIGS.length; i++) {
-          if (findByteSequence(bytes, ZIP_SIGS[i].seq, SCAN_LIMIT)) {
-            return {ext: ZIP_SIGS[i].ext, mime: ZIP_SIGS[i].mime};
-          }
-        }
-        return {ext: 'zip', mime: 'application/zip'};
+  function getFileInfo(bytes) {
+    if (!bytes || bytes.length < 16) return {ext: 'bin', mime: 'application/octet-stream'};
+
+    const scanLen = Math.min(bytes.length, 512);
+    const headerBytes = bytes.subarray(0, scanLen);
+    
+    const getHex = (offset, length) => {
+      if (offset + length > scanLen) return '';
+      let h = '';
+      for (let i = 0; i < length; i++) {
+        h += headerBytes[offset + i].toString(16).padStart(2, '0').toUpperCase();
+      }
+      return h;
+    };
+
+    if (getHex(4, 4) === '66747970') {
+      const brand = String.fromCharCode(...headerBytes.subarray(8, 12)).trim();
+      const brandMap = {
+        'mp41': {ext: 'mp4', mime: 'video/mp4'},
+        'mp42': {ext: 'mp4', mime: 'video/mp4'},
+        'isom': {ext: 'mp4', mime: 'video/mp4'},
+        'M4V':  {ext: 'm4v', mime: 'video/mp4'},
+        'M4A':  {ext: 'm4a', mime: 'audio/mp4'},
+        'qt':   {ext: 'mov', mime: 'video/quicktime'},
+        'heic': {ext: 'heic', mime: 'image/heic'},
+        'heix': {ext: 'heic', mime: 'image/heic'},
+        'mif1': {ext: 'heic', mime: 'image/heic'},
+        'avif': {ext: 'avif', mime: 'image/avif'},
+        'avis': {ext: 'avif', mime: 'image/avif'}
+      };
+      return brandMap[brand] || {ext: 'mp4', mime: 'video/mp4'};
+    }
+
+    if (getHex(0, 4) === '52494646') {
+      const type = String.fromCharCode(...headerBytes.subarray(8, 12));
+      if (type === 'WEBP') return {ext: 'webp', mime: 'image/webp'};
+      if (type === 'WAVE') return {ext: 'wav', mime: 'audio/wav'};
+      if (type === 'AVI ') return {ext: 'avi', mime: 'video/x-msvideo'};
+    }
+    if (getHex(0, 4) === '464F524D') {
+      const type = String.fromCharCode(...headerBytes.subarray(8, 12));
+      if (type === 'AIFF' || type === 'AIFC') return {ext: 'aiff', mime: 'audio/x-aiff'};
+    }
+    if (getHex(0, 4) === '46524D38') {
+      const subType = String.fromCharCode(...headerBytes.subarray(8, 12));
+      if (subType === 'DSD ') return {ext: 'dff', mime: 'audio/x-dff'};
+    }
+
+    for (const rule of MAGIC_RULES) {
+      if (getHex(rule.o, rule.h.length / 2) === rule.h) {
+        if (rule.e === 'mkv' && findByteSequence(headerBytes, [119, 101, 98, 109], 64)) return {ext: 'webm', mime: 'video/webm'};
+        if (rule.e === 'wmv') return rule; 
+        return {ext: rule.e, mime: rule.m};
       }
     }
+
+    if (getHex(0, 4) === '504B0304') {
+      const SCAN_LIMIT = Math.min(bytes.length, 131072);
+      for (let i = 0; i < ZIP_SIGS.length; i++) {
+        if (findByteSequence(bytes, ZIP_SIGS[i].seq, SCAN_LIMIT)) {
+          return {ext: ZIP_SIGS[i].ext, mime: ZIP_SIGS[i].mime};
+        }
+      }
+      return {ext: 'zip', mime: 'application/zip'};
+    }
+
+    const startHex = getHex(0, 5);
+    if (startHex.startsWith('3C737667') || startHex === '3C3F786D6C') {
+      if (findByteSequence(headerBytes, [115, 118, 103], 256)) {
+        return {ext: 'svg', mime: 'image/svg+xml'};
+      }
+    }
+
+    if (bytes.length > 32773) {
+      const isoMagic = String.fromCharCode(...bytes.subarray(32769, 32774));
+      if (isoMagic === 'CD001') {
+        return {ext: 'iso', mime: 'application/x-iso9660-image'};
+      }
+    }
+
     return {ext: 'bin', mime: 'application/octet-stream'};
   }
 
@@ -879,7 +973,7 @@ const Core = (() => {
 })();
 
 /* =========================================================
-   SYSTEM UTILS LAYER — Environment, Network, Time
+   SYSTEM UTILS LAYER
 ========================================================= */
 const SysUtils = (() => {
   const GEO_TTL = 12*60*60*1000;
@@ -920,6 +1014,7 @@ const SysUtils = (() => {
     Kobe:"神戸市", Okayama:"岡山市", Hiroshima:"広島市",
     Kitakyushu:"北九州市", Fukuoka:"福岡市", Kumamoto:"熊本市"
   };
+
   function fmtJapaneseDate(d){
     try{
       const f=new Intl.DateTimeFormat('ja-JP-u-ca-japanese',{year:'numeric',month:'long',day:'numeric',weekday:'long',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false,timeZone:'Asia/Tokyo'});
@@ -1082,7 +1177,7 @@ const SysUtils = (() => {
 })();
 
 /* =========================================================
-   BASE64 ENGINE LAYER — Dedicated Worker
+   BASE64 ENGINE LAYER
 ========================================================= */
 const Base64Engine = (() => {
   let worker = null;
@@ -1252,7 +1347,7 @@ const Base64Engine = (() => {
 })();
 
 /* =========================================================
-   BASE85 ENGINE LAYER — Dedicated Worker (Multi-Variant)
+   BASE85 ENGINE LAYER
 ========================================================= */
 const Base85Engine = (() => {
   let worker = null;
@@ -1512,7 +1607,7 @@ const Base85Engine = (() => {
 })();
 
 /* =========================================================
-   ENGINE LAYER — Hash Execution & Task Control
+   ENGINE LAYER
 ========================================================= */
 const Engine = (() => {
   const WORKER_THRESHOLD = 200000;
@@ -2352,7 +2447,7 @@ const Engine = (() => {
 })();
 
 /* =========================================================
-   UI LAYER — DOM Binding & Rendering
+   UI LAYER
 ========================================================= */
 const UI = (() => {
   const els = {};
@@ -3156,7 +3251,7 @@ const UI = (() => {
 })();
 
 /* =========================================================
-   PRESET LAYER — 初期既定テキストの自動展開と計算トリガー
+   PRESET LAYER
 ========================================================= */
 const PresetLoader = (() => {
   const PRESET_TEXT = `0  0  1  2  3  4  5  6
@@ -3179,7 +3274,7 @@ const PresetLoader = (() => {
 })();
 
 /* =========================================================
-   APP ENTRY — Orchestration
+   APP ENTRY
 ========================================================= */
 (async function initApp() {
   Security.init();
