@@ -1,51 +1,46 @@
- * **Core Computation Features**
-   * Text hash calculation
-   * File hash calculation (Supports drag-and-drop and click-to-select)
-   * Large file stream processing with direct local disk write
-   * Automatic file Magic Number detection
- * **Supported Algorithms**
+ * **Core Hash & Encryption Algorithms**
    * CRC32
    * CRC64 (Supports XZ, WE, ISO, and Redis variants)
-   * MD5 / HMAC-MD5
-   * SHA-1 / HMAC-SHA1
-   * SHA-224 / HMAC-SHA224
-   * SHA-256 / HMAC-SHA256
-   * SHA-384 / HMAC-SHA384
-   * SHA-512 / HMAC-SHA512
-   * Base64 Encoding
-   * Base64 Decoding
-   * Base85 Encoding (Supports ZeroMQ, Standard ASCII85, Adobe ASCII85, and RFC 1924 variants)
-   * Base85 Decoding
- * **Parameters & Computation Settings**
-   * String normalization toggle (NFC, NFKC, None)
-   * HEX output case toggle (lowercase, UPPERCASE)
-   * Salt input and application
-   * HMAC key input and application
-   * Automatic Base file detection toggle
-   * Output character grouping (Concatenated, 2-char, 4-char, 8-char, 16-char)
-   * Iteration count configuration
-   * Iteration mode toggle (Raw Output, Legacy Hex, PBKDF2 Standard)
- * **Results & Export**
-   * Abort/Stop computation for individual algorithms
-   * One-click copy results to clipboard
-   * Base decoded binary file download
-   * Save large Base encoded text as .txt
-   * Save/Export comprehensive computation results as a .txt report
- * **Testing & Verification**
-   * Built-in test vector quick-fill (empty, abc)
-   * Automated algorithm verification mechanism
- * **Interface & System Utilities**
-   * UI theme toggle (DEFAULT, Command Prompt, PowerShell)
-   * Fullscreen mode toggle
-   * Real-time character count and status monitoring panel
-   * Device and system information detection (OS, Resolution, CPU Cores, Memory)
-   * Battery status monitoring
-   * Network connection quality detection (Connection Type, Downlink Speed, RTT)
-   * Public IP and ISP lookup (IPv4 / IPv6)
-   * Geolocation querying (Manual toggle)
-   * Network server time synchronization
-   * ZESS (Zero-Egress Stateless Sandbox) isolation mode
-   * Non-HTTPS insecure environment graceful degradation warning and pure JS algorithm fallback
+   * MD5
+   * SHA-1
+   * SHA-224
+   * SHA-256
+   * SHA-384 (Automatically disabled in non-secure environments)
+   * SHA-512 (Automatically disabled in non-secure environments)
+ * **Encoding & Decoding Functions**
+   * Base64 Encoding and Decoding
+   * Base85 Encoding and Decoding (Supports ZeroMQ, Standard ASCII85, Adobe ASCII85, and RFC 1924 variants)
+ * **Advanced Data Processing**
+   * HMAC Key Processing
+   * Salt Application
+   * Custom Iteration Count
+   * Multiple Iteration Modes (Standard Raw, Legacy Hex, PBKDF2 Overlay XOR)
+   * Unicode Text Normalization Toggle (None, NFC, NFKC)
+   * Hexadecimal (HEX) Case Toggle (Uppercase/Lowercase)
+   * Output String Grouping/Formatting (Concatenated, 2-character, 4-character, 8-character, 16-character)
+ * **File Processing & Identification**
+   * Text Input and File Reading (Supports drag-and-drop and manual selection)
+   * Automatic Binary File Magic Number and MIME Type Identification
+   * Large File Stream Processing via Chunked Reading
+   * Direct Local Disk Output/Saving for Massive Files
+   * Automatic File Detection on Base Decoding with Binary Download Support
+ * **Execution Control & Verification**
+   * Asynchronous Background Processing (Web Worker Support)
+   * Individual Algorithm Execution Interrupt/Stop Control
+   * Real-time Calculation Progress Display
+   * Test Vector Application and Accuracy Verification (Supports empty string and 'abc')
+ * **System Tools & User Interface**
+   * Stateless Network Isolation Sandbox Mode (ZESS)
+   * Restricted Mode Warning for Non-HTTPS Environments
+   * Real-time IP Address, Network Connection Status, and Geolocation Retrieval
+   * System Hardware and Device Information Display (Screen, OS, CPU Cores, Memory, Battery Status)
+   * Network Time Synchronization and Calibration
+   * Character Count Statistics and Processing Status Display
+   * Multiple Visual Theme Toggles (DEFAULT, Command Prompt, PowerShell)
+   * Fullscreen Mode Toggle
+ * **Output & Management**
+   * Click-to-Copy Calculation Results
+   * Comprehensive Result Export Including All Configuration States (TXT Format)
 
 
 
