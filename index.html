@@ -2092,7 +2092,7 @@ const Engine = (() => {
           temp.update(bytes);
           postMessage(temp.finalizeHmacOrNormal());
         } else if (action === 'verifyTest') {
-          const temp = new IncrementalHasher(crc64Variant);
+          const temp = new IncreHasher(crc64Variant);
           temp.update(bytes);
           postMessage({ action: 'verify_result', reqId, results: temp.finalizeHmacOrNormal() });
         } else if (action === 'hashIterative') {
@@ -2112,6 +2112,10 @@ const Engine = (() => {
                         if (key && key.length) temp.initHmac(key);
                     }
 
+                    let xorBuffer = null;
+                    let xorAccumulator32 = null;
+                    let xorAccumulator8 = null;
+
                     for (let i = 1; i <= iterations; i++) {
                         if (cancelFlags[alg]) {
                             postMessage({ action: 'iter_progress', algId: alg, status: 'aborted', hex: finalHex, iter: i - 1, total: iterations });
@@ -2120,9 +2124,11 @@ const Engine = (() => {
                         
                         let payload = currentBytes;
                         if (saltBytes && saltBytes.length > 0) {
-                            payload = new Uint8Array(currentBytes.length + saltBytes.length);
-                            payload.set(currentBytes, 0);
-                            payload.set(saltBytes, currentBytes.length);
+                            if (iterMode !== 'xor' || i === 1) {
+                                payload = new Uint8Array(currentBytes.length + saltBytes.length);
+                                payload.set(currentBytes, 0);
+                                payload.set(saltBytes, currentBytes.length);
+                            }
                         }
                         
                         if (isSubtle) {
@@ -2153,14 +2159,47 @@ const Engine = (() => {
                             else if (alg === 'SHA-256') finalHex = res.sha256;
                         }
 
-                        const now = performance.now();
-                        if (now - lastPostTime >= 16 || i === iterations) {
-                            postMessage({ action: 'iter_progress', algId: alg, status: i === iterations ? 'done' : 'progress', hex: finalHex, iter: i, total: iterations });
-                            lastPostTime = now;
-                            await new Promise(r => setTimeout(r, 0));
-                        }
-                        if (i < iterations) {
-                            currentBytes = (iterMode === 'raw') ? hexToBytes(finalHex) : utf8Encode(finalHex);
+                        const currentHashBytes = hexToBytes(finalHex);
+
+                        if (iterMode === 'xor') {
+                            const currentHash32 = new Uint32Array(currentHashBytes.buffer);
+
+                            if (i === 1) {
+                                xorBuffer = new ArrayBuffer(currentHashBytes.length);
+                                xorAccumulator32 = new Uint32Array(xorBuffer);
+                                xorAccumulator8 = new Uint8Array(xorBuffer);
+                                for (let j = 0; j < currentHash32.length; j++) {
+                                    xorAccumulator32[j] = currentHash32[j];
+                                }
+                            } else {
+                                for (let j = 0; j < currentHash32.length; j++) {
+                                    xorAccumulator32[j] ^= currentHash32[j];
+                                }
+                            }
+
+                            const now = performance.now();
+                            if (now - lastPostTime >= 16 || i === iterations) {
+                                let tempHex = '';
+                                for (let j = 0; j < xorAccumulator8.length; j++) {
+                                    tempHex += HEX_LUT[xorAccumulator8[j]];
+                                }
+                                finalHex = tempHex;
+                                postMessage({ action: 'iter_progress', algId: alg, status: i === iterations ? 'done' : 'progress', hex: finalHex, iter: i, total: iterations });
+                                lastPostTime = now;
+                                await new Promise(r => setTimeout(r, 0));
+                            }
+                            
+                            currentBytes = currentHashBytes;
+                        } else {
+                            const now = performance.now();
+                            if (now - lastPostTime >= 16 || i === iterations) {
+                                postMessage({ action: 'iter_progress', algId: alg, status: i === iterations ? 'done' : 'progress', hex: finalHex, iter: i, total: iterations });
+                                lastPostTime = now;
+                                await new Promise(r => setTimeout(r, 0));
+                            }
+                            if (i < iterations) {
+                                currentBytes = (iterMode === 'raw') ? hexToBytes(finalHex) : utf8Encode(finalHex);
+                            }
                         }
                     }
                 })().catch(e => {
@@ -2696,7 +2735,7 @@ const UI = (() => {
     activeOpts.push(`CRC64: ${AppState.crc64Variant}`);
     if (AppState.Base85Encode || AppState.Base85Decode) activeOpts.push(`Base85: ${AppState.base85Variant}`);
     const optLabel = activeOpts.length ? `｜${activeOpts.join('｜')}` : '';
-    const iterLabel = iterations > 1 ? `｜反復: ${iterations}回 (${AppState.iterMode === 'raw' ? '標準' : '旧互換'})` : '';
+    const iterLabel = iterations > 1 ? `｜反復: ${iterations}回 (${AppState.iterMode === 'raw' ? '標準' : AppState.iterMode === 'hex' ? '旧互換' : 'PBKDF2重畳'})` : '';
     els.metaEl.textContent = `${countLabel} ${count}${countUnit}｜正規化: ${normLabel}｜HEX: ${hexLabel}｜区切り: ${groupLabel}${optLabel}${iterLabel}｜ステータス: ${statusText}`;
   }
 
@@ -3025,8 +3064,16 @@ const UI = (() => {
                 break;
             }
             case 'toggleIterMode': {
-                AppState.iterMode = AppState.iterMode === 'raw' ? 'hex' : 'raw';
-                els.iterModeToggleBtn.textContent = `反復: ${AppState.iterMode === 'raw' ? '標準 (Raw)' : '旧互換 (Hex)'}`;
+                if (AppState.iterMode === 'raw') {
+                    AppState.iterMode = 'hex';
+                    els.iterModeToggleBtn.textContent = '反復: 旧互換 (Hex)';
+                } else if (AppState.iterMode === 'hex') {
+                    AppState.iterMode = 'xor';
+                    els.iterModeToggleBtn.textContent = '反復: PBKDF2重畳 (XOR)';
+                } else {
+                    AppState.iterMode = 'raw';
+                    els.iterModeToggleBtn.textContent = '反復: 標準 (Raw)';
+                }
                 scheduleUpdate();
                 break;
             }
@@ -3093,7 +3140,7 @@ const UI = (() => {
                 const lines = [];
                 lines.push('SONY HASH export');
                 lines.push('製造: ソニーグループ株式会社 / インターナショナル・ビジネス・マシーンズ・コーポレーション（IBM） 2026');
-                lines.push(`正規化: ${AppState.currentFile ? 'なし' : (AppState.normalization === 'none' ? 'なし' : AppState.normalization)}｜HEX: ${AppState.hexUpper ? 'UPPERCASE' : 'lowercase'}｜区切り: ${AppState.grouping ? AppState.grouping+'字' : '連結'}｜反復: ${els.iterIn.value} (${AppState.iterMode === 'raw' ? '標準' : '旧互換'})`);
+                lines.push(`正規化: ${AppState.currentFile ? 'なし' : (AppState.normalization === 'none' ? 'なし' : AppState.normalization)}｜HEX: ${AppState.hexUpper ? 'UPPERCASE' : 'lowercase'}｜区切り: ${AppState.grouping ? AppState.grouping+'字' : '連結'}｜反復: ${els.iterIn.value} (${AppState.iterMode === 'raw' ? '標準' : AppState.iterMode === 'hex' ? '旧互換' : 'PBKDF2重畳'})`);
                 if (AppState.salt) lines.push(`Salt: ${AppState.salt}`);
                 if (AppState.hmacKey) lines.push(`HMAC Key: ${AppState.hmacKey}`);
                 lines.push(`CRC64 モード: ${AppState.crc64Variant}`);
