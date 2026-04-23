@@ -24,7 +24,7 @@
    * Automatic Base file detection toggle
    * Output character grouping (Concatenated, 2-char, 4-char, 8-char, 16-char)
    * Iteration count configuration
-   * Iteration mode toggle (Standard Raw, Legacy Hex)
+   * Iteration mode toggle (Raw Output, Legacy Hex, PBKDF2 Standard)
  * **Results & Export**
    * Abort/Stop computation for individual algorithms
    * One-click copy results to clipboard
