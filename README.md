@@ -14,7 +14,7 @@
    * HMAC Key Processing
    * Salt Application
    * Custom Iteration Count
-   * Multiple Iteration Modes (Standard Raw, Legacy Hex, PBKDF2 Overlay XOR)
+   * Multiple Iteration Modes (Raw, Hex, XOR)
    * Unicode Text Normalization Toggle (None, NFC, NFKC)
    * Hexadecimal (HEX) Case Toggle (Uppercase/Lowercase)
    * Output String Grouping/Formatting (Concatenated, 2-character, 4-character, 8-character, 16-character)
