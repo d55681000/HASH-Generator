@@ -243,6 +243,17 @@
   .hint{color:var(--muted);font-size:clamp(11px,2.6vw,13px);margin-top:6px; transition: color 0.4s ease;}
   .toolbar{display:flex;align-items:center;gap:12px;padding:0 clamp(12px,3vw,18px);flex-wrap:wrap}
   .toolbar .sep{opacity:.5}
+  
+  .base-group-container {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .base-group-container.hidden {
+    display: none;
+  }
+
   .list{display:grid;grid-template-columns:1fr;gap:6px;padding:0 clamp(12px,3vw,18px)}
   @media (min-width:720px){ .list{grid-template-columns:1fr 1fr} }
   .row{display:flex;gap:10px;align-items:flex-start;padding:2px 0}
@@ -364,15 +375,21 @@
       <span class="sep hint">/</span>
       <button id="hmacToggle" class="link" aria-label="HMACの切替" data-action="toggleHmac">HMAC: オフ</button>
       <span class="sep hint">/</span>
-      <button id="Base64EncToggle" class="link" aria-label="Base64エンコードの切替" data-action="toggleBase64Enc">Base64 Enc: オフ</button>
-      <span class="sep hint">/</span>
-      <button id="Base64DecToggle" class="link" aria-label="Base64デコードの切替" data-action="toggleBase64Dec">Base64 Dec: オフ</button>
-      <span class="sep hint">/</span>
-      <button id="Base85EncToggle" class="link" aria-label="Base85エンコードの切替" data-action="toggleBase85Enc">Base85 Enc: オフ</button>
-      <span class="sep hint">/</span>
-      <button id="Base85DecToggle" class="link" aria-label="Base85デコードの切替" data-action="toggleBase85Dec">Base85 Dec: オフ</button>
-      <span class="sep hint">/</span>
-      <button id="baseFileDetectToggle" class="link" aria-label="Base自動ファイル判別の切替" data-action="toggleBaseFileDetect">Base自動ファイル判別: オフ</button>
+      
+      <button id="baseGroupToggle" class="link" aria-label="BASEオプション群の切替" data-action="toggleBaseGroup">BASE: 展開 [+]</button>
+      
+      <span id="baseOptionsContainer" class="base-group-container hidden">
+        <span class="sep hint">/</span>
+        <button id="Base64EncToggle" class="link" aria-label="Base64エンコードの切替" data-action="toggleBase64Enc">Base64 Enc: オフ</button>
+        <span class="sep hint">/</span>
+        <button id="Base64DecToggle" class="link" aria-label="Base64デコードの切替" data-action="toggleBase64Dec">Base64 Dec: オフ</button>
+        <span class="sep hint">/</span>
+        <button id="Base85EncToggle" class="link" aria-label="Base85エンコードの切替" data-action="toggleBase85Enc">Base85 Enc: オフ</button>
+        <span class="sep hint">/</span>
+        <button id="Base85DecToggle" class="link" aria-label="Base85デコードの切替" data-action="toggleBase85Dec">Base85 Dec: オフ</button>
+        <span class="sep hint">/</span>
+        <button id="baseFileDetectToggle" class="link" aria-label="Base自動ファイル判別の切替" data-action="toggleBaseFileDetect">Base自動判別: オフ</button>
+      </span>
       
       <span class="sep hint">/</span>
       <label for="grouping" class="hint" style="margin-right: -4px;">区切り:</label>
@@ -560,6 +577,7 @@ const AppState = {
   iterMode: 'raw',
   showSalt: false,
   showHmac: false,
+  showBaseGroup: false, 
   Base64Encode: false,
   Base64Decode: false,
   Base85Encode: false,
@@ -2522,6 +2540,11 @@ const UI = (() => {
     els.hmacToggleBtn = document.getElementById('hmacToggle');
     els.saltIn = document.getElementById('salt-in');
     els.hmacIn = document.getElementById('hmac-in');
+    
+    // UI参照: BASEグループ要素
+    els.baseGroupToggle = document.getElementById('baseGroupToggle');
+    els.baseOptionsContainer = document.getElementById('baseOptionsContainer');
+    
     els.Base64EncToggleBtn = document.getElementById('Base64EncToggle');
     els.Base64DecToggleBtn = document.getElementById('Base64DecToggle');
     els.rowBase64Enc = document.getElementById('row-Base64-enc');
@@ -3004,6 +3027,17 @@ const UI = (() => {
                 if (!AppState.showHmac) { els.hmacIn.value = ''; AppState.hmacKey = ''; scheduleUpdate(); }
                 break;
             }
+            // BASEグループの折畳・展開処理
+            case 'toggleBaseGroup': {
+                AppState.showBaseGroup = !AppState.showBaseGroup;
+                els.baseGroupToggle.textContent = AppState.showBaseGroup ? 'BASE: 折畳 [-]' : 'BASE: 展開 [+]';
+                if (AppState.showBaseGroup) {
+                    els.baseOptionsContainer.classList.remove('hidden');
+                } else {
+                    els.baseOptionsContainer.classList.add('hidden');
+                }
+                break;
+            }
             case 'toggleBase64Enc': {
                 AppState.Base64Encode = !AppState.Base64Encode;
                 els.Base64EncToggleBtn.textContent = `Base64 Enc: ${AppState.Base64Encode ? 'オン' : 'オフ'}`;
@@ -3034,7 +3068,7 @@ const UI = (() => {
             }
             case 'toggleBaseFileDetect': {
                 AppState.baseFileDetect = !AppState.baseFileDetect;
-                els.baseFileDetectToggleBtn.textContent = `Base自動ファイル判別: ${AppState.baseFileDetect ? 'オン' : 'オフ'}`;
+                els.baseFileDetectToggleBtn.textContent = `Base自動判別: ${AppState.baseFileDetect ? 'オン' : 'オフ'}`;
                 scheduleUpdate();
                 break;
             }
