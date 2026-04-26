@@ -356,14 +356,25 @@
   </header>
   <main class="container" role="main">
     <section class="input-wrap" id="drop-zone">
-      <textarea id="in" placeholder="ここに入力、またはファイルをドロップして計算します" autocomplete="off" spellcheck="false" autocorrect="off"></textarea>
+      <textarea id="in" placeholder="ここに入力、またはファイルをドロップして計算します" autocomplete="one-time-code" spellcheck="false" autocorrect="off"></textarea>
       <div id="meta" class="hint">文字数 0｜正規化: なし｜HEX: lowercase｜区切り: 区切りなし｜ステータス: 待機</div>
       <input type="file" id="f-hidden" />
     </section>
     
     <section class="input-wrap" id="adv-inputs" style="padding-top:0; padding-bottom:10px; display:none; gap:20px; flex-wrap:wrap;">
-      <input type="text" id="salt-in" class="text-input" placeholder="ソルト (Salt)" autocomplete="new-password" spellcheck="false" autocorrect="off" style="flex:1; min-width:200px; display:none;">
-      <input type="text" id="hmac-in" class="text-input" placeholder="HMAC キー (Key)" autocomplete="new-password" spellcheck="false" autocorrect="off" style="flex:1; min-width:200px; display:none;">
+      
+      <input type="text" tabindex="-1" autocomplete="username" style="position:absolute; opacity:0; top:-9999px; left:-9999px;" aria-hidden="true">
+      <input type="password" tabindex="-1" autocomplete="current-password" style="position:absolute; opacity:0; top:-9999px; left:-9999px;" aria-hidden="true">
+
+      <input type="text" id="salt-in" class="text-input" placeholder="ソルト (Salt)" 
+             autocomplete="one-time-code" data-lpignore="true" spellcheck="false" autocorrect="off" 
+             readonly onfocus="this.removeAttribute('readonly');" 
+             style="flex:1; min-width:200px; display:none;">
+             
+      <input type="text" id="hmac-in" class="text-input" placeholder="HMAC キー (Key)" 
+             autocomplete="one-time-code" data-lpignore="true" spellcheck="false" autocorrect="off" 
+             readonly onfocus="this.removeAttribute('readonly');" 
+             style="flex:1; min-width:200px; display:none;">
     </section>
 
     <div class="toolbar">
