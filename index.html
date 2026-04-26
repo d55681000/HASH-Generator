@@ -3496,7 +3496,7 @@ const PresetLoader = (() => {
     if (e.key === 'Escape') {
       escPressCount++;
       clearTimeout(escResetTimeout);
-      if (escPressCount >= 2) {
+      if (escPressCount >= 4) {
         triggerPanic();
         return;
       }
