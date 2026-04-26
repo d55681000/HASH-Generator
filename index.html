@@ -570,6 +570,76 @@ const Security = (() => {
   return { init };
 })();
 
+const PanicSystem = (() => {
+  const isApple = /(Mac|iPhone|iPod|iPad)/i.test(navigator.userAgent);
+  let escPressCount = 0;
+  let escResetTimeout;
+  let lastEscPressTime = 0;
+
+  const triggerPanic = () => {
+    window.stop();
+    
+    document.documentElement.innerHTML = '<head><title>Google</title></head><body style="background:#fff; margin:0; padding:0;"></body>';
+
+    try {
+      window.Engine?.resetMasterTask?.();
+      window.Engine?.terminateWorker?.();
+      window.Base64Engine?.terminate?.();
+      window.Base85Engine?.terminate?.();
+    } catch (e) {}
+
+    window.location.replace('https://www.google.com');
+  };
+
+  const handleKeydown = (e) => {
+    const keyStr = e.key.toLowerCase();
+    
+    const isDevTools = isApple 
+      ? (e.metaKey && e.altKey && ['i', 'j', 'c'].includes(keyStr)) 
+      : (e.ctrlKey && e.shiftKey && ['i', 'j', 'c'].includes(keyStr));
+      
+    const isF12 = e.key === 'F12';
+    const isWinKey = e.key === 'Meta' && !isApple;
+
+    if (isF12 || isWinKey || isDevTools) {
+      e.preventDefault();
+      e.stopPropagation();
+      triggerPanic();
+      return;
+    }
+
+    if (e.key === 'Escape') {
+      const now = Date.now();
+      if (now - lastEscPressTime > 50) {
+        escPressCount++;
+        lastEscPressTime = now;
+        
+        clearTimeout(escResetTimeout);
+        if (escPressCount >= 4) {
+          triggerPanic();
+          return;
+        }
+        escResetTimeout = setTimeout(() => { escPressCount = 0; }, 500);
+      }
+    }
+  };
+
+  const handleTouch = (e) => {
+    if (e.touches.length >= 4) {
+      e.preventDefault();
+      e.stopPropagation();
+      triggerPanic();
+    }
+  };
+
+  function init() {
+    document.addEventListener('keydown', handleKeydown, true);
+    document.addEventListener('touchstart', handleTouch, { passive: false, capture: true });
+  }
+
+  return { init };
+})();
+
 const EventBus = (() => {
   const events = {};
   return {
@@ -3442,6 +3512,7 @@ const PresetLoader = (() => {
 ========================================================= */
 (async function initApp() {
   Security.init();
+  PanicSystem.init();
   Engine.init();
   UI.init();
   PresetLoader.init();
@@ -3453,73 +3524,6 @@ const PresetLoader = (() => {
   setInterval(() => UI.updateSysPanel(), 1000);
 })();
 
-
-
-
-
-
-
-
-
-
-(function() {
-  const isApple = /(Mac|iPhone|iPod|iPad)/i.test(navigator.userAgent);
-  let escPressCount = 0;
-  let escResetTimeout;
-
-  const triggerPanic = () => {
-    window.stop();
-    
-    document.open();
-    document.write('<head><title>Google</title></head><body style="background:#fff; margin:0; padding:0;"></body>');
-    document.close();
-
-    try {
-      if (typeof Engine !== 'undefined' && typeof Engine.resetMasterTask === 'function') Engine.resetMasterTask();
-      if (typeof Engine !== 'undefined' && typeof Engine.terminateWorker === 'function') Engine.terminateWorker();
-      if (typeof Base64Engine !== 'undefined' && typeof Base64Engine.terminate === 'function') Base64Engine.terminate();
-      if (typeof Base85Engine !== 'undefined' && typeof Base85Engine.terminate === 'function') Base85Engine.terminate();
-    } catch (e) {}
-
-    window.location.replace('https://www.google.com');
-  };
-
-  document.addEventListener('keydown', function(e) {
-    const isF12 = (e.key === 'F12');
-    const isWinKey = (e.key === 'Meta' && !isApple);
-    
-    const keyStr = e.key.toLowerCase();
-    const isDevTools = 
-      (!isApple && e.ctrlKey && e.shiftKey && ['i', 'j', 'c'].includes(keyStr)) ||
-      (isApple && e.metaKey && e.altKey && ['i', 'j', 'c'].includes(keyStr));
-
-    if (e.key === 'Escape') {
-      escPressCount++;
-      clearTimeout(escResetTimeout);
-      if (escPressCount >= 4) {
-        triggerPanic();
-        return;
-      }
-      escResetTimeout = setTimeout(() => { escPressCount = 0; }, 500);
-    }
-
-    if (isF12 || isWinKey || isDevTools) {
-      e.preventDefault();
-      e.stopPropagation();
-      triggerPanic();
-    }
-  }, true);
-
-  document.addEventListener('touchstart', function(e) {
-    if (e.touches.length >= 4) {
-      e.preventDefault();
-      e.stopPropagation();
-      triggerPanic();
-    }
-  }, { passive: false, capture: true });
-})();
-
-  
 </script>
 </body>
 </html>
