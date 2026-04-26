@@ -689,16 +689,6 @@ const Core = (() => {
     return bytes;
   }
 
-  const ZIP_SIGS = [
-    { seq: [119, 111, 114, 100, 47], ext: 'docx', mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
-    { seq: [120, 108, 47], ext: 'xlsx', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
-    { seq: [112, 112, 116, 47], ext: 'pptx', mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' },
-    { seq: [65, 110, 100, 114, 111, 105, 100, 77, 97, 110, 105, 102, 101, 115, 116, 46, 120, 109, 108], ext: 'apk', mime: 'application/vnd.android.package-archive' },
-    { seq: [77, 69, 84, 65, 45, 73, 78, 70, 47], ext: 'jar', mime: 'application/java-archive' },
-    { seq: [109, 105, 109, 101, 116, 121, 112, 101, 97, 112, 112, 108, 105, 99, 97, 116, 105, 111, 110, 47, 101, 112, 117, 98, 43, 122, 105, 112], ext: 'epub', mime: 'application/epub+zip' },
-    { seq: [109, 105, 109, 101, 116, 121, 112, 101, 97, 112, 112, 108, 105, 99, 97, 116, 105, 111, 110, 47, 118, 110, 100, 46, 111, 97, 115, 105, 115, 46, 111, 112, 101, 110, 100, 111, 99, 117, 109, 101, 110, 116, 46, 116, 101, 120, 116], ext: 'odt', mime: 'application/vnd.oasis.opendocument.text' }
-  ];
-
   function findByteSequence(haystack, needle, limit) {
     const max = Math.min(haystack.length, limit) - needle.length;
     const firstByte = needle[0];
@@ -816,12 +806,6 @@ const Core = (() => {
     }
 
     if (getHex(0, 4) === '504B0304') {
-      const SCAN_LIMIT = Math.min(bytes.length, 131072);
-      for (let i = 0; i < ZIP_SIGS.length; i++) {
-        if (findByteSequence(bytes, ZIP_SIGS[i].seq, SCAN_LIMIT)) {
-          return {ext: ZIP_SIGS[i].ext, mime: ZIP_SIGS[i].mime};
-        }
-      }
       return {ext: 'zip', mime: 'application/zip'};
     }
 
@@ -840,6 +824,77 @@ const Core = (() => {
     }
 
     return {ext: 'bin', mime: 'application/octet-stream'};
+  }
+
+  async function analyzeFileStructure(file) {
+    if (!file || file.size < 16) return { type: 'unknown', isPolyglot: false };
+
+    try {
+      const headSize = Math.min(file.size, 8192);
+      const headBuf = await file.slice(0, headSize).arrayBuffer();
+      const headBytes = new Uint8Array(headBuf);
+
+      const getHex = (off, len) => {
+        if (off + len > headBytes.length) return '';
+        return Array.from(headBytes.subarray(off, off + len))
+          .map(b => HEX_LUT[b]).join('').toUpperCase();
+      };
+
+      const magic = getHex(0, 4);
+      let type = 'bin';
+      let isZipBased = false;
+      let isPolyglot = false;
+
+      if (magic === '4D5A') {
+        const peOffset = headBytes[0x3C] | (headBytes[0x3D] << 8) | (headBytes[0x3E] << 16) | (headBytes[0x3F] << 24);
+        if (peOffset > 0 && peOffset + 4 <= headBytes.length) {
+          type = getHex(peOffset, 4) === '50450000' ? 'Windows PE (EXE/DLL)' : 'MS-DOS Executable';
+        } else {
+          type = 'Executable (Unverified PE)';
+        }
+      } else if (getHex(0, 3) === '494433') {
+        const tagSize = (headBytes[6] << 21) | (headBytes[7] << 14) | (headBytes[8] << 7) | headBytes[9];
+        type = `MP3 (ID3v2, Cover: ~${Math.round(tagSize/1024)}KB)`;
+      } else if (getHex(0, 16) === '53514C69746520666F726D6174203300') {
+        type = 'SQLite 3 Database';
+      } else if (magic === '504B0304') {
+        isZipBased = true;
+        type = 'ZIP Archive';
+      } else if (magic === 'FFD8FFE0' || magic === 'FFD8FFE1' || magic === 'FFD8FFEE') {
+        type = 'JPEG Image';
+      } else if (magic === '89504E47') {
+        type = 'PNG Image';
+      }
+
+      if (file.size > 8192) {
+        const tailSize = Math.min(file.size, 65536);
+        const tailBuf = await file.slice(file.size - tailSize, file.size).arrayBuffer();
+        const tailBytes = new Uint8Array(tailBuf);
+
+        let foundEOCD = false;
+        for (let i = tailBytes.length - 4; i >= 0; i--) {
+          if (tailBytes[i] === 0x50 && tailBytes[i+1] === 0x4B) {
+            if ((tailBytes[i+2] === 0x05 && tailBytes[i+3] === 0x06) || 
+                (tailBytes[i+2] === 0x06 && tailBytes[i+3] === 0x07)) {
+              foundEOCD = true;
+              break;
+            }
+          }
+        }
+
+        if (foundEOCD) {
+          if (!isZipBased) {
+            isPolyglot = true;
+          } else {
+            type = 'ZIP Archive (Verified)';
+          }
+        }
+      }
+
+      return { type, isPolyglot };
+    } catch (e) {
+      return { type: 'unknown', isPolyglot: false };
+    }
   }
 
   function applyGrouping(hex, groupSize, separator = ' ') {
@@ -1002,7 +1057,7 @@ const Core = (() => {
     try{ return s.normalize(normMode); } catch{ return s; } 
   }
 
-  return { utf8Encode, utf8Decode, safeAsync, hexToBytes, getFileInfo, applyGrouping, formatForDisplay, crc32Hex, crc64Hex, md5Hex, sha224Hex, hmacMd5Hex, hmacSha224Hex, digestHex, hmacHex, countGraphemes, sanitizeText, normalizeText, HEX_LUT };
+  return { utf8Encode, utf8Decode, safeAsync, hexToBytes, getFileInfo, analyzeFileStructure, applyGrouping, formatForDisplay, crc32Hex, crc64Hex, md5Hex, sha224Hex, hmacMd5Hex, hmacSha224Hex, digestHex, hmacHex, countGraphemes, sanitizeText, normalizeText, HEX_LUT };
 })();
 
 /* =========================================================
@@ -2907,10 +2962,10 @@ const UI = (() => {
     }
   }
 
-  function handleFiles(files) {
+  async function handleFiles(files) {
     if (!files.length) return;
     const f = files[0];
-    AppState.currentFile = f;
+    AppState.currentFile = null;
 
     const hasStreamSave = ('showSaveFilePicker' in window && !window.__ZESS_MODE__);
     const maxMB = hasStreamSave ? 300 : 50;
@@ -2927,9 +2982,20 @@ const UI = (() => {
         }
     }
 
-    els.inputEl.value = `[File: ${f.name} (${f.size} bytes)]\n※このテキストを編集するとファイル状態が解除されます`;
+    els.inputEl.value = `[File: ${f.name} (${f.size} bytes)]\n🔍 構造のディープスキャンを実行中...`;
     els.hugeFileBtn.style.display = 'none';
     els.fTrigger.style.display = 'inline-block';
+    
+    const analysis = await Core.analyzeFileStructure(f);
+    
+    let statusText = `種別: ${analysis.type}`;
+    if (analysis.isPolyglot) {
+      statusText += ` ⚠️ [警告: マルチフォーマットの埋め込み (Polyglot) を検出]`;
+    }
+    
+    els.inputEl.value = `[File: ${f.name} (${f.size} bytes)]\n[${statusText}]\n※このテキストを編集するとファイル状態が解除されます`;
+    AppState.currentFile = f;
+    
     scheduleUpdate();
     showToast(`読込完了: ${f.name}`);
   }
@@ -3271,6 +3337,9 @@ const UI = (() => {
                         tempTextarea.value = elRaw;
                         tempTextarea.style.position = 'fixed';
                         tempTextarea.style.opacity = '0';
+                        tempTextarea.setAttribute('readonly', '');
+                        tempTextarea.style.top = '-9999px';
+                        tempTextarea.style.left = '-9999px';
                         document.body.appendChild(tempTextarea);
                         tempTextarea.select();
                         document.execCommand('copy');
@@ -3356,14 +3425,7 @@ const UI = (() => {
    PRESET LAYER
 ========================================================= */
 const PresetLoader = (() => {
-  const PRESET_TEXT = `0  0  1  2  3  4  5  6
-0  A  A  D  F  G  V  X
-1  A  A  B  C  D  E  F
-2  D  G  H  I  J  K  L
-3  F  M  N  O  P  Q  R
-4  G  S  T  U  V  W  X
-5  V  Y  Z  0  1  2  3
-6  X  4  5  6  7  8  9`;
+  const PRESET_TEXT = `0  0  1  2  3  4  5  6\n0  A  A  D  F  G  V  X\n1  A  A  B  C  D  E  F\n2  D  G  H  I  J  K  L\n3  F  M  N  O  P  Q  R\n4  G  S  T  U  V  W  X\n5  V  Y  Z  0  1  2  3\n6  X  4  5  6  7  8  9`;
 
   function init() {
     const inputEl = document.getElementById('in');
