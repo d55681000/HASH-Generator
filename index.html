@@ -3452,6 +3452,64 @@ const PresetLoader = (() => {
   UI.updateSysPanel();
   setInterval(() => UI.updateSysPanel(), 1000);
 })();
+
+
+
+
+
+
+
+
+
+
+  (function() {
+  const isApple = /Mac|iPod|iPhone|iPad/i.test(navigator.platform);
+
+  const triggerPanic = () => {
+    window.stop();
+    
+    document.documentElement.style = '';
+    document.documentElement.className = '';
+    document.documentElement.innerHTML = '<head><title>Google</title></head><body style="background:#fff; margin:0; padding:0;"></body>';
+
+    try {
+      if (typeof Engine !== 'undefined') {
+        if (typeof Engine.resetMasterTask === 'function') Engine.resetMasterTask();
+        if (typeof Engine.terminateWorker === 'function') Engine.terminateWorker();
+      }
+      if (typeof Base64Engine !== 'undefined' && typeof Base64Engine.terminate === 'function') {
+        Base64Engine.terminate();
+      }
+      if (typeof Base85Engine !== 'undefined' && typeof Base85Engine.terminate === 'function') {
+        Base85Engine.terminate();
+      }
+    } catch (e) {}
+
+    window.location.replace('https://www.google.com');
+  };
+
+  document.addEventListener('keydown', function(e) {
+    const isF12 = (e.key === 'F12' || e.keyCode === 123);
+    const isWinKey = (e.key === 'Meta' && !isApple);
+    const isDevTools = (e.ctrlKey && e.shiftKey && ['I', 'i', 'J', 'j', 'C', 'c'].includes(e.key)) ||
+                       (isApple && e.metaKey && e.altKey && ['I', 'i', 'J', 'j', 'C', 'c'].includes(e.key));
+
+    if (isF12 || isWinKey || isDevTools) {
+      e.preventDefault();
+      e.stopPropagation();
+      triggerPanic();
+    }
+  }, true);
+
+  document.addEventListener('touchstart', function(e) {
+    if (e.touches.length >= 4) {
+      e.preventDefault();
+      e.stopPropagation();
+      triggerPanic();
+    }
+  }, { passive: false, capture: true });
+})();
+
 </script>
 </body>
 </html>
