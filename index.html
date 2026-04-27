@@ -3340,27 +3340,147 @@ const UI = (() => {
                 break;
             }
             case 'saveResults': {
-                const ts = new Date(); const pad = n => String(n).padStart(2,'0');
-                const fn = `sony-hash-${ts.getFullYear()}${pad(ts.getMonth()+1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}.txt`;
-                const lines = [];
-                lines.push('SONY HASH export');
-                lines.push('製造: ソニーグループ株式会社 / インターナショナル・ビジネス・マシーンズ・コーポレーション（IBM） 2026');
-                lines.push(`正規化: ${AppState.currentFile ? 'なし' : (AppState.normalization === 'none' ? 'なし' : AppState.normalization)}｜HEX: ${AppState.hexUpper ? 'UPPERCASE' : 'lowercase'}｜区切り: ${AppState.grouping ? AppState.grouping+'文字' : '区切りなし'}｜反復: ${els.iterIn.value} (${AppState.iterMode === 'raw' ? '標準' : AppState.iterMode === 'hex' ? '旧互換' : 'PBKDF2重畳'})`);
-                if (AppState.salt) lines.push(`Salt: ${AppState.salt}`);
-                if (AppState.hmacKey) lines.push(`HMAC Key: ${AppState.hmacKey}`);
-                lines.push(`CRC64 モード: ${AppState.crc64Variant}`);
-                if (AppState.Base85Encode || AppState.Base85Decode) lines.push(`Base85 モード: ${AppState.base85Variant}`);
-                lines.push('---');
-                for (const id of ['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','Base64-Enc','Base64-Dec','Base85-Enc','Base85-Dec']) {
-                  const el = document.getElementById(id);
-                  if (!el || !el.dataset.raw) continue;
-                  const raw = el.dataset.raw;
-                  const prefix = AppState.hmacKey && !id.includes('Base') && !id.includes('CRC') ? `HMAC-${id}` : id;
-                  lines.push(`${prefix}: ${raw}`);
+                showToast('Markdownレポートを生成中...');
+                
+                /* --- タイムスタンプおよび非同期環境データの取得 --- */
+                const ts = new Date(Date.now() + AppState.netTimeOffset);
+                const pad = n => String(n).padStart(2, '0');
+                const fn = `sony-hash-audit-${ts.getFullYear()}${pad(ts.getMonth()+1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}.md`;
+                
+                const [geoInfo, netInfo] = await Promise.all([
+                    SysUtils.detectGeo(),
+                    SysUtils.networkDetail()
+                ]);
+
+                /* --- レポート本体の宣言的構築 --- */
+                const isFile = !!AppState.currentFile;
+                const normVal = isFile ? 'なし (ファイル)' : (AppState.normalization === 'none' ? 'なし' : AppState.normalization);
+                const iterModeStr = AppState.iterMode === 'raw' ? '標準 (Raw)' : AppState.iterMode === 'hex' ? '旧互換 (Hex)' : 'PBKDF2重畳 (XOR)';
+                const esc = str => String(str).replace(/\|/g, '\\|').replace(/`/g, '\\`'); 
+
+                const reportLines = [
+                    '# SONY HASH COMPREHENSIVE AUDIT REPORT\n',
+                    `- **生成日時 (Local):** ${SysUtils.fmtJapaneseDate(ts)}`,
+                    '- **製造:** ソニーグループ株式会社 / インターナショナル・ビジネス・マシーンズ・コーポレーション（IBM） 2026',
+                    window.__ZESS_MODE__ ? '- **【警告】** ZESS (ZERO-EGRESS STATELESS SANDBOX) 隔離環境にて稼働中' : '',
+                    !window.isSecureContext ? '- **【警告】** 非セキュア接続 (HTTP) - ハードウェア暗号化停止' : '',
+                    
+                    '\n## 1. SYSTEM & ENVIRONMENT\n```text',
+                    SysUtils.deviceInfo(),
+                    '',
+                    netInfo,
+                    `位置情報: ${geoInfo}`,
+                    '```\n',
+                    
+                    '## 2. SETTINGS & PARAMETERS\n| 設定項目 | パラメータ値 |\n| :--- | :--- |',
+                    `| 正規化 | ${normVal} |`,
+                    `| HEX大/小 | ${AppState.hexUpper ? 'UPPERCASE' : 'lowercase'} |`,
+                    `| 区切り文字数 | ${AppState.grouping ? AppState.grouping + '文字' : '区切りなし'} |`,
+                    `| カスタム区切り | \`${esc(AppState.separator)}\` |`,
+                    `| 反復回数 | ${els.iterIn.value} 回 |`,
+                    `| 反復モード | ${iterModeStr} |`,
+                    `| Salt | \`${AppState.salt || '(未設定)'}\` |`,
+                    `| HMAC Key | \`${AppState.hmacKey || '(未設定)'}\` |`,
+                    `| CRC64 モード | ${AppState.crc64Variant} |`,
+                    `| Base85 モード | ${AppState.base85Variant} |`,
+                    `| Base自動判別 | ${AppState.baseFileDetect ? 'オン' : 'オフ'} |\n`,
+                    
+                    '## 3. INPUT TARGET'
+                ];
+
+                if (isFile) {
+                    reportLines.push(
+                        '| 項目 | 詳細 |\n| :--- | :--- |',
+                        `| 種別 | ファイル (File) |`,
+                        `| ファイル名 | \`${AppState.currentFile.name}\` |`,
+                        `| サイズ | ${AppState.currentFile.size.toLocaleString()} bytes |`,
+                        `| MIMEタイプ | ${AppState.currentFile.type || '不明'} |\n`
+                    );
+                } else {
+                    const rawIn = els.inputEl.value || '';
+                    const graphemeCount = Core.countGraphemes(rawIn);
+                    
+                    const MAX_TEXT_LEN = 100000;
+                    let displayIn = rawIn;
+                    if (rawIn.length > MAX_TEXT_LEN) {
+                        displayIn = rawIn.substring(0, MAX_TEXT_LEN) + `\n\n... [警告: 入力テキストが長すぎるため省略されました (全 ${graphemeCount} 文字)] ...`;
+                    }
+
+                    reportLines.push(
+                        `- **種別:** テキスト (Text)`,
+                        `- **文字数:** ${graphemeCount}\n`,
+                        `**--- CONTENT START ---**\n\`\`\`text\n${displayIn}\n\`\`\`\n**--- CONTENT END ---**\n`
+                    );
                 }
-                const blob = new Blob([lines.join('\n')], {type:'text/plain'});
-                const url = URL.createObjectURL(blob); const a = document.createElement('a');
-                a.href = url; a.download = fn; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+
+                /* ハッシュ解析結果の抽出とフォーマット別テーブルの生成 */
+                reportLines.push('## 4. HASH RESULTS\n');
+                
+                const tableFmt = ['### FORMATTED (表示フォーマット)\n| アルゴリズム | 出力 |\n| :--- | :--- |'];
+                const tableRaw = ['### RAW (純粋出力)\n| アルゴリズム | 出力 |\n| :--- | :--- |'];
+                
+                const algIds = ['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','Base64-Enc','Base64-Dec','Base85-Enc','Base85-Dec'];
+                
+                for (const id of algIds) {
+                    const el = document.getElementById(id);
+                    if (!el || !el.dataset.raw || el.dataset.empty === '1') continue;
+                    
+                    let raw, fmt;
+                    if (el.dataset.isBinary === '1' && el._binBytes) {
+                        raw = fmt = `*[Binary Data: ${el._binBytes.length.toLocaleString()} bytes]*`;
+                    } else if (el.dataset.isTextBlob === '1') {
+                        raw = fmt = `*[Huge Data Blob - Excluded from plain text report]*`;
+                    } else {
+                        raw = `\`${esc(el.dataset.raw)}\``;
+                        fmt = `\`${esc(el.textContent)}\``;
+                    }
+                    
+                    const prefix = (AppState.hmacKey && !id.includes('Base') && !id.includes('CRC')) ? `HMAC-${id}` : id;
+                    
+                    tableFmt.push(`| **${prefix}** | ${fmt} |`);
+                    tableRaw.push(`| **${prefix}** | ${raw} |`);
+                }
+
+                reportLines.push(...tableFmt, '\n', ...tableRaw);
+                reportLines.push('\n---\n*EOF*');
+
+                /* --- VFSエクスポートおよびフォールバック処理 --- */
+                const blobParts = reportLines.filter(Boolean).map(line => line + '\n');
+                const blob = new Blob(blobParts, { type: 'text/markdown' });
+                
+                const fallbackDownload = () => {
+                    const url = URL.createObjectURL(blob);
+                    const a = Object.assign(document.createElement('a'), { href: url, download: fn });
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    URL.revokeObjectURL(url);
+                    showToast('Markdownレポートを保存しました');
+                };
+
+                if ('showSaveFilePicker' in window && !window.__ZESS_MODE__) {
+                    try {
+                        const handle = await window.showSaveFilePicker({
+                            suggestedName: fn,
+                            types: [{
+                                description: 'Markdown Report',
+                                accept: { 'text/markdown': ['.md'] },
+                            }],
+                        });
+                        const writable = await handle.createWritable();
+                        await writable.write(blob);
+                        await writable.close();
+                        showToast('Markdownレポートを保存しました');
+                    } catch (err) {
+                        if (err.name === 'AbortError') {
+                            showToast('レポートの保存がキャンセルされました');
+                            break;
+                        }
+                        fallbackDownload();
+                    }
+                } else {
+                    fallbackDownload();
+                }
                 break;
             }
             case 'toggleGeo': {
