@@ -3,7 +3,7 @@
  * **Error-Detecting Codes (Checksums):** CRC32, CRC64 (Variants: XZ, WE, ISO, Redis)
  * **Cryptographic Hash Functions:** MD5, SHA-1, SHA-224, SHA-256, SHA-384, SHA-512
  * **Cryptographic Extensions:** HMAC (Hash-based Message Authentication Code), Cryptographic Salting
- * **Key Stretching & Iteration:** Configurable iteration cycles (1 to 999,999,999)
+ * **Key Stretching & Iteration:** Configurable iteration cycles (1 to 2,147,483,648)
  * **Iteration Modes:** Standard Binary (Raw), Hexadecimal Cascade, XOR-based Superposition
 ### 2. Binary-to-Text Encoding Schemes
  * **Primary Frameworks:** Base64, Base85 / ASCII85
