@@ -2350,7 +2350,7 @@ const Engine = (() => {
                             }
 
                             const now = performance.now();
-                            if (now - lastPostTime >= 16 || i === iterations) {
+                            if (now - lastPostTime >= 8 || i === iterations) {
                                 let tempHex = '';
                                 for (let j = 0; j < xorAccumulator8.length; j++) {
                                     tempHex += HEX_LUT[xorAccumulator8[j]];
@@ -2364,7 +2364,7 @@ const Engine = (() => {
                             currentBytes = currentHashBytes;
                         } else {
                             const now = performance.now();
-                            if (now - lastPostTime >= 16 || i === iterations) {
+                            if (now - lastPostTime >= 8 || i === iterations) {
                                 postMessage({ action: 'iter_progress', algId: alg, status: i === iterations ? 'done' : 'progress', hex: finalHex, iter: i, total: iterations });
                                 lastPostTime = now;
                                 await new Promise(r => setTimeout(r, 0));
