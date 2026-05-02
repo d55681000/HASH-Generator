@@ -1199,26 +1199,98 @@ const SysUtils = (() => {
     }
   }
 
-  function deviceInfo(){
-    const ua=navigator.userAgent||'';
-    const plat=(navigator.userAgentData&&navigator.userAgentData.platform)||navigator.platform||'';
-    const brands=(navigator.userAgentData&&navigator.userAgentData.brands||[]).map(b=>`${b.brand}/${b.version}`).join(', ');
-    const vendor=navigator.vendor||'';
-    const dpr=window.devicePixelRatio||1;
-    const vw=Math.round(window.innerWidth),vh=Math.round(window.innerHeight);
-    const sw=screen.width,sh=screen.height;
-    const mem=navigator.deviceMemory?`${navigator.deviceMemory}GB`:'N/A';
-    const cores=navigator.hardwareConcurrency?`${navigator.hardwareConcurrency}コア`:'N/A';
-    const dev=/Android|iPhone|iPad|iPod|Mobile/i.test(ua)?'モバイル':'デスクトップ';
+  async function getGPUInfo() {
+    if (getGPUInfo.cache) return getGPUInfo.cache;
+
+    if (navigator.gpu) {
+      try {
+        const adapter = await navigator.gpu.requestAdapter();
+        if (adapter && adapter.info) {
+          getGPUInfo.cache = `${adapter.info.device} (${adapter.info.architecture})`;
+          return getGPUInfo.cache;
+        }
+      } catch (e) {}
+    }
+
+    try {
+      let gl;
+      if (typeof OffscreenCanvas !== 'undefined') {
+        gl = new OffscreenCanvas(1, 1).getContext('webgl2') || new OffscreenCanvas(1, 1).getContext('webgl');
+      }
+      if (!gl) {
+        const canvas = document.createElement('canvas');
+        gl = canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+      }
+      
+      if (!gl) return getGPUInfo.cache = 'WebGL 非対応';
+      
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      if (ext) {
+        let renderer = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL);
+        renderer = renderer.replace(/ANGLE \([^,]+,\s*/i, '')
+                           .replace(/Direct3D.*/i, '')
+                           .replace(/vs_[0-9_]+ ps_[0-9_]+/i, '')
+                           .replace(/[\(\)]/g, '')
+                           .trim();
+        return getGPUInfo.cache = renderer || '不明';
+      }
+      return getGPUInfo.cache = 'GPU取得不可 (権限制限)';
+    } catch (e) {
+      return getGPUInfo.cache = 'GPU検出エラー';
+    }
+  }
+
+  async function deviceInfo() {
+    const ua = navigator.userAgent || '';
+    const plat = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
+    
+    const brands = (navigator.userAgentData && navigator.userAgentData.brands || [])
+      .filter(b => !/Not.*Brand/i.test(b.brand))
+      .map(b => `${b.brand}/${b.version}`).join(', ');
+      
+    const vendor = navigator.vendor || '';
+    const dpr = window.devicePixelRatio || 1;
+    const vw = Math.round(window.innerWidth);
+    const vh = Math.round(window.innerHeight);
+    const sw = screen.width;
+    const sh = screen.height;
+    const mem = navigator.deviceMemory ? `${navigator.deviceMemory}${navigator.deviceMemory >= 8 ? '+' : ''}GB` : 'N/A';
+    const cores = navigator.hardwareConcurrency ? `${navigator.hardwareConcurrency}コア` : 'N/A';
+    const dev = /Android|iPhone|iPad|iPod|Mobile/i.test(ua) ? 'モバイル端末' : 'デスクトップ環境';
+    
+    const gpu = await getGPUInfo();
+    const touchPoints = navigator.maxTouchPoints > 0 ? `${navigator.maxTouchPoints}点マルチタッチ` : '非タッチパネル';
+    const colorDepth = screen.colorDepth ? `${screen.colorDepth}-bit` : 'N/A';
+    const isHDR = window.matchMedia('(dynamic-range: high)').matches ? 'HDR対応' : 'SDR';
+    const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'ダークモード' : 'ライトモード';
+    
+    let timeZone = '不明';
+    try { timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || '不明'; } catch(e) {}
+    const lang = navigator.language || '不明';
+
+    let osVersion = 'N/A';
+    let architecture = 'N/A';
+    let bitness = 'N/A';
+    
+    if (navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) {
+      try {
+        const entropy = await navigator.userAgentData.getHighEntropyValues(['osVersion', 'architecture', 'bitness', 'model']);
+        osVersion = entropy.osVersion || 'N/A';
+        architecture = entropy.architecture || 'N/A';
+        bitness = entropy.bitness || 'N/A';
+      } catch (e) {}
+    }
+
     return [
-      `スクリーン: ${sw}×${sh} @${dpr}x`,
+      `システム: ${plat || 'N/A'} (OS v${osVersion} / ${architecture}-${bitness}-bit) (${lang} / ${timeZone})`,
+      `デバイス: ${dev} [${touchPoints}]`,
+      `プロセッサ: ${cores} / 実装メモリ: ${mem}`,
+      `グラフィックス: ${gpu}`,
+      `スクリーン: ${sw}×${sh} @${dpr}x [深度: ${colorDepth} / 色域: ${isHDR}]`,
       `ビューポート: ${vw}×${vh}`,
-      `システム: ${plat||'N/A'}`,
-      `デバイス: ${dev}`,
-      `ベンダー: ${vendor||'N/A'}`,
-      `ブランド: ${brands||'N/A'}`,
-      `CPU: ${cores} / メモリ: ${mem}`,
-      `電源: ${AppState.battStr}`
+      `ブラウザ: ${brands || vendor || 'N/A'}`,
+      `テーマ設定: ${isDarkMode}`,
+      `電源ステータス: ${typeof AppState !== 'undefined' ? AppState.battStr : 'N/A'}`
     ].join('\n');
   }
 
@@ -2746,7 +2818,7 @@ const UI = (() => {
     const dateStr = SysUtils.fmtJapaneseDate(now);
     const parts = [
       '製造: ソニーグループ株式会社 / インターナショナル・ビジネス・マシーンズ・コーポレーション（IBM） 2026',
-      SysUtils.deviceInfo(),
+      await SysUtils.deviceInfo(),
       await SysUtils.networkDetail(),
       `位置: ${await SysUtils.detectGeo()}`,
       `日付: ${dateStr}`
@@ -3366,7 +3438,7 @@ const UI = (() => {
                     !window.isSecureContext ? '- **【警告】** 非セキュア接続 (HTTP) - ハードウェア暗号化停止' : '',
                     
                     '\n## 1. SYSTEM & ENVIRONMENT\n```text',
-                    SysUtils.deviceInfo(),
+                    await SysUtils.deviceInfo(),
                     '',
                     netInfo,
                     `位置情報: ${geoInfo}`,
