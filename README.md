@@ -36,7 +36,7 @@
 ### 6. Client-Side Environmental Telemetry
  * **Hardware Diagnostics:** Advanced GPU Architecture Detection (WebGPU/WebGL), Display Metrics (Resolution, Color Depth, HDR, DPR), CPU Concurrency, Device Memory Allocation
  * **System & Environment:** High-Entropy Platform Fingerprinting (Precise OS, Architecture, Bitness), UI Theme Preference, Power State
- * **Network & Geolocation:** NTP-based Time Synchronization, Connection Topology, Latency (RTT), IP Protocol Classification, ASN/ISP Routing, Geolocation Mapping
+ * **Network & Geolocation:** API-based Network Time Synchronization, Connection Topology, Latency (RTT), IP Protocol Classification, ASN/ISP Routing, Geolocation Mapping
 
 ### 7. Audit & Verification Mechanisms
  * **Audit Reporting:** Automated generation of comprehensive Markdown audit reports (System telemetry, environment, parameters, and output logs)
@@ -57,6 +57,6 @@ https://d55681000.github.io/HASH-Generator/
 
 
 
-​"This is a browser-based hash calculator made purely for fun. Honestly, I'm not quite sure how to describe it, so please treat it as something fun rather than a practical tool. Any brand names mentioned are just for laughs—none of it is real, and this project was created solely for my own personal satisfaction."
+"This is a browser-based hash calculator made purely for fun. Honestly, I'm not quite sure how to describe it, so please treat it as something fun rather than a practical tool. Any brand names mentioned are just for laughs—none of it is real, and this project was created solely for my own personal satisfaction."
 
 from Gemini 3.1
