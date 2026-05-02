@@ -34,8 +34,13 @@
  * **Anti-Forensic Measures:** Input-triggered rapid task termination, Volatile memory purging, Emergency DOM sanitization and redirection
 
 ### 6. Client-Side Environmental Telemetry
- * **Hardware Diagnostics & Fingerprinting:** Asynchronous WebGPU hardware probing (with Graceful Degradation to WebGL context), heuristic memory ceiling circumvention (8GB+ detection), CPU Concurrency allocation, Display Metrics (Resolution, DPR, Color Depth, HDR dynamic range capability), Power State telemetry
- * **System Context Extraction:** High-Entropy Client Hints API integration for precise OS versioning, architecture classification, and bitness resolution
+ * **Hardware Diagnostics:** Advanced GPU Architecture Detection (WebGPU/WebGL), Display Metrics (Resolution, Color Depth, HDR, DPR), CPU Concurrency, Device Memory Allocation
+ * **System & Environment:** High-Entropy Platform Fingerprinting (Precise OS, Architecture, Bitness), UI Theme Preference, Power State
+ * **Network & Geolocation:** NTP-based Time Synchronization, Connection Topology, Latency (RTT), IP Protocol Classification, ASN/ISP Routing, Geolocation Mapping
+
+### 6. Client-Side Environmental Telemetry
+ * **Hardware Diagnostics:** Advanced GPU Architecture Detection (WebGPU/WebGL), Display Metrics (Resolution, Color Depth, HDR, DPR), CPU Concurrency, Device Memory Allocation
+ * **System & Environment:** High-Entropy Platform Fingerprinting (Precise OS, Architecture, Bitness), UI Theme Preference, Power State
  * **Network & Geolocation:** NTP-based Time Synchronization, Connection Topology, Latency (RTT), IP Protocol Classification, ASN/ISP Routing, Geolocation Mapping
 
 ### 7. Audit & Verification Mechanisms
