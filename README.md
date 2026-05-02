@@ -34,7 +34,7 @@
  * **Anti-Forensic Measures:** Input-triggered rapid task termination, Volatile memory purging, Emergency DOM sanitization and redirection
 
 ### 6. Client-Side Environmental Telemetry
- * **Hardware Diagnostics:** Display Metrics (Resolution, DPR), OS Platform, CPU Concurrency, Device Memory Allocation, Power State
+ * **Hardware Diagnostics:** Display Metrics (Resolution, DPR, Color Depth, HDR Capabilities), High-Entropy OS Telemetry (Exact Version, Architecture, Bitness), CPU Concurrency, Advanced Memory Allocation Mapping (Bypass 8GB limitation), Next-Gen WebGPU-accelerated Hardware/Architecture Detection, System Theme Preferences, Power State
  * **Network & Geolocation:** NTP-based Time Synchronization, Connection Topology, Latency (RTT), IP Protocol Classification, ASN/ISP Routing, Geolocation Mapping
 
 ### 7. Audit & Verification Mechanisms
