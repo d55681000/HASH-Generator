@@ -34,8 +34,8 @@
  * **Anti-Forensic Measures:** Input-triggered rapid task termination, Volatile memory purging, Emergency DOM sanitization and redirection
 
 ### 6. Client-Side Environmental Telemetry
- * **Advanced Hardware Diagnostics:** Next-Gen GPU Architecture Identification (Asynchronous WebGPU with graceful WebGL fallback), Display Metrics (Resolution, DPR, Color Depth, HDR Gamut), CPU Concurrency, Heuristic Device Memory Allocation (8GB+ boundary detection), Power State
- * **High-Entropy System Fingerprinting:** Cryptographic Client Hints API integration for precise OS Versioning, Architecture identification, Bitness, and Device Model extraction
+ * **Hardware Diagnostics & Fingerprinting:** Asynchronous WebGPU hardware probing (with Graceful Degradation to WebGL context), heuristic memory ceiling circumvention (8GB+ detection), CPU Concurrency allocation, Display Metrics (Resolution, DPR, Color Depth, HDR dynamic range capability), Power State telemetry
+ * **System Context Extraction:** High-Entropy Client Hints API integration for precise OS versioning, architecture classification, and bitness resolution
  * **Network & Geolocation:** NTP-based Time Synchronization, Connection Topology, Latency (RTT), IP Protocol Classification, ASN/ISP Routing, Geolocation Mapping
 
 ### 7. Audit & Verification Mechanisms
@@ -45,11 +45,16 @@
 
 ### 8. User Interface & Visual Contexts
  * **Theming Engines:** 'Default' (CRT phosphor & scanline simulation), 'CMD' (Command Prompt emulation), 'PS' (PowerShell environment)
- * **Environmental Adaptation:** OS-level Theme Preference Detection (Dark/Light Mode)
  * **Display Modes:** API-driven Fullscreen viewport toggling
 
 
+
+
+
 https://d55681000.github.io/HASH-Generator/
+
+
+
 
 
 ​"This is a browser-based hash calculator made purely for fun. Honestly, I'm not quite sure how to describe it, so please treat it as something fun rather than a practical tool. Any brand names mentioned are just for laughs—none of it is real, and this project was created solely for my own personal satisfaction."
