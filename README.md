@@ -38,11 +38,6 @@
  * **System & Environment:** High-Entropy Platform Fingerprinting (Precise OS, Architecture, Bitness), UI Theme Preference, Power State
  * **Network & Geolocation:** NTP-based Time Synchronization, Connection Topology, Latency (RTT), IP Protocol Classification, ASN/ISP Routing, Geolocation Mapping
 
-### 6. Client-Side Environmental Telemetry
- * **Hardware Diagnostics:** Advanced GPU Architecture Detection (WebGPU/WebGL), Display Metrics (Resolution, Color Depth, HDR, DPR), CPU Concurrency, Device Memory Allocation
- * **System & Environment:** High-Entropy Platform Fingerprinting (Precise OS, Architecture, Bitness), UI Theme Preference, Power State
- * **Network & Geolocation:** NTP-based Time Synchronization, Connection Topology, Latency (RTT), IP Protocol Classification, ASN/ISP Routing, Geolocation Mapping
-
 ### 7. Audit & Verification Mechanisms
  * **Audit Reporting:** Automated generation of comprehensive Markdown audit reports (System telemetry, environment, parameters, and output logs)
  * **Storage API Integration:** Direct-to-disk report saving via File System Access API integration
