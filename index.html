@@ -312,7 +312,7 @@
   .toast.show{opacity:1}
   
   .sys{
-    position:fixed;right:10px;bottom:10px;width:min(56ch,92vw);
+    position:fixed;right:10px;bottom:10px;width:max-content;max-width:calc(100vw - 20px);
     color:var(--muted);font-size:12px;line-height:1.35;white-space:pre-wrap;text-align:right;
     pointer-events:auto; user-select:text; transition: color 0.4s ease;
     view-transition-name: sys-panel;
