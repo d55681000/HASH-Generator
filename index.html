@@ -3266,20 +3266,23 @@ const UI = (() => {
     });
     els.inputEl.addEventListener('compositionend', scheduleUpdate);
 
-    const bindInputUpdate = (el) => {
-      el.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          el.blur();
-          scheduleUpdate();
-        }
-      });
-      el.addEventListener('change', scheduleUpdate);
-    };
+const bindDynamicUpdate = (el, isRealtime = false) => {
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      el.blur();
+      if (isRealtime) {
+        scheduleUpdate();
+      }
+    }
+  });
 
-    bindInputUpdate(els.saltIn);
-    bindInputUpdate(els.hmacIn);
-    bindInputUpdate(els.iterIn);
+  el.addEventListener(isRealtime ? 'input' : 'change', scheduleUpdate);
+};
+
+bindDynamicUpdate(els.saltIn, true);
+bindDynamicUpdate(els.hmacIn, true);
+bindDynamicUpdate(els.iterIn, false);
 
     els.groupingSel.addEventListener('change', () => {
       AppState.grouping = parseInt(els.groupingSel.value, 10) || 0;
