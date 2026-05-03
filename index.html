@@ -447,6 +447,8 @@
       <span class="sep hint">|</span>
       <button id="save" class="link" data-action="saveResults">保存</button>
       <span class="sep hint">|</span>
+      <button id="stop-all" class="link warn" data-action="stopAll" style="display:none;">[全停止]</button>
+      <span class="sep hint">|</span>
       <button id="geoToggle" class="link" aria-label="位置情報の照会" data-action="toggleGeo">位置: オフ</button>
       <span class="sep hint">|</span>
       <button id="zessToggle" class="link" aria-label="ZESS隔離モード" data-action="toggleZess">ZESS: オフ</button>
@@ -2307,18 +2309,19 @@ const Engine = (() => {
         let s=''; for(let i=0;i<u8.length;i++) s+=HEX_LUT[u8[i]]; return s;
       }
 
-      let cancelFlags = {};
+      let currentTaskGen = {};
+      let absoluteTaskCounter = 0;
       let hasher = null;
 
       onmessage = e => {
         const { action, bytes, key, crc64Variant, iterations, algorithms, saltBytes, algId, iterMode, reqId } = e.data;
         
         if (action === 'abort_all') {
-            for (let k in cancelFlags) cancelFlags[k] = true;
+            for (let k in currentTaskGen) currentTaskGen[k] = -1;
             return;
         }
         if (action === 'abort') {
-            cancelFlags[algId] = true;
+            currentTaskGen[algId] = -1;
             return;
         }
         
@@ -2341,7 +2344,9 @@ const Engine = (() => {
           postMessage({ action: 'verify_result', reqId, results: temp.finalizeHmacOrNormal() });
         } else if (action === 'hashIterative') {
             for (const alg of algorithms) {
-                cancelFlags[alg] = false;
+                absoluteTaskCounter++;
+                const myGen = absoluteTaskCounter;
+                currentTaskGen[alg] = myGen;
                 (async () => {
                     let currentBytes = bytes;
                     let finalHex = '';
@@ -2361,8 +2366,10 @@ const Engine = (() => {
                     let xorAccumulator8 = null;
 
                     for (let i = 1; i <= iterations; i++) {
-                        if (cancelFlags[alg]) {
-                            postMessage({ action: 'iter_progress', algId: alg, status: 'aborted', hex: finalHex, iter: i - 1, total: iterations });
+                        if (currentTaskGen[alg] !== myGen) {
+                            if (currentTaskGen[alg] === -1) {
+                                postMessage({ action: 'iter_progress', algId: alg, status: 'aborted', hex: finalHex, iter: i - 1, total: iterations });
+                            }
                             return;
                         }
                         
@@ -2390,6 +2397,7 @@ const Engine = (() => {
                                 postMessage({ action: 'iter_progress', algId: alg, status: 'done', hex: finalHex, iter: iterations, total: iterations });
                                 return;
                             }
+                            if (currentTaskGen[alg] !== myGen) return;
                         } else {
                             temp.reset();
                             temp.update(payload);
@@ -2431,6 +2439,7 @@ const Engine = (() => {
                                 postMessage({ action: 'iter_progress', algId: alg, status: i === iterations ? 'done' : 'progress', hex: finalHex, iter: i, total: iterations });
                                 lastPostTime = now;
                                 await new Promise(r => setTimeout(r, 0));
+                                if (currentTaskGen[alg] !== myGen) return;
                             }
                             
                             currentBytes = currentHashBytes;
@@ -2440,6 +2449,7 @@ const Engine = (() => {
                                 postMessage({ action: 'iter_progress', algId: alg, status: i === iterations ? 'done' : 'progress', hex: finalHex, iter: i, total: iterations });
                                 lastPostTime = now;
                                 await new Promise(r => setTimeout(r, 0));
+                                if (currentTaskGen[alg] !== myGen) return;
                             }
                             if (i < iterations) {
                                 currentBytes = (iterMode === 'raw') ? hexToBytes(finalHex) : utf8Encode(finalHex);
@@ -2590,6 +2600,7 @@ const Engine = (() => {
           while (true) {
             if (signal.aborted) { await reader.cancel(); return resolve(); }
             const {done, value} = await reader.read();
+            if (signal.aborted) { await reader.cancel(); return resolve(); }
 
             let current;
             if (value) {
@@ -2818,6 +2829,7 @@ const UI = (() => {
     const dateStr = SysUtils.fmtJapaneseDate(now);
     const parts = [
       '製造: ソニーグループ株式会社 / インターナショナル・ビジネス・マシーンズ・コーポレーション（IBM） 2026',
+      '外部検証リファレンス: GCHQ CyberChef (The Cyber Swiss Army Knife)',
       await SysUtils.deviceInfo(),
       await SysUtils.networkDetail(),
       `位置: ${await SysUtils.detectGeo()}`,
@@ -2918,8 +2930,16 @@ const UI = (() => {
 
         if (state.isDone || state.isAborted || state.isOOM) delete renderState[algId];
     }
-    if (Object.keys(renderState).length > 0) requestAnimationFrame(renderLoop);
-    else isRendering = false;
+    if (Object.keys(renderState).length > 0) {
+        requestAnimationFrame(renderLoop);
+    } else {
+        isRendering = false;
+        if (els.metaEl && els.metaEl.textContent.includes('ステータス: 計算中')) {
+            els.metaEl.textContent = els.metaEl.textContent.replace('ステータス: 計算中', 'ステータス: 完了');
+        }
+        const stopAllBtn = document.getElementById('stop-all');
+        if (stopAllBtn) stopAllBtn.style.display = 'none';
+    }
   }
 
   function renderResults(res, isPreview = false) {
@@ -3057,6 +3077,8 @@ const UI = (() => {
         if (el.dataset.alg.includes('Base')) el.style.display = 'none';
         else el.style.display = iterations > 1 ? 'inline-block' : 'none';
     });
+    const stopAllBtn = document.getElementById('stop-all');
+    if (stopAllBtn) stopAllBtn.style.display = iterations > 1 ? 'inline-block' : 'none';
     updateMeta(displayCount, isFile, '計算中', iterations);
 
     if (AppState.Base64Decode && !isFile) {
@@ -3102,10 +3124,9 @@ const UI = (() => {
       idsToClear.forEach(id => queueRender(id, '計算中…', 0, 1, false));
 
       await Engine.hashFile(AppState.currentFile, saltBytes, hmacKeyBytes);
-      if (!Engine.masterSignal.aborted) updateMeta(displayCount, isFile, '完了', 1);
     } else {
       await Engine.hashText(bytesToHash, saltBytes, hmacKeyBytes, iterations);
-      if (!Engine.masterSignal.aborted) updateMeta(displayCount, isFile, isEmptyInput ? '空値プレビュー' : '完了', iterations);
+      if (!Engine.masterSignal.aborted && isEmptyInput) updateMeta(displayCount, isFile, '空値プレビュー', iterations);
     }
   }
 
@@ -3170,6 +3191,56 @@ const UI = (() => {
     AppState.theme = localStorage.getItem('sonyHash.theme') || 'default';
     applyTheme();
 
+    const updateBaseOnly = (type) => {
+      if (AppState.currentFile) { scheduleUpdate(); return; }
+      const raw = els.inputEl.value;
+      const v = Core.normalizeText(Core.sanitizeText(raw), AppState.normalization);
+      if (type === 'Base64Enc' || type === 'All') {
+        if (AppState.Base64Encode) {
+          if (!v) queueRender('Base64-Enc', '', 1, 1, true);
+          else {
+            queueRender('Base64-Enc', '計算中...', 0, 1, false);
+            Base64Engine.encode(Core.utf8Encode(v)).then(res => queueRender('Base64-Enc', res.type === 'error' ? 'エラー' : res.value, 1, 1, true));
+          }
+        } else queueRender('Base64-Enc', '', 1, 1, true);
+      }
+      if (type === 'Base64Dec' || type === 'All') {
+        if (AppState.Base64Decode) {
+          if(!raw.trim()) queueRender('Base64-Dec', '', 1, 1, true);
+          else {
+            queueRender('Base64-Dec', '計算中...', 0, 1, false);
+            Base64Engine.decode(raw, AppState.baseFileDetect).then(res => {
+              if (res.type === 'error') queueRender('Base64-Dec', 'デコード不可', 1, 1, true);
+              else if (res.type === 'binary') queueRender('Base64-Dec', res, 1, 1, true);
+              else queueRender('Base64-Dec', res.value, 1, 1, true);
+            });
+          }
+        } else queueRender('Base64-Dec', '', 1, 1, true);
+      }
+      if (type === 'Base85Enc' || type === 'All') {
+        if (AppState.Base85Encode) {
+          if (!v) queueRender('Base85-Enc', '', 1, 1, true);
+          else {
+            queueRender('Base85-Enc', '計算中...', 0, 1, false);
+            Base85Engine.encode(Core.utf8Encode(v), AppState.base85Variant).then(res => queueRender('Base85-Enc', res.type === 'error' ? 'エラー' : res.value, 1, 1, true));
+          }
+        } else queueRender('Base85-Enc', '', 1, 1, true);
+      }
+      if (type === 'Base85Dec' || type === 'All') {
+        if (AppState.Base85Decode) {
+          if(!raw.trim()) queueRender('Base85-Dec', '', 1, 1, true);
+          else {
+            queueRender('Base85-Dec', '計算中...', 0, 1, false);
+            Base85Engine.decode(raw, AppState.base85Variant, AppState.baseFileDetect).then(res => {
+              if (res.type === 'error') queueRender('Base85-Dec', 'デコード不可', 1, 1, true);
+              else if (res.type === 'binary') queueRender('Base85-Dec', res, 1, 1, true);
+              else queueRender('Base85-Dec', res.value, 1, 1, true);
+            });
+          }
+        } else queueRender('Base85-Dec', '', 1, 1, true);
+      }
+    };
+
     els.fileInput.addEventListener('change', e => handleFiles(e.target.files));
 
     els.dropZone.addEventListener('dragover', e => { e.preventDefault(); els.dropZone.classList.add('dragover'); });
@@ -3195,9 +3266,20 @@ const UI = (() => {
     });
     els.inputEl.addEventListener('compositionend', scheduleUpdate);
 
-    els.saltIn.addEventListener('keydown', (e) => { if(e.key === 'Enter') { e.preventDefault(); scheduleUpdate(); } });
-    els.hmacIn.addEventListener('keydown', (e) => { if(e.key === 'Enter') { e.preventDefault(); scheduleUpdate(); } });
-    els.iterIn.addEventListener('keydown', (e) => { if(e.key === 'Enter') { e.preventDefault(); scheduleUpdate(); } });
+    const bindInputUpdate = (el) => {
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          el.blur();
+          scheduleUpdate();
+        }
+      });
+      el.addEventListener('change', scheduleUpdate);
+    };
+
+    bindInputUpdate(els.saltIn);
+    bindInputUpdate(els.hmacIn);
+    bindInputUpdate(els.iterIn);
 
     els.groupingSel.addEventListener('change', () => {
       AppState.grouping = parseInt(els.groupingSel.value, 10) || 0;
@@ -3285,28 +3367,28 @@ const UI = (() => {
                 AppState.Base64Encode = !AppState.Base64Encode;
                 els.Base64EncToggleBtn.textContent = `Base64 Enc: ${AppState.Base64Encode ? 'オン' : 'オフ'}`;
                 els.rowBase64Enc.style.display = AppState.Base64Encode ? 'flex' : 'none';
-                if (AppState.Base64Encode) scheduleUpdate(); else queueRender('Base64-Enc', '', 1, 1, true);
+                if (AppState.Base64Encode) updateBaseOnly('Base64Enc'); else queueRender('Base64-Enc', '', 1, 1, true);
                 break;
             }
             case 'toggleBase64Dec': {
                 AppState.Base64Decode = !AppState.Base64Decode;
                 els.Base64DecToggleBtn.textContent = `Base64 Dec: ${AppState.Base64Decode ? 'オン' : 'オフ'}`;
                 els.rowBase64Dec.style.display = AppState.Base64Decode ? 'flex' : 'none';
-                if (AppState.Base64Decode) scheduleUpdate(); else queueRender('Base64-Dec', '', 1, 1, true);
+                if (AppState.Base64Decode) updateBaseOnly('Base64Dec'); else queueRender('Base64-Dec', '', 1, 1, true);
                 break;
             }
             case 'toggleBase85Enc': {
                 AppState.Base85Encode = !AppState.Base85Encode;
                 els.Base85EncToggleBtn.textContent = `Base85 Enc: ${AppState.Base85Encode ? 'オン' : 'オフ'}`;
                 els.rowBase85Enc.style.display = AppState.Base85Encode ? 'flex' : 'none';
-                if (AppState.Base85Encode) scheduleUpdate(); else { queueRender('Base85-Enc', '', 1, 1, true); updateMeta(Core.countGraphemes(els.inputEl.value), !!AppState.currentFile, '完了', parseInt(els.iterIn.value,10)||1); }
+                if (AppState.Base85Encode) updateBaseOnly('Base85Enc'); else { queueRender('Base85-Enc', '', 1, 1, true); updateMeta(Core.countGraphemes(els.inputEl.value), !!AppState.currentFile, '完了', parseInt(els.iterIn.value,10)||1); }
                 break;
             }
             case 'toggleBase85Dec': {
                 AppState.Base85Decode = !AppState.Base85Decode;
                 els.Base85DecToggleBtn.textContent = `Base85 Dec: ${AppState.Base85Decode ? 'オン' : 'オフ'}`;
                 els.rowBase85Dec.style.display = AppState.Base85Decode ? 'flex' : 'none';
-                if (AppState.Base85Decode) scheduleUpdate(); else { queueRender('Base85-Dec', '', 1, 1, true); updateMeta(Core.countGraphemes(els.inputEl.value), !!AppState.currentFile, '完了', parseInt(els.iterIn.value,10)||1); }
+                if (AppState.Base85Decode) updateBaseOnly('Base85Dec'); else { queueRender('Base85-Dec', '', 1, 1, true); updateMeta(Core.countGraphemes(els.inputEl.value), !!AppState.currentFile, '完了', parseInt(els.iterIn.value,10)||1); }
                 break;
             }
             case 'toggleBaseFileDetect': {
@@ -3579,6 +3661,17 @@ const UI = (() => {
                 actionEl.style.display = 'none';
                 break;
             }
+            case 'stopAll': {
+                Engine.resetMasterTask();
+                document.querySelectorAll('.stop-btn').forEach(btn => btn.style.display = 'none');
+                const stopAllBtn = document.getElementById('stop-all');
+                if (stopAllBtn) stopAllBtn.style.display = 'none';
+                if (els.metaEl && els.metaEl.textContent.includes('ステータス: 計算中')) {
+                    els.metaEl.textContent = els.metaEl.textContent.replace('ステータス: 計算中', 'ステータス: 中止');
+                }
+                showToast('すべての計算を強制停止しました');
+                break;
+            }
             case 'copyValue': {
                 const el = actionEl;
                 if (el.dataset.isBinary === '1' && el._binBytes) {
@@ -3631,7 +3724,7 @@ const UI = (() => {
                 const base85Variants = ['ZeroMQ (Z85)', 'Standard ASCII85', 'Adobe ASCII85', 'RFC 1924'];
                 const bIdx = base85Variants.indexOf(AppState.base85Variant);
                 AppState.base85Variant = base85Variants[(bIdx + 1) % base85Variants.length];
-                scheduleUpdate();
+                updateBaseOnly('All');
                 showToast(`Base85 モード切替: ${AppState.base85Variant}`);
                 break;
             }
