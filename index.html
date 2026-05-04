@@ -2935,6 +2935,7 @@ const UI = (() => {
     } else {
         isRendering = false;
         if (els.metaEl && els.metaEl.textContent.includes('ステータス: 計算中')) {
+            AppState.currentStatus = '完了';
             els.metaEl.textContent = els.metaEl.textContent.replace('ステータス: 計算中', 'ステータス: 完了');
         }
         const stopAllBtn = document.getElementById('stop-all');
@@ -2993,6 +2994,7 @@ const UI = (() => {
   }
 
   function updateMeta(count, isFile, statusText, iterations = 1) {
+    AppState.currentStatus = statusText;
     const normLabel = isFile ? 'なし' : (AppState.normalization === 'none' ? 'なし' : AppState.normalization);
     const countLabel = isFile ? 'ファイル' : '文字数';
     const countUnit = isFile ? ' bytes' : '';
@@ -3499,21 +3501,25 @@ bindDynamicUpdate(els.iterIn, false);
             case 'saveResults': {
                 showToast('Markdownレポートを生成中...');
                 
-                /* --- タイムスタンプおよび非同期環境データの取得 --- */
                 const ts = new Date(Date.now() + AppState.netTimeOffset);
                 const pad = n => String(n).padStart(2, '0');
                 const fn = `sony-hash-audit-${ts.getFullYear()}${pad(ts.getMonth()+1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}.md`;
                 
+                const fetchWithTimeout = (promise, ms = 3000, fallback = '取得タイムアウト') => 
+                    Promise.race([promise, new Promise(resolve => setTimeout(() => resolve(fallback), ms))]);
+
                 const [geoInfo, netInfo] = await Promise.all([
-                    SysUtils.detectGeo(),
-                    SysUtils.networkDetail()
+                    fetchWithTimeout(SysUtils.detectGeo(), 3000),
+                    fetchWithTimeout(SysUtils.networkDetail(), 3000)
                 ]);
 
-                /* --- レポート本体の宣言的構築 --- */
+                const metaText = document.getElementById('meta').textContent || '';
+                const currentStatus = AppState.currentStatus || '待機';
+
                 const isFile = !!AppState.currentFile;
                 const normVal = isFile ? 'なし (ファイル)' : (AppState.normalization === 'none' ? 'なし' : AppState.normalization);
                 const iterModeStr = AppState.iterMode === 'raw' ? '標準 (Raw)' : AppState.iterMode === 'hex' ? '旧互換 (Hex)' : 'PBKDF2重畳 (XOR)';
-                const esc = str => String(str).replace(/\|/g, '\\|').replace(/`/g, '\\`'); 
+                const esc = str => String(str).replace(/\|/g, '\\|').replace(/`/g, '\\`').replace(/\r?\n/g, '<br>');
 
                 const reportLines = [
                     '# SONY HASH COMPREHENSIVE AUDIT REPORT\n',
@@ -3530,11 +3536,13 @@ bindDynamicUpdate(els.iterIn, false);
                     '```\n',
                     
                     '## 2. SETTINGS & PARAMETERS\n| 設定項目 | パラメータ値 |\n| :--- | :--- |',
+                    `| グローバル・ステータス | **${currentStatus}** |`,
+                    `| 詳細メタデータ (UI表示) | \`${esc(metaText)}\` |`,
                     `| 正規化 | ${normVal} |`,
                     `| HEX大/小 | ${AppState.hexUpper ? 'UPPERCASE' : 'lowercase'} |`,
                     `| 区切り文字数 | ${AppState.grouping ? AppState.grouping + '文字' : '区切りなし'} |`,
                     `| カスタム区切り | \`${esc(AppState.separator)}\` |`,
-                    `| 反復回数 | ${els.iterIn.value} 回 |`,
+                    `| 反復回数(目標) | ${els.iterIn.value} 回 |`,
                     `| 反復モード | ${iterModeStr} |`,
                     `| Salt | \`${AppState.salt || '(未設定)'}\` |`,
                     `| HMAC Key | \`${AppState.hmacKey || '(未設定)'}\` |`,
@@ -3570,17 +3578,19 @@ bindDynamicUpdate(els.iterIn, false);
                     );
                 }
 
-                /* ハッシュ解析結果の抽出とフォーマット別テーブルの生成 */
                 reportLines.push('## 4. HASH RESULTS\n');
                 
-                const tableFmt = ['### FORMATTED (表示フォーマット)\n| アルゴリズム | 出力 |\n| :--- | :--- |'];
-                const tableRaw = ['### RAW (純粋出力)\n| アルゴリズム | 出力 |\n| :--- | :--- |'];
+                const tableFmt = ['### FORMATTED (表示フォーマット)\n| アルゴリズム | 進捗状況 | 出力 |\n| :--- | :--- | :--- |'];
+                const tableRaw = ['### RAW (純粋出力)\n| アルゴリズム | 進捗状況 | 出力 |\n| :--- | :--- | :--- |'];
                 
                 const algIds = ['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','Base64-Enc','Base64-Dec','Base85-Enc','Base85-Dec'];
                 
                 for (const id of algIds) {
                     const el = document.getElementById(id);
                     if (!el || !el.dataset.raw || el.dataset.empty === '1') continue;
+                    
+                    const progEl = document.getElementById(`prog-${id}`);
+                    const progressText = progEl ? progEl.textContent : '不明';
                     
                     let raw, fmt;
                     if (el.dataset.isBinary === '1' && el._binBytes) {
@@ -3594,8 +3604,8 @@ bindDynamicUpdate(els.iterIn, false);
                     
                     const prefix = (AppState.hmacKey && !id.includes('Base') && !id.includes('CRC')) ? `HMAC-${id}` : id;
                     
-                    tableFmt.push(`| **${prefix}** | ${fmt} |`);
-                    tableRaw.push(`| **${prefix}** | ${raw} |`);
+                    tableFmt.push(`| **${prefix}** | ${progressText} | ${fmt} |`);
+                    tableRaw.push(`| **${prefix}** | ${progressText} | ${raw} |`);
                 }
 
                 reportLines.push(...tableFmt, '\n', ...tableRaw);
@@ -3670,6 +3680,7 @@ bindDynamicUpdate(els.iterIn, false);
                 const stopAllBtn = document.getElementById('stop-all');
                 if (stopAllBtn) stopAllBtn.style.display = 'none';
                 if (els.metaEl && els.metaEl.textContent.includes('ステータス: 計算中')) {
+                    AppState.currentStatus = '中止';
                     els.metaEl.textContent = els.metaEl.textContent.replace('ステータス: 計算中', 'ステータス: 中止');
                 }
                 showToast('すべての計算を強制停止しました');
