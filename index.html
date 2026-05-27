@@ -3372,28 +3372,28 @@ bindDynamicUpdate(els.iterIn, false);
                 AppState.Base64Encode = !AppState.Base64Encode;
                 els.Base64EncToggleBtn.textContent = `Base64 Enc: ${AppState.Base64Encode ? 'オン' : 'オフ'}`;
                 els.rowBase64Enc.style.display = AppState.Base64Encode ? 'flex' : 'none';
-                if (AppState.Base64Encode) updateBaseOnly('Base64Enc'); else queueRender('Base64-Enc', '', 1, 1, true);
+                scheduleUpdate();
                 break;
             }
             case 'toggleBase64Dec': {
                 AppState.Base64Decode = !AppState.Base64Decode;
                 els.Base64DecToggleBtn.textContent = `Base64 Dec: ${AppState.Base64Decode ? 'オン' : 'オフ'}`;
                 els.rowBase64Dec.style.display = AppState.Base64Decode ? 'flex' : 'none';
-                if (AppState.Base64Decode) updateBaseOnly('Base64Dec'); else queueRender('Base64-Dec', '', 1, 1, true);
+                scheduleUpdate();
                 break;
             }
             case 'toggleBase85Enc': {
                 AppState.Base85Encode = !AppState.Base85Encode;
                 els.Base85EncToggleBtn.textContent = `Base85 Enc: ${AppState.Base85Encode ? 'オン' : 'オフ'}`;
                 els.rowBase85Enc.style.display = AppState.Base85Encode ? 'flex' : 'none';
-                if (AppState.Base85Encode) updateBaseOnly('Base85Enc'); else { queueRender('Base85-Enc', '', 1, 1, true); updateMeta(Core.countGraphemes(els.inputEl.value), !!AppState.currentFile, '完了', parseInt(els.iterIn.value,10)||1); }
+                scheduleUpdate();
                 break;
             }
             case 'toggleBase85Dec': {
                 AppState.Base85Decode = !AppState.Base85Decode;
                 els.Base85DecToggleBtn.textContent = `Base85 Dec: ${AppState.Base85Decode ? 'オン' : 'オフ'}`;
                 els.rowBase85Dec.style.display = AppState.Base85Decode ? 'flex' : 'none';
-                if (AppState.Base85Decode) updateBaseOnly('Base85Dec'); else { queueRender('Base85-Dec', '', 1, 1, true); updateMeta(Core.countGraphemes(els.inputEl.value), !!AppState.currentFile, '完了', parseInt(els.iterIn.value,10)||1); }
+                scheduleUpdate();
                 break;
             }
             case 'toggleBaseFileDetect': {
@@ -3738,7 +3738,7 @@ bindDynamicUpdate(els.iterIn, false);
                 const base85Variants = ['ZeroMQ (Z85)', 'Standard ASCII85', 'Adobe ASCII85', 'RFC 1924'];
                 const bIdx = base85Variants.indexOf(AppState.base85Variant);
                 AppState.base85Variant = base85Variants[(bIdx + 1) % base85Variants.length];
-                updateBaseOnly('All');
+                scheduleUpdate();
                 showToast(`Base85 モード切替: ${AppState.base85Variant}`);
                 break;
             }
