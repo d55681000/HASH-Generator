@@ -678,7 +678,7 @@ const AppState = {
   Base64Decode: false,
   Base85Encode: false,
   Base85Decode: false,
-  base85Variant: 'ZeroMQ (Z85)',
+  base85Variant: 'Standard ASCII85',
   crc64Variant: 'XZ (ECMA, Reflected)',
   baseFileDetect: false,
   salt: '',
@@ -3735,7 +3735,7 @@ bindDynamicUpdate(els.iterIn, false);
                 break;
             }
             case 'cycleBase85': {
-                const base85Variants = ['ZeroMQ (Z85)', 'Standard ASCII85', 'Adobe ASCII85', 'RFC 1924'];
+                const base85Variants = ['Standard ASCII85', 'Adobe ASCII85', 'ZeroMQ (Z85)', 'RFC 1924'];
                 const bIdx = base85Variants.indexOf(AppState.base85Variant);
                 AppState.base85Variant = base85Variants[(bIdx + 1) % base85Variants.length];
                 scheduleUpdate();
