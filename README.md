@@ -52,6 +52,7 @@
 
 
 https://d55681000.github.io/HASH-Generator/
+https://hash-generatorg.d55681000.workers.dev/
 
 
 
