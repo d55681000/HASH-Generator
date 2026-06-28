@@ -552,6 +552,32 @@
    SECURITY LAYER
 ========================================================= */
 const Security = (() => {
+  const initDomGuard = () => {
+    if (typeof MutationObserver === 'undefined') return;
+    const observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        for (const node of m.addedNodes) {
+          if (node.nodeType !== 1) continue; 
+          const tag = node.tagName.toUpperCase();
+          if (tag === 'A' && node.hasAttribute('download')) continue;
+          if (tag === 'TEXTAREA' && node.hasAttribute('readonly') && node.style.position === 'fixed') continue;
+          if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'META') continue;
+          if (tag === 'IFRAME' || tag === 'OBJECT' || tag === 'EMBED') {
+            node.remove();
+            continue;
+          }
+          const classStr = (node.className || '').toString().toLowerCase();
+          const idStr = (node.id || '').toString().toLowerCase();
+          const zIndex = parseInt(window.getComputedStyle(node).zIndex, 10) || parseInt(node.style.zIndex, 10) || 0;
+          if (classStr.includes('ad-') || idStr.includes('ads') || zIndex > 1945) {
+            node.remove();
+          }
+        }
+      }
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+  };
+
   function init() {
     if (window.__ZESS_MODE__) {
       document.body.classList.add('U-571');
@@ -579,6 +605,7 @@ const Security = (() => {
       if (window.caches) { try { caches.keys().then(k => k.forEach(name => caches.delete(name))); } catch(e){} }
       if (window.indexedDB && window.indexedDB.databases) { try { indexedDB.databases().then(dbs => dbs.forEach(db => indexedDB.deleteDatabase(db.name))); } catch(e){} }
     }
+    initDomGuard();
   }
   return { init };
 })();
