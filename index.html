@@ -366,12 +366,12 @@
       <input type="text" tabindex="-1" autocomplete="username" style="position:absolute; opacity:0; top:-9999px; left:-9999px;" aria-hidden="true">
       <input type="password" tabindex="-1" autocomplete="current-password" style="position:absolute; opacity:0; top:-9999px; left:-9999px;" aria-hidden="true">
 
-      <input type="text" id="salt-in" class="text-input" placeholder="ソルト (Salt)" 
+      <input type="text" id="salt-in" class="text-input" placeholder="ソルト（Salt）" 
              autocomplete="one-time-code" data-lpignore="true" spellcheck="false" autocorrect="off" 
              readonly onfocus="this.removeAttribute('readonly');" 
              style="flex:1; min-width:200px; display:none;">
              
-      <input type="text" id="hmac-in" class="text-input" placeholder="HMAC キー (Key)" 
+      <input type="text" id="hmac-in" class="text-input" placeholder="HMAC キー（Key）" 
              autocomplete="one-time-code" data-lpignore="true" spellcheck="false" autocorrect="off" 
              readonly onfocus="this.removeAttribute('readonly');" 
              style="flex:1; min-width:200px; display:none;">
@@ -427,7 +427,7 @@
       </select>
       <span class="sep hint">/</span>
       <label for="sep-in" class="hint" style="margin-right: -4px;">区切り文字:</label>
-      <input type="text" id="sep-in" class="text-input" value=" " style="width: 50px;" placeholder="空(なし)" autocomplete="off" spellcheck="false" title="任意の文字列を入力（例: 空白, カンマ, AND 等）">
+      <input type="text" id="sep-in" class="text-input" value=" " style="width: 50px;" placeholder="空（なし）" autocomplete="off" spellcheck="false" title="任意の文字列を入力（例：空白、カンマ、AND など）">
       <span class="sep hint">|</span>
       <button id="f-trigger" class="link" data-action="triggerFile">ファイル読込</button>
       <button id="huge-file-btn" class="link warn" data-action="processHugeFile" style="display:none;">巨大ファイル出力開始</button>
@@ -3239,7 +3239,7 @@ const UI = (() => {
       if (typeof value === 'object' && value.type === 'binary') {
         const fi = Core.getFileInfo(value.bytes);
         el.dataset.raw = `[Binary Data: ${value.bytes.length} bytes, Ext: ${fi.ext}]`;
-        el.textContent = `[Binary Data: ${value.bytes.length} bytes, Ext: ${fi.ext}] (クリックでダウンロード保存)`;
+        el.textContent = `[バイナリデータ: ${value.bytes.length} bytes / 拡張子: ${fi.ext}]（クリックでダウンロード保存）`;
         el.dataset.isBinary = '1';
         el._binBytes = value.bytes;
         el._fileInfo = fi;
@@ -3285,9 +3285,9 @@ const UI = (() => {
     activeOpts.push(`CRC64: ${AppState.crc64Variant}`);
     if (AppState.Base85Encode || AppState.Base85Decode) activeOpts.push(`Base85: ${AppState.base85Variant}`);
     const optLabel = activeOpts.length ? `｜${activeOpts.join('｜')}` : '';
-    const iterLabel = iterations > 1 ? `｜反復: ${iterations}回 (${AppState.iterMode === 'raw' ? '標準' : AppState.iterMode === 'hex' ? '旧互換' : 'XOR重畳'})` : '';
+    const iterLabel = iterations > 1 ? `｜反復: ${iterations}回（${AppState.iterMode === 'raw' ? '標準' : AppState.iterMode === 'hex' ? '旧互換' : 'XOR重畳'}）` : '';
     const sanitizeLabel = isFile ? '対象外' : (AppState.sanitizeText ? 'オン' : 'オフ');
-    const entropyLabel = isFile ? '対象外' : (Number.isFinite(AppState.currentEntropy) ? `${AppState.currentEntropy.toFixed(6)} bits/byte` : '—');
+    const entropyLabel = isFile ? '対象外' : (Number.isFinite(AppState.currentEntropy) ? `${AppState.currentEntropy.toFixed(6)} bit/byte` : '—');
     els.metaEl.textContent = `${countLabel} ${count}${countUnit}｜エントロピー（Entropy）: ${entropyLabel}｜文字コード: ${encodingLabel}｜正規化: ${normLabel}｜不可視文字・改行整形: ${sanitizeLabel}｜HEX: ${hexLabel}｜区切り: ${groupLabel}${optLabel}${iterLabel}｜ステータス: ${statusText}`;
   }
 
@@ -3403,8 +3403,8 @@ const UI = (() => {
       const isSmallFile = AppState.currentFile.size <= 10 * 1024 * 1024;
       const idsToClear = ['CRC32', 'CRC64', 'MD5', 'SHA-1', 'SHA-224', 'SHA-256'];
       if (!isSmallFile) {
-          queueRender('SHA-384', 'サイズ超過 (10MB以下のみ)', 1, 1, true);
-          queueRender('SHA-512', 'サイズ超過 (10MB以下のみ)', 1, 1, true);
+          queueRender('SHA-384', 'サイズ超過（10MB以下のみ）', 1, 1, true);
+          queueRender('SHA-512', 'サイズ超過（10MB以下のみ）', 1, 1, true);
           idsToClear.push('Base64-Enc', 'Base85-Enc');
       } else {
           idsToClear.push('SHA-384', 'SHA-512', 'Base64-Enc', 'Base85-Enc');
@@ -3458,7 +3458,7 @@ const UI = (() => {
     
     let statusText = `種別: ${analysis.type}`;
     if (analysis.isPolyglot) {
-      statusText += ` ⚠️ ［警告： マルチフォーマットの埋め込み (Polyglot) を検出]`;
+      statusText += ` ⚠️ マルチフォーマットの埋め込み（Polyglot）を検出`;
     }
     
     els.inputEl.value = `[File: ${f.name} (${f.size} bytes)]\n[${statusText}]\n※このテキストを編集するとファイル状態が解除されます`;
@@ -4020,8 +4020,8 @@ async function detectBase85Variants(input) {
                     '# SONY HASH 総合監査レポート\n',
                     `- **生成日時（日本標準時）:** ${SysUtils.fmtJapaneseDate(ts)}`,
                     '- **製造:** ソニーグループ株式会社 / インターナショナル・ビジネス・マシーンズ・コーポレーション（IBM） 2026',
-                    window.__ZESS_MODE__ ? '- **【警告】** ZESS (ZERO-EGRESS STATELESS SANDBOX) 隔離環境にて稼働中' : '',
-                    !window.isSecureContext ? '- **【警告】** 非セキュア接続 (HTTP) - ハードウェア暗号化停止' : '',
+                    window.__ZESS_MODE__ ? '- **【警告】** ZESS（ZERO-EGRESS STATELESS SANDBOX）隔離環境にて稼働中' : '',
+                    !window.isSecureContext ? '- **【警告】** 非セキュア接続（HTTP）— ハードウェア暗号化停止' : '',
                     
                     '\n## 1. システム／環境情報\n```text',
                     await SysUtils.deviceInfo(),
@@ -4036,13 +4036,13 @@ async function detectBase85Variants(input) {
                     `| 文字コード | ${isFile ? '対象外（ファイルを原データのバイト列として処理）' : 'UTF-8'} |`,
                     `| 正規化 | ${normVal} |`,
                     `| 不可視文字・改行整形 | ${isFile ? '対象外（ファイル）' : (AppState.sanitizeText ? 'オン' : 'オフ')} |`,
-                    `| HEX表記 | ${AppState.hexUpper ? '大文字 (UPPERCASE)' : '小文字 (lowercase)'} |`,
+                    `| HEX表記 | ${AppState.hexUpper ? '大文字（UPPERCASE）' : '小文字（lowercase）'} |`,
                     `| 区切り文字数 | ${AppState.grouping ? AppState.grouping + '文字' : '区切りなし'} |`,
                     `| カスタム区切り | \`${esc(AppState.separator)}\` |`,
-                    `| 反復回数(目標) | ${els.iterIn.value} 回 |`,
+                    `| 反復回数（目標） | ${els.iterIn.value} 回 |`,
                     `| 反復モード | ${iterModeStr} |`,
-                    `| Salt | \`${AppState.salt || '(未設定)'}\` |`,
-                    `| HMAC Key | \`${AppState.hmacKey || '(未設定)'}\` |`,
+                    `| Salt | \`${AppState.salt || '（未設定）'}\` |`,
+                    `| HMAC Key | \`${AppState.hmacKey || '（未設定）'}\` |`,
                     `| CRC64 モード | ${AppState.crc64Variant} |`,
                     `| Base85 モード | ${AppState.base85Variant} |`,
                     `| Base自動判別 | ${AppState.baseFileDetect ? 'オン' : 'オフ'} |\n`,
@@ -4053,7 +4053,7 @@ async function detectBase85Variants(input) {
                 if (isFile) {
                     reportLines.push(
                         '| 項目 | 詳細 |\n| :--- | :--- |',
-                        `| 種別 | ファイル (File) |`,
+                        `| 種別 | ファイル（File） |`,
                         `| ファイル名 | \`${AppState.currentFile.name}\` |`,
                         `| サイズ | ${AppState.currentFile.size.toLocaleString()} bytes |`,
                         `| MIMEタイプ | ${AppState.currentFile.type || '不明'} |\n`
@@ -4065,7 +4065,7 @@ async function detectBase85Variants(input) {
                     const MAX_TEXT_LEN = 100000;
                     let displayIn = rawIn;
                     if (rawIn.length > MAX_TEXT_LEN) {
-                        displayIn = rawIn.substring(0, MAX_TEXT_LEN) + `\n\n... ［警告： 入力テキストが長すぎるため省略されました (全 ${graphemeCount} 文字）］ ...`;
+                        displayIn = rawIn.substring(0, MAX_TEXT_LEN) + `\n\n… ［警告：入力テキストが長すぎるため省略されました（全 ${graphemeCount} 文字）］ …`;
                     }
 
                     reportLines.push(
@@ -4271,7 +4271,7 @@ async function detectBase85Variants(input) {
     });
 
     if (window.__ZESS_MODE__) {
-      els.zessBtn.textContent = 'ZESS: 稼働中 (解除はリロード)';
+      els.zessBtn.textContent = 'ZESS: 稼働中（解除はリロード）';
       els.zessBtn.classList.add('warn');
       els.geoBtn.style.display = 'none';
     } else {
