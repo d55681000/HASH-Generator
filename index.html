@@ -3706,8 +3706,8 @@ async function detectBase85Variants(input) {
                 const enteredCharCount = Core.countGraphemes(entered);
                 const hashEntropy = Core.shannonEntropy(Core.utf8Encode(hashTarget));
                 const baseEntropy = Core.shannonEntropy(Core.utf8Encode(entered));
-                const hashEntropySuffix = Number.isFinite(hashEntropy) ? ` / 文字列エントロピー: ${hashEntropy.toFixed(3)} bit/byte` : '';
-                const baseEntropySuffix = Number.isFinite(baseEntropy) ? ` / 文字列エントロピー: ${baseEntropy.toFixed(3)} bit/byte` : '';
+                const hashEntropySuffix = Number.isFinite(hashEntropy) ? ` / Entropy: ${hashEntropy.toFixed(3)} bit/byte` : '';
+                const baseEntropySuffix = Number.isFinite(baseEntropy) ? ` / Entropy: ${baseEntropy.toFixed(3)} bit/byte` : '';
                 const hashCountSuffix = ` / 文字数: ${hashCharCount}${hashEntropySuffix}`;
                 const baseCountSuffix = ` / 文字数: ${enteredCharCount}${baseEntropySuffix}`;
 
