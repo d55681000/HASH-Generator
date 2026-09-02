@@ -3359,8 +3359,6 @@ const UI = (() => {
       }
     }
 
-    // エントロピー（Entropy）は実際にハッシュへ渡すUTF-8バイト列を基準に算出する。
-    // 空入力およびファイル入力は、状態欄では未算出として扱う。
     AppState.currentEntropy = isFile ? null : Core.shannonEntropy(bytesToHash);
 
     Engine.resetMasterTask();
@@ -3701,7 +3699,6 @@ async function detectBase85Variants(input) {
                 if (!entered) { showToast('一致判定値を入力してください'); break; }
 
                 const hashTarget = entered.replace(/[\s:-]+/g, '').toLowerCase();
-                // Hash判定は空白・コロン・ハイフンを除いた実効文字数、Base判定は入力文字列そのものの文字数を表示する。
                 const hashCharCount = Core.countGraphemes(hashTarget);
                 const enteredCharCount = Core.countGraphemes(entered);
                 const hashEntropy = Core.shannonEntropy(Core.utf8Encode(hashTarget));
@@ -3728,7 +3725,6 @@ async function detectBase85Variants(input) {
                 }
                 if (matched) { showToast(`一致判定正常 / ${matched}一致${hashCountSuffix}`); break; }
 
-                // Base encodings are case-sensitive; compare their raw values without hash normalization.
                 const baseTargets = ['Base64-Enc', 'Base64-Dec', 'Base85-Enc', 'Base85-Dec'];
                 let baseMatchedId = '';
                 for (const id of baseTargets) {
@@ -3747,7 +3743,6 @@ async function detectBase85Variants(input) {
                 }
                 if (baseMatchedId === 'Base85-Dec') { showToast(`一致判定正常 / Base85 Dec一致 / 使用モード: ${AppState.base85Variant}${baseCountSuffix}`); break; }
 
-                // Only infer Base85 from non-hex input to avoid misidentifying hash-like values.
                 if (/[^0-9a-fA-F]/.test(entered)) {
                     const variants = await detectBase85Variants(entered);
                     if (variants.length === 1) { showToast(`一致判定異常 / 一致なし / Base85推定: ${variants[0]}${baseCountSuffix}`); break; }
@@ -4113,7 +4108,6 @@ async function detectBase85Variants(input) {
                 reportLines.push(...tableFmt, '\n', ...tableRaw);
                 reportLines.push('\n---\n*EOF*');
 
-                /* --- VFSエクスポートおよびフォールバック処理 --- */
                 const blobParts = reportLines.filter(Boolean).map(line => line + '\n');
                 const blob = new Blob(blobParts, { type: 'text/markdown' });
                 
