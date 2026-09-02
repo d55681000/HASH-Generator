@@ -2,38 +2,50 @@
 
 ## 1. Input and Preprocessing
 
-- Accepts direct text input and pasted text.
-- Processes text as UTF-8.
-- Accepts files by:
-  - Drag and drop
-  - File picker
-- Recalculates results automatically when the text input changes.
-- Performs file-structure analysis after a file is loaded.
-- Detects possible polyglot / embedded-container structures.
-- Reports:
-  - Grapheme count
-  - Shannon entropy in `bit/byte`
+### Text Input
+- Direct text entry.
+- Text is encoded as UTF-8 before hashing or encoding.
+- Grapheme-count reporting.
+- Shannon entropy reporting in `bit/byte`.
+- IME composition handling.
+- Paste handling with optional sanitization.
+- Editing the text field clears an active file-input state.
 
-### Text Normalization
-- None
-- NFC
-- NFKC
+### File Input
+- File picker.
+- Drag-and-drop file loading.
+- File data is processed as the original byte sequence.
+- Text normalization and text sanitization do not apply to file data.
+- File-mode hashing always uses one iteration.
+- Base64 Decode and Base85 Decode are not supported directly on loaded file input.
 
-### Sanitization
-- Removes:
-  - U+200B–U+200D
-  - U+2060
-  - U+FEFF
-- Normalizes line endings:
-  - CRLF → LF
-  - CR → LF
+### Unicode Normalization
+Available modes:
+- `None`
+- `NFC`
+- `NFKC`
 
-### Hexadecimal Output Case
-- Lowercase
-- Uppercase
+### Invisible-Character and Line-Ending Sanitization
+Optional preprocessing removes:
+- `U+200B` ZERO WIDTH SPACE
+- `U+200C` ZERO WIDTH NON-JOINER
+- `U+200D` ZERO WIDTH JOINER
+- `U+2060` WORD JOINER
+- `U+FEFF` ZERO WIDTH NO-BREAK SPACE / BOM
 
-### Output Grouping
-- None
+Line endings are normalized as follows:
+- `CRLF` → `LF`
+- `CR` → `LF`
+
+### Output Hexadecimal Case
+- `lowercase`
+- `UPPERCASE`
+
+Hexadecimal case conversion applies to hexadecimal result data and does not alter Base64 or Base85 alphabets.
+
+### Display Grouping
+Available grouping sizes:
+- No grouping
 - 2 characters
 - 4 characters
 - 6 characters
@@ -45,13 +57,16 @@
 - 32 characters
 - 64 characters
 
-### Separator
-- Supports an arbitrary user-defined separator string.
+### Custom Separator
+- Any text string may be used as the grouping separator.
+- An empty separator is supported.
+- Grouping is presentation-only and does not alter the stored raw result.
 
 ---
 
 ## 2. Hash and Checksum Algorithms
 
+Supported algorithms:
 - CRC32
 - CRC64
 - MD5
@@ -62,39 +77,59 @@
 - SHA-512
 
 ### CRC64 Variants
-- `XZ (ECMA, Reflected)`
-- `WE (ECMA, Non-Reflected)`
-- `ISO (HDLC, Non-Reflected)`
-- `GO-ISO (ISO, Reflected)`
-- `Redis (Jones, Reflected)`
+The CRC64 result can be switched between:
+1. `XZ (ECMA, Reflected)`
+2. `WE (ECMA, Non-Reflected)`
+3. `ISO (HDLC, Non-Reflected)`
+4. `GO-ISO (ISO, Reflected)`
+5. `Redis (Jones, Reflected)`
 
-The CRC64 selector can cycle through all five variants.
+All CRC64 variants are calculated and cached during applicable operations so the displayed variant can be changed without requiring a complete recalculation when cached data is available.
+
+### Web Cryptography API Dependency
+SHA-384 and SHA-512 depend on the availability of `window.crypto.subtle`.
+
+If the required API is unavailable:
+- A restricted-operation warning is displayed.
+- SHA-384 is disabled in the interface.
+- SHA-512 is disabled in the interface.
+- Audit output records the unavailable state.
 
 ---
 
 ## 3. Salt
 
-- Salt can be enabled or disabled.
-- Accepts a custom salt string.
-- The salt is appended to the input before hashing.
+- Optional UTF-8 salt input.
+- Salt is appended to the input data before hashing.
+- Salt is available for text hashing and file hashing.
+- Disabling the Salt option clears the configured salt.
+- Salt state is included in the audit report.
+
+For iterative XOR mode, the salt is applied to the first iteration rather than being appended again on every subsequent XOR iteration.
 
 ---
 
 ## 4. HMAC
 
-HMAC can be enabled or disabled and uses a user-supplied key.
+Optional HMAC key input is encoded as UTF-8.
 
-### Supported HMAC Algorithms
+HMAC is supported for:
 - HMAC-MD5
-- HMAC-SHA-1
-- HMAC-SHA-224
-- HMAC-SHA-256
-- HMAC-SHA-384
-- HMAC-SHA-512
+- HMAC-SHA1
+- HMAC-SHA224
+- HMAC-SHA256
+- HMAC-SHA384
+- HMAC-SHA512
 
-### Not HMAC-Based
+HMAC is not applied to:
 - CRC32
 - CRC64
+- Base64
+- Base85
+
+When HMAC is active, the corresponding hash labels change to HMAC labels.
+
+Disabling the HMAC option clears the configured HMAC key.
 
 ---
 
@@ -102,219 +137,286 @@ HMAC can be enabled or disabled and uses a user-supplied key.
 
 ### Iteration Count
 - Minimum: `1`
-- Maximum: `4294967295`
-- Can be entered directly.
-- Increment and decrement controls are available.
+- Maximum UI value: `4294967295`
+- Increment control
+- Decrement control
+- Direct numeric entry
+
+Loaded files are processed with a fixed iteration count of `1`.
 
 ### Iteration Modes
-- `Standard (Raw)`
-- `Legacy Compatibility (Hex)`
-- `XOR Overlay (XOR)`
+1. `Standard (Raw)`
+2. `Hex Handoff (Hex)`
+3. `XOR Overlay (XOR)`
 
-### Mode Behavior
-- `Standard (Raw)`: feeds the previous digest back as raw bytes.
-- `Legacy Compatibility (Hex)`: feeds the UTF-8 bytes of the previous hexadecimal digest string into the next iteration.
-- `XOR Overlay (XOR)`: accumulates successive iteration results using XOR.
+### Standard (Raw)
+The binary digest from the previous iteration becomes the input to the next iteration.
+
+### Hex Handoff (Hex)
+The hexadecimal digest text from the previous iteration is UTF-8 encoded and becomes the input to the next iteration.
+
+### XOR Overlay (XOR)
+- Each iteration hashes the previous binary digest.
+- Successive digest values are XOR-accumulated.
+- The accumulated XOR value is displayed as hexadecimal output.
+- Salt is applied on the first iteration.
+- CRC64 applies the same XOR accumulation independently to each CRC64 variant.
+
+### Cancellation
+For iterative calculations:
+- Each hash algorithm can be stopped individually.
+- All active hash calculations can be stopped simultaneously.
+- Worker-side cancellation is propagated to active algorithm tasks.
 
 ---
 
 ## 6. Base64
 
-### Operations
-- Encode
-- Decode
-
 ### Encoding
-- Produces standard Base64 output.
+- Standard RFC 4648 Base64 alphabet:
+  `A-Z a-z 0-9 + /`
+- Standard `=` padding is generated.
+- Text input is UTF-8 encoded before Base64 encoding.
+- File input can be Base64 encoded.
+- Large-file Base64 output supports streaming.
 
-### Decoding Compatibility
-- Accepts standard Base64.
-- Accepts URL-safe Base64 characters:
-  - `-`
-  - `_`
-- Internally maps URL-safe characters to:
-  - `+`
-  - `/`
-- Can restore missing `=` padding.
+### Decoding
+Base64 Decode supports two validation modes.
+
+#### Lenient Validation
+- Removes whitespace.
+- Accepts standard Base64 characters.
+- Accepts URL-safe `-` and `_`.
+- Converts:
+  - `-` → `+`
+  - `_` → `/`
+- Automatically adds missing `=` padding until the encoded length is a multiple of 4.
+- Rejects invalid characters.
+- Rejects invalid padding placement.
+
+#### Strict Validation
+Strict mode accepts standard RFC 4648 Base64 only.
+
+Validation includes:
+- Whitespace is prohibited.
+- URL-safe `-` and `_` are prohibited.
+- Only `A-Z`, `a-z`, `0-9`, `+`, `/`, and `=` are accepted.
+- Encoded length must be an exact multiple of 4.
+- Padding is limited to zero, one, or two trailing `=` characters.
+- Padding placement is validated.
+- Non-zero pad bits are rejected.
 
 ### Decoded Output
-- UTF-8 text, when valid
-- Binary data, otherwise
+Decoded data can be returned as:
+- UTF-8 text
+- Binary data
+
+When automatic file detection is disabled, decoded bytes are converted to text with the browser UTF-8 decoder.
+
+When automatic file detection is enabled:
+- Valid UTF-8 text is returned as text.
+- Data identified as binary is retained as bytes and can be downloaded with a detected extension and MIME type.
+
+### Text-Encoding Limit
+For text input:
+- Base64 Encode input limit: `50,000,000` bytes.
 
 ---
 
 ## 7. Base85
 
-### Operations
-- Encode
-- Decode
-
 ### Supported Variants
-- `Standard ASCII85`
-- `Adobe ASCII85`
-- `ZeroMQ (Z85)`
-- `RFC 1924`
+1. `Standard ASCII85`
+2. `Adobe ASCII85`
+3. `ZeroMQ (Z85)`
+4. `RFC 1924`
 
-The Base85 selector can cycle through all supported variants.
+The active variant can be cycled from the Base85 result label.
+
+### Standard ASCII85
+- Character range corresponds to ASCII characters `!` through `u`.
+- Supports `z` shorthand for a four-byte all-zero block.
+- Supports `y` shorthand for four ASCII space bytes.
+- Supports partial final input blocks.
 
 ### Adobe ASCII85
-- Supports the `<~ ... ~>` wrapper.
+- Uses the same base alphabet as Standard ASCII85.
+- Encoded output is wrapped with:
+  - Prefix: `<~`
+  - Suffix: `~>`
+- Decoder accepts wrapped Adobe input.
+- Supports `z`.
+- Supports `y`.
+- Supports partial final input blocks.
 
-### Standard / Adobe ASCII85 Shorthand
-- `z` for zero-value blocks
-- `y` for space blocks
-
-### ZeroMQ Z85 Constraints
+### ZeroMQ (Z85)
+- Uses the Z85 alphabet.
 - Encoding input length must be a multiple of 4 bytes.
 - Decoding input length must be a multiple of 5 characters.
 
-### RFC 1924 Constraints
+### RFC 1924
+- Uses the RFC 1924 Base85 alphabet.
 - Encoding input length must be a multiple of 4 bytes.
 - Decoding input length must be a multiple of 5 characters.
 
-### Variant Detection
-- Can infer likely Base85 variant candidates during comparison.
+### Base85 Decode Validation
+- Whitespace is removed before decoding.
+- Characters are validated against the selected Base85 alphabet.
+- Standard ASCII85 and Adobe ASCII85 accept partial final encoded blocks.
+- A final encoded block containing only one character is invalid.
+- ZeroMQ Z85 and RFC 1924 require exact 5-character encoded blocks.
+- Values exceeding the unsigned 32-bit range are rejected.
+
+### Base85 Variant Detection
+Comparison operations can test candidate encodings against:
+- Standard ASCII85
+- Adobe ASCII85
+- ZeroMQ Z85
+- RFC 1924
+
+Adobe `<~ ... ~>` framing directly identifies the Adobe variant.
+
+### Text-Encoding Limit
+For text input:
+- Base85 Encode input limit: `50,000,000` bytes.
 
 ---
 
 ## 8. Automatic File-Type Detection for Decoded Base Data
 
-Automatic file detection can be enabled or disabled.
+Automatic file detection can be enabled for:
+- Base64 Decode
+- Base85 Decode
 
-After Base64 or Base85 decoding:
-- The tool first attempts UTF-8 interpretation.
-- Valid UTF-8 is treated as text.
-- Otherwise, the result is treated as binary.
-- Binary data is classified using file signatures / magic bytes.
-- Detected binary output can be downloaded directly.
+If decoded data is not valid text, the decoder can preserve the binary data and associate it with a detected file extension and MIME type.
+
+Unknown binary data uses:
+- Extension: `.bin`
+- MIME type: `application/octet-stream`
 
 ---
 
-## 9. Recognized Binary File Types
+## 9. Recognized Binary Output Types
 
 ### Images
-- `.png` — `image/png`
-- `.jpg` — `image/jpeg`
-- `.gif` — `image/gif`
-- `.bmp` — `image/bmp`
-- `.tif` — `image/tiff`
-  - Little-endian TIFF
-  - Big-endian TIFF
-- `.ico` — `image/x-icon`
-- `.cur` — `image/x-icon`
-- `.jp2` — `image/jp2`
-- `.psd` — `image/vnd.adobe.photoshop`
-- `.dds` — `image/vnd.ms-dds`
-- `.exr` — `image/x-exr`
-- `.webp` — `image/webp`
-- `.heic` — `image/heic`
-  - ISO BMFF brands:
-    - `heic`
-    - `heix`
-    - `mif1`
-- `.avif` — `image/avif`
-  - ISO BMFF brands:
-    - `avif`
-    - `avis`
-- `.svg` — `image/svg+xml`
+
+| Extension | MIME Type | Detection |
+|---|---|---|
+| `.png` | `image/png` | PNG signature |
+| `.jpg` | `image/jpeg` | JPEG signature |
+| `.gif` | `image/gif` | GIF signature |
+| `.bmp` | `image/bmp` | BMP signature |
+| `.tif` | `image/tiff` | Little-endian TIFF signature |
+| `.tif` | `image/tiff` | Big-endian TIFF signature |
+| `.ico` | `image/x-icon` | ICO signature |
+| `.cur` | `image/x-icon` | CUR signature |
+| `.jp2` | `image/jp2` | JPEG 2000 signature |
+| `.psd` | `image/vnd.adobe.photoshop` | Photoshop signature |
+| `.dds` | `image/vnd.ms-dds` | DDS signature |
+| `.exr` | `image/x-exr` | OpenEXR signature |
+| `.webp` | `image/webp` | RIFF/WEBP container |
+| `.heic` | `image/heic` | BMFF brands `heic`, `heix`, `mif1` |
+| `.avif` | `image/avif` | BMFF brands `avif`, `avis` |
+| `.svg` | `image/svg+xml` | XML/SVG text signature |
 
 ### Audio
-- `.mp3` — `audio/mpeg`
-  - ID3
-  - FFFB
-  - FFF3
-  - FFF2
-- `.aac` — `audio/aac`
-  - FFF1
-  - FFF9
-- `.ogg` — `audio/ogg`
-- `.flac` — `audio/flac`
-- `.mid` — `audio/midi`
-- `.dsf` — `audio/x-dsf`
-- `.dff` — `audio/x-dff`
-- `.tta` — `audio/x-tta`
-- `.ape` — `audio/ape`
-- `.wv` — `audio/wavpack`
-- `.wma` — `audio/x-ms-wma`
-- `.wav` — `audio/wav`
-- `.aiff` — `audio/x-aiff`
-  - AIFF
-  - AIFC
-- `.m4a` — `audio/mp4`
+
+| Extension | MIME Type | Detection |
+|---|---|---|
+| `.mp3` | `audio/mpeg` | ID3 / MPEG audio frame signatures |
+| `.aac` | `audio/aac` | AAC frame signatures |
+| `.ogg` | `audio/ogg` | Ogg signature |
+| `.flac` | `audio/flac` | FLAC signature |
+| `.mid` | `audio/midi` | MIDI signature |
+| `.dsf` | `audio/x-dsf` | DSF signature |
+| `.dff` | `audio/x-dff` | DSDIFF container |
+| `.tta` | `audio/x-tta` | TTA signature |
+| `.ape` | `audio/ape` | Monkey's Audio signature |
+| `.wv` | `audio/wavpack` | WavPack signature |
+| `.wma` | `audio/x-ms-wma` | ASF/WMA signature |
+| `.wav` | `audio/wav` | RIFF/WAVE container |
+| `.aiff` | `audio/x-aiff` | AIFF / AIFC container |
+| `.m4a` | `audio/mp4` | BMFF brand `M4A` |
 
 ### Video
-- `.mkv` — `video/x-matroska`
-- `.webm` — `video/webm`
-- `.mpg` — `video/mpeg`
-- `.mp4` — `video/mp4`
-  - ISO BMFF brands:
-    - `mp41`
-    - `mp42`
-    - `isom`
-  - Unknown `ftyp` brands fall back to MP4
-- `.m4v` — `video/mp4`
-- `.mov` — `video/quicktime`
-- `.avi` — `video/x-msvideo`
 
-### Archives and Containers
-- `.zip` — `application/zip`
-- `.rar` — `application/x-rar-compressed`
-- `.7z` — `application/x-7z-compressed`
-- `.gz` — `application/gzip`
-- `.bz2` — `application/x-bzip2`
-- `.tar` — `application/x-tar`
+| Extension | MIME Type | Detection |
+|---|---|---|
+| `.mkv` | `video/x-matroska` | EBML / Matroska signature |
+| `.webm` | `video/webm` | EBML signature with WebM identifier |
+| `.mpg` | `video/mpeg` | MPEG program/video signatures |
+| `.mp4` | `video/mp4` | BMFF brands `mp41`, `mp42`, `isom`; unknown `ftyp` defaults to MP4 |
+| `.m4v` | `video/mp4` | BMFF brand `M4V` |
+| `.mov` | `video/quicktime` | BMFF brand `qt` |
+| `.avi` | `video/x-msvideo` | RIFF/AVI container |
 
-### Documents, Disk Images, Executables, and Other Binary Types
-- `.pdf` — `application/pdf`
-- `.iso` — `application/x-iso9660-image`
-- `.exe` — `application/x-msdownload`
-- `.cab` — `application/vnd.ms-cab-compressed`
-- `.msi` — `application/x-msi`
-- `.lnk` — `application/x-ms-shortcut`
-- `.chm` — `application/vnd.ms-htmlhelp`
-- `.vhdx` — `application/x-vhd`
-- `.dwg` — `image/vnd.dwg`
-- `.blend` — `application/x-blender`
-- `.txt` — `text/plain; charset=utf-16le`
-- `.txt` — `text/plain; charset=utf-16be`
-- `.bin` — `application/octet-stream`
-  - Fallback for unrecognized binary data
+### Archives
+
+| Extension | MIME Type |
+|---|---|
+| `.zip` | `application/zip` |
+| `.rar` | `application/x-rar-compressed` |
+| `.7z` | `application/x-7z-compressed` |
+| `.gz` | `application/gzip` |
+| `.bz2` | `application/x-bzip2` |
+| `.tar` | `application/x-tar` |
+
+### Documents, Executables, Disk Images, and Other Types
+
+| Extension | MIME Type |
+|---|---|
+| `.pdf` | `application/pdf` |
+| `.iso` | `application/x-iso9660-image` |
+| `.exe` | `application/x-msdownload` |
+| `.cab` | `application/vnd.ms-cab-compressed` |
+| `.msi` | `application/x-msi` |
+| `.lnk` | `application/x-ms-shortcut` |
+| `.chm` | `application/vnd.ms-htmlhelp` |
+| `.vhdx` | `application/x-vhd` |
+| `.dwg` | `image/vnd.dwg` |
+| `.blend` | `application/x-blender` |
+| `.txt` | `text/plain; charset=utf-16le` |
+| `.txt` | `text/plain; charset=utf-16be` |
+| `.bin` | `application/octet-stream` |
 
 ---
 
 ## 10. File-Structure Analysis
 
-The file analyzer recognizes or reports structures including:
+Loaded files are subjected to structural inspection before processing.
 
-- Windows PE (`EXE/DLL`)
+Recognized structural classifications include:
+- Windows PE executable (`EXE` / `DLL`)
 - MS-DOS executable
-- Executable / unverified PE
-- MP3 ID3v2
-  - Approximate ID3 tag size
-  - Approximate embedded cover size
+- Unverified PE-style executable
+- MP3 with ID3v2 metadata
 - SQLite 3 database
 - ZIP archive
 - Verified ZIP archive
 - JPEG image
 - PNG image
-- ZIP EOCD tail structures
-- ZIP64 locator structures
-- Possible polyglot files when ZIP structures are found at the tail of a file whose primary format is not ZIP
+- Generic binary data
+
+### ZIP Tail Verification
+The end of the file is inspected for:
+- ZIP End of Central Directory
+- ZIP64 locator-related signature
+
+### Polyglot Detection
+If a ZIP end structure is found in a file whose leading structure is not ZIP, the file is flagged as containing an embedded multi-format / polyglot structure.
+
+### Scan Windows
+- Initial structural scan: up to `8192` bytes from the file start.
+- Tail structural scan: up to `65536` bytes from the file end.
 
 ---
 
-## 11. Match / Verification Mode
+## 11. Match and Verification Mode
 
-A user-supplied value can be compared against generated results.
+A comparison value can be entered and tested against current results.
 
-### Comparison Normalization
-For hash comparison, the tool:
-- Removes whitespace
-- Removes colons
-- Removes hyphens
-- Converts input to lowercase
-
-### Comparison Targets
+### Hash Comparison
+Supported:
 - CRC32
 - CRC64
 - MD5
@@ -323,41 +425,55 @@ For hash comparison, the tool:
 - SHA-256
 - SHA-384
 - SHA-512
-- Base64 Enc
-- Base64 Dec
-- Base85 Enc
-- Base85 Dec
+
+Hash comparison normalization removes:
+- Whitespace
+- Colon characters
+- Hyphen characters
+
+Hash comparison is case-insensitive.
 
 ### CRC64 Variant Identification
-- A 16-character hexadecimal CRC64 value can be checked against all CRC64 variants.
+For a 16-hex-character input, the utility can identify:
+- One matching CRC64 variant
+- Multiple matching CRC64 variant candidates
 
-### Base85 Variant Identification
-- Can identify a matching variant.
-- Can return multiple candidate variants when the input is ambiguous.
+### Base Comparison
+Supported:
+- Base64 Encoded output
+- Base64 Decoded output
+- Base85 Encoded output
+- Base85 Decoded output
 
-### Additional Comparison Metrics
+Base output comparison is exact after trimming the outer comparison input.
+
+### Base85 Variant Inference
+If no direct match is found and the candidate contains non-hexadecimal characters, Base85 variant inference may still be attempted.
+
+### Comparison Metrics
+Comparison notifications can include:
 - Grapheme count
-- Shannon entropy
+- Shannon entropy for hexadecimal byte data
+- Shannon entropy for the entered Base-form text
 
 ---
 
 ## 12. Built-In Test Vectors
 
-### Available Test Inputs
-- Empty string `""`
+Available test inputs:
+- Empty string
 - `abc`
 - `123456789`
 
 ### Apply
-Applying a test vector:
-- Loads the selected input.
-- Disables / clears Salt.
-- Disables / clears HMAC.
-- Resets iterations to `1`.
-- Resets iteration mode to `Standard (Raw)`.
+Applying a test vector resets applicable configuration before loading the selected test input, including:
+- Salt
+- HMAC
+- Iteration count
+- Iteration mode
 
 ### Verify
-Verification covers:
+Built-in verification covers:
 - CRC32
 - Selected CRC64 variant
 - MD5
@@ -367,369 +483,506 @@ Verification covers:
 - SHA-384
 - SHA-512
 
----
-
-## 13. Result Actions
-
-- Click a normal result to copy its raw value.
-- Keyboard activation is supported with:
-  - Enter
-  - Space
-- Clipboard behavior:
-  - Uses the Clipboard API in secure contexts.
-  - Falls back to a hidden textarea and `execCommand('copy')` otherwise.
-- Individual hash calculations can be stopped.
-- Multi-iteration processing can be stopped globally.
-- Binary decoded results can be downloaded directly.
-- Very large text results can be downloaded as `.txt`.
+Verification can report individual self-test failures.
 
 ---
 
-## 14. Export and Download Formats
+## 13. Startup Input Preset
 
-### 14.1 Markdown Audit Report
-- Display name: `Markdown Report`
+If the main input field is empty during application initialization:
+- A fixed preset text matrix is inserted automatically.
+- An input event is dispatched so normal processing begins against that preset.
+
+---
+
+## 14. Result Presentation and Interaction
+
+### Result Rendering
+Each result can maintain:
+- Raw result data
+- Formatted display data
+- Progress status
+- Binary-result metadata
+- Large-text result metadata
+
+### Copy
+For normal text results:
+- Clicking the result copies the raw result.
+- `Enter` activates the focused result.
+- `Space` activates the focused result.
+
+Clipboard behavior:
+- Secure context with Clipboard API: `navigator.clipboard.writeText`.
+- Fallback: temporary read-only textarea and legacy copy command.
+
+### Binary Result
+Clicking a binary decoded result downloads the binary content instead of copying text.
+
+### Large Text Result
+Clicking a large text result downloads it as a text file instead of copying the complete value.
+
+---
+
+## 15. Export and Download Formats
+
+### Markdown Audit Report
+
+Format:
+- Description: `Markdown Report`
 - Extension: `.md`
 - MIME type: `text/markdown`
-- Filename pattern:
-  - `sony-hash-audit-<Japan-time-timestamp>.md`
 
-### Report Contents
-- System / environment information
-- Active configuration
-- Input target
-- `FORMATTED` results
-- `RAW` results
+Filename pattern:
+- `sony-hash-audit-YYYYMMDD-HHMMSS.md`
 
-### Result Fields Included in the Report
-- CRC32
-- CRC64
-- MD5
-- SHA-1
-- SHA-224
-- SHA-256
-- SHA-384
-- SHA-512
-- Base64 Enc
-- Base64 Dec
-- Base85 Enc
-- Base85 Dec
+Timestamp basis:
+- Japan Standard Time
+- Network-time offset is used when available
 
-### HMAC Report Labels
-When HMAC is enabled:
-- `HMAC-MD5`
-- `HMAC-SHA-1`
-- `HMAC-SHA-224`
-- `HMAC-SHA-256`
-- `HMAC-SHA-384`
-- `HMAC-SHA-512`
+The report can include:
+- Generation timestamp
+- Isolation-mode state
+- Storage-isolation warning
+- Web Cryptography API warning
+- System information
+- Network information
+- Location information
+- Overall processing status
+- UI metadata
+- Character encoding
+- Normalization state
+- Sanitization state
+- Hexadecimal case
+- Grouping size
+- Custom separator
+- Target iteration count
+- Iteration mode
+- Salt value
+- HMAC key value
+- CRC64 variant
+- Base64 validation mode
+- Base85 variant
+- Automatic Base file-detection state
+- Input type
+- Input filename
+- Input size
+- Input MIME type
+- Text grapheme count
+- Input text content
+- Formatted result table
+- Raw result table
+- Per-result progress status
 
-### 14.2 Large Base64 Direct-to-Disk Export
-- Filename:
-  - `base64_out.txt`
-- Extension:
-  - `.txt`
+For text input:
+- Audit-report input-content inclusion is limited to the first `100000` source characters.
+- Longer input is truncated in the report with a truncation notice.
 
-### 14.3 Large Base85 Direct-to-Disk Export
-- Filename:
-  - `base85_out.txt`
-- Extension:
-  - `.txt`
+Binary results are represented by a binary-data size marker rather than embedded binary content.
 
-### 14.4 Large Text Result Export
-- Filename pattern:
-  - `SONY_HASH_<Result-ID>.txt`
+Very large text results are excluded from inline report content and represented by an exclusion marker.
 
-Possible Base result filenames include:
+### Audit Report Save Path
+If File System Access is available and isolation mode is not active:
+- `showSaveFilePicker()` is used.
+
+Otherwise:
+- Browser download via object URL is used.
+
+### Direct Large-File Base64 Output
+Suggested filename:
+- `base64_out.txt`
+
+### Direct Large-File Base85 Output
+Suggested filename:
+- `base85_out.txt`
+
+### Large Text Result Download
+Filename pattern:
+- `SONY_HASH_<result-element-id>.txt`
+
+Examples:
 - `SONY_HASH_Base64-Enc.txt`
-- `SONY_HASH_Base64-Dec.txt`
 - `SONY_HASH_Base85-Enc.txt`
-- `SONY_HASH_Base85-Dec.txt`
 
-### 14.5 Decoded Binary Export
-- Filename pattern:
-  - `decoded_YYYYMMDD_HHMMSS.<detected-extension>`
+MIME type:
+- `text/plain`
 
-The extension is derived from detected file type.
+### Binary Decoded Output
+Filename pattern:
+- `decoded_YYYYMMDD_HHMMSS.<detected-extension>`
 
-If no known type is identified:
-- Extension: `.bin`
-- MIME type: `application/octet-stream`
-
----
-
-## 15. Large-File Processing
-
-### File-Size Limits
-When File System Access / streaming-save support is available:
-- Standard file-loading limit: 300 MB
-- Files above that threshold enter the large-file-output workflow.
-
-Without streaming-save support:
-- File-size limit: 50 MB
-
-### Files up to 10 MB
-Full processing includes:
-- CRC32
-- All CRC64 variants
-- MD5
-- SHA-1
-- SHA-224
-- SHA-256
-- SHA-384
-- SHA-512
-- Base64 encoding
-- Base85 encoding
-
-### Files above 10 MB
-Incremental streaming calculation is used for:
-- CRC32
-- All CRC64 variants
-- MD5
-- SHA-1
-- SHA-224
-- SHA-256
-
-For this path:
-- SHA-384 is marked as exceeding the supported text-processing size.
-- SHA-512 is marked as exceeding the supported text-processing size.
-
-### Streaming Output
-Large Base64 / Base85 output can be written directly to disk rather than retained entirely in the DOM.
+MIME type:
+- Determined from the detected binary file type.
+- Unknown data uses `application/octet-stream`.
 
 ---
 
-## 16. Themes and Display
+## 16. File Size and Streaming Behavior
 
-### Themes
-- `DEFAULT`
-- `Command Prompt`
-- `PowerShell`
+### Small-File Threshold
+A file is treated as a small file when:
+- File size is `10 MiB` or less.
 
-### Display Controls
-- Fullscreen
-- Normal view
+Small-file processing:
+- Reads the entire file into memory.
+- Supports CRC32.
+- Supports all CRC64 variants.
+- Supports MD5.
+- Supports SHA-1.
+- Supports SHA-224.
+- Supports SHA-256.
+- Supports SHA-384.
+- Supports SHA-512.
+- Supports Base64 Encode when enabled.
+- Supports Base85 Encode when enabled.
+
+### Large-File Path
+For files larger than `10 MiB`:
+- Uses `file.stream()` when available.
+- Uses worker-backed incremental hashing.
+- Supports incremental CRC32.
+- Supports incremental CRC64.
+- Supports incremental MD5.
+- Supports incremental SHA-1.
+- Supports incremental SHA-224.
+- Supports incremental SHA-256.
+- SHA-384 is reported as limited to files of `10 MiB` or less.
+- SHA-512 is reported as limited to files of `10 MiB` or less.
+- Base64 encoding can be streamed.
+- Base85 encoding can be streamed.
+- Data is aligned in streaming blocks compatible with both Base64 and Base85 processing.
+- Processing periodically yields after approximately `50 MiB` of streamed input to avoid uninterrupted main-task occupancy.
+
+### Z85 / RFC 1924 Large-File Constraint
+For ZeroMQ Z85 or RFC 1924 Base85:
+- Entire file size must be divisible by 4.
+- Otherwise Base85 encoding is rejected before streaming output begins.
+
+### Adobe ASCII85 Streaming
+When Adobe ASCII85 is streamed:
+- `<~` is written before encoded data.
+- `~>` is written after encoded data.
+
+### Browser File-Size Limits
+When File System Access streaming output is available and isolation mode is not active:
+- Normal file-loading threshold: up to `300 MiB`.
+- Files above `300 MiB` are retained as the current file and require explicit direct-output initiation.
+
+When direct stream-save support is unavailable:
+- File input is limited to `50 MiB`.
+
+### Direct-to-Disk Output
+For oversized files in a supported environment:
+- Base64 output can be written directly to a selected file.
+- Base85 output can be written directly to a selected file.
+- Output streams are closed when processing finishes.
+
+### In-Memory Large Encoded Output
+When no direct write handle is active:
+- Large Base64 encoded data is assembled into a text blob.
+- Large Base85 encoded data is assembled into a text blob.
+- The result can then be downloaded as a text file.
 
 ---
 
-## 17. System and Environment Information
+## 17. Worker Processing
 
-The environment panel can report:
+Dedicated Web Workers are used for:
+- Hash calculations
+- Base64 operations
+- Base85 operations
 
-- Operating system / platform
-- OS version
+Hash worker threshold constant:
+- `200000` bytes
+
+Worker functionality includes:
+- Iterative hashing
+- Incremental large-file hashing
+- Hash self-test verification
+- Per-algorithm abort signaling
+- Worker termination and recreation after failures
+- Transferable ArrayBuffer use for selected data paths
+
+Workers are terminated during page unload.
+
+---
+
+## 18. Themes and Display
+
+Available themes:
+1. `DEFAULT`
+2. `Command Prompt`
+3. `PowerShell`
+
+Theme selection:
+- Cycles through the available themes.
+- Is persisted in `localStorage` under the application theme setting.
+- Uses the View Transitions API when available.
+- Falls back to immediate theme switching when View Transitions are unavailable.
+
+### Fullscreen
+- Enter fullscreen.
+- Exit fullscreen.
+- Supports standard and WebKit-prefixed fullscreen APIs.
+- The control label reflects the current fullscreen state.
+
+### Responsive Presentation
+- Single-column result layout on smaller viewports.
+- Two-column result layout on larger viewports.
+- System-panel spacing is recalculated when the viewport changes.
+
+---
+
+## 19. System and Environment Diagnostics
+
+The system panel can report, when browser APIs permit:
+- Platform
+- Operating-system version
 - CPU architecture
-- Bitness
-- Language
+- Platform bitness
+- Browser language
 - Time zone
 - Desktop / mobile classification
-- Maximum touch points
-- CPU core count
-- Device memory
+- Maximum touch-point count
+- Logical processor count
+- Estimated device memory
 - GPU renderer
-- Screen resolution
+- Screen width and height
 - Device pixel ratio
-- Color depth
+- Screen color depth
 - HDR / SDR capability
 - Viewport dimensions
-- Browser brand
-- Browser version
-- System dark / light preference
+- Browser brand and version
+- Browser vendor fallback
+- Operating-system dark / light preference
 - Battery percentage
 - Charging state
-- Network effective type
-- Downlink rate
-- RTT
-- Public IP address
-- IPv4 / IPv6 classification
-- Japan Standard Time synchronization / offset
+
+### GPU Detection
+GPU information is attempted through:
+1. WebGPU adapter information
+2. WebGL / WebGL2 debug renderer information
+3. Browser capability/status fallback
+
+### User-Agent Client Hints
+When high-entropy client hints are available, the utility requests:
+- OS version
+- Architecture
+- Bitness
+- Device model
 
 ---
 
-## 18. Location Information
+## 20. Network Diagnostics
 
-- Location lookup can be enabled or disabled.
-- Uses IP-based geolocation.
+### Connection Information
+When supported by the browser Network Information API:
+- Effective connection type
+- Estimated downstream bandwidth in Mbps
+- Estimated RTT in milliseconds
 
-### Japan-Specific Fields
+### Public IP
+- Public IP lookup uses an external IP service.
+- IPv4 and IPv6 are distinguished.
+- Public-IP results are cached for approximately `120000` ms.
+- Public-IP requests use a `3000` ms timeout.
+- Offline state is reported.
+- Public-IP lookup is blocked in zero-egress isolation mode.
+
+### Network Time
+- Network time is synchronized against the Asia/Tokyo time endpoint when network access is available.
+- Timeout: `3000` ms.
+- The calculated offset is used for displayed time and audit-report timestamps.
+- The offset returns to zero on failure or offline state.
+
+### Online / Offline Events
+When network connectivity changes:
+- Network time is resynchronized after reconnection.
+- Public-IP cache is reset after reconnection.
+- Geolocation cache is invalidated after reconnection.
+- Offline state is reflected in the system panel.
+
+---
+
+## 21. Location Information
+
+Location lookup is optional and disabled by default unless a previously persisted setting enables it.
+
+### Lookup Method
+The implementation uses IP-derived location services rather than browser GPS/geolocation permission.
+
+Provider fallback sequence:
+1. `ipapi.co`
+2. `ipwho.is`
+3. `ipinfo.io`
+4. Cloudflare trace
+5. `ip-api.com`
+
+### Japan-Specific Formatting
+For Japanese IP results, location output can include:
+- Country
 - Prefecture
-- Municipality / ward / city
+- Municipality / ward
 - Postal code
-- ISP
+- ISP / organization
 
-Locations outside Japan are reported as out of scope.
+The implementation contains:
+- Japanese prefecture name mapping
+- Prefecture-code mapping
+- Tokyo ward mapping
+- Major-city name mapping
+- Japanese postal-code formatting
+
+### Non-Japan Results
+A successfully detected non-Japanese country is reported as outside the configured Japan-specific scope.
 
 ### Cache
-- Geolocation results are cached for 12 hours.
+Location result cache duration:
+- `12 hours`
+
+### Isolation Mode
+Location lookup is disabled while zero-egress isolation mode is active.
 
 ---
 
-## 19. Zero-Egress Stateless Isolation Mode
-
-### Mode
-`ZERO-EGRESS STATELESS SANDBOX`
+## 22. Zero-Egress Stateless Isolation Mode
 
 ### Activation
-- `?U-571=1`
-- `#U-571`
+Isolation mode is enabled when the page is loaded with:
+- Query parameter: `?U-571=1`
+- Fragment: `#U-571`
+
+The interface can also toggle the isolation state by reloading the page with or without the activation parameter.
+
+### Content Security Policy
+In isolation mode:
+- `connect-src 'none'`
+- `object-src 'none'`
+- `base-uri 'none'`
+- `frame-ancestors 'none'`
+- Scripts, styles, and workers remain restricted to the configured local/inline/blob policy.
 
 ### Network Isolation
-- Blocks `fetch`.
-- Blocks `XMLHttpRequest`.
-- Applies a CSP with:
-  - `connect-src 'none'`
+While active:
+- `fetch` is replaced with a blocked implementation.
+- `XMLHttpRequest` is replaced with a blocked implementation.
+- Public-IP lookup is disabled.
+- Location lookup is disabled.
+- Network-time synchronization is disabled.
 
 ### Storage Isolation
-- Replaces `localStorage` with in-memory temporary storage.
-- Replaces `sessionStorage` with in-memory temporary storage.
-- Unregisters Service Workers.
-- Clears Cache Storage.
-- Deletes enumerable IndexedDB databases.
+The implementation attempts to replace:
+- `localStorage`
+- `sessionStorage`
 
-### Other Behavior
-- Disables location lookup.
+with an in-memory storage proxy.
+
+The isolation state is checked separately for both storage mechanisms.
+
+The audit report can indicate:
+- Complete storage isolation
+- `localStorage` isolation failure
+- `sessionStorage` isolation failure
+- Combined incomplete storage isolation
+
+### Persistent-State Cleanup
+Isolation initialization attempts to:
+- Unregister service workers.
+- Delete Cache Storage entries.
+- Enumerate and delete IndexedDB databases when enumeration is supported.
+
+### File System Access
+Direct File System Access save operations are not used while isolation mode is active.
 
 ---
 
-## 20. DOM Protection
+## 23. Dynamic DOM Protection
 
-The runtime protection layer can remove dynamically inserted:
+A `MutationObserver` monitors newly inserted DOM elements.
 
+Automatically removed element types:
 - `IFRAME`
 - `OBJECT`
 - `EMBED`
 
-It can also remove nodes identified as:
-- Suspected advertisements
-- Abnormally high-z-index overlays
+Additional dynamically inserted elements may be removed when:
+- Class name contains `ad-`
+- Element ID contains `ads`
+- Computed or inline `z-index` exceeds `1945`
+
+Explicit exceptions include:
+- Download anchors
+- Fixed read-only textareas used by the copy fallback
+- Script, style, and meta elements
 
 ---
 
-## 21. Emergency Termination Mechanism
+## 24. Emergency Termination Mechanism
 
 ### Keyboard Triggers
-
-#### Windows / Non-Apple
+On non-Apple platforms:
 - `Ctrl + Shift + I`
 - `Ctrl + Shift + J`
 - `Ctrl + Shift + C`
-
-#### Apple
-- `⌘ + Option + I`
-- `⌘ + Option + J`
-- `⌘ + Option + C`
-
-#### Additional Triggers
 - `F12`
-- `Meta / Windows` key on non-Apple platforms
-- Press `Esc` four times within 500 ms
-- Touch gesture using four or more fingers
+- Meta / Windows key
+
+On Apple platforms:
+- `Command + Option + I`
+- `Command + Option + J`
+- `Command + Option + C`
+- `F12`
+
+### Escape Sequence
+- Four qualifying `Escape` key presses trigger termination.
+- The sequence resets after `500` ms.
+- Extremely rapid repeated events within `50` ms are not counted as separate qualifying presses.
+
+### Touch Trigger
+- Four or more simultaneous touch points trigger termination.
 
 ### Termination Behavior
-- Stops page execution.
-- Stops hash workers.
-- Stops the Base64 worker.
-- Stops the Base85 worker.
-- Clears the page.
-- Redirects the browser to an external neutral page.
+When triggered:
+- Current page loading is stopped.
+- Active hash processing is reset.
+- Hash worker is terminated.
+- Base64 worker is terminated.
+- Base85 worker is terminated.
+- Document content is replaced.
+- In normal mode, navigation proceeds to Google.
+- In zero-egress isolation mode, navigation proceeds to `about:blank`.
 
 ---
 
-## 22. Runtime and Processing Constraints
+## 25. Audit and Runtime State Reporting
 
-### Cryptographic API Availability
-- SHA-384 and SHA-512 depend on the availability of the Web Cryptography API (`window.crypto.subtle`).
-- If the required cryptographic API is unavailable:
-  - A restricted-operation warning is displayed.
-  - SHA-384 and SHA-512 controls are visually disabled.
-  - SHA-384 and SHA-512 interaction is blocked.
-- Audit output records a warning when the page is operating outside a secure context.
-
-### Text and File Processing Semantics
-- Text input is encoded as UTF-8 before processing.
-- File input is processed as the original byte sequence.
-- For file input:
-  - Text normalization is not applied.
-  - Invisible-character / line-ending sanitization is not applied.
-  - Text entropy reporting is not applied.
-  - Character encoding is reported as not applicable to the raw file data.
-
-### File Decode Restrictions
-- Base64 Decode does not operate directly on loaded file input.
-- Base85 Decode does not operate directly on loaded file input.
-- These operations are reported as unsupported while processing a file.
-
-### Base85 Validation
-- Whitespace is removed before Base85 decoding.
-- Input characters are validated against the selected Base85 alphabet.
-- Standard ASCII85 and Adobe ASCII85 support partial final encoded blocks.
-- A final Base85 block containing only one encoded character is invalid.
-- ZeroMQ Z85 and RFC 1924 require encoded input lengths to be exact multiples of 5.
-- Decoding rejects Base85 chunks whose numeric value exceeds the unsigned 32-bit range.
-
-### Base85 Text-Encoding Limit
-- Base85 encoding of text input is limited to `50,000,000` input bytes.
-- Inputs above this threshold are reported as exceeding the text-processing limit.
-
-### Raw and Formatted Results
-- Raw calculation results are retained independently from display formatting.
-- Hexadecimal case conversion, grouping, and separators affect presentation rather than the underlying raw result.
-- Base64 and Base85 output may use grouping for presentation.
-- Hexadecimal uppercase / lowercase conversion is not applied to Base64 or Base85 data.
-- Audit reports can therefore contain both formatted and raw result representations.
-
----
-
-## 23. Network and Environment Diagnostics
-
-### Public IP Detection
-- Detects and labels IPv4 and IPv6 addresses.
-- Reports offline operation when the browser indicates that no network connection is available.
-- External public-IP lookup is disabled in zero-egress isolation mode.
-- Public-IP results are cached.
-- The public-IP request uses a 3-second timeout.
-
-### Network Diagnostics
-When supported by the browser, the tool can report:
-- Effective connection type
-- Estimated downstream bandwidth in Mbps
-- Estimated round-trip time in milliseconds
-
-### Extended Device Information
-When supported by the browser, the tool can report:
-- Logical processor count
-- Estimated device memory
-- GPU renderer
-- Maximum touch-point count
-- Screen color depth
-- HDR / SDR capability
-- Device pixel ratio
-- Screen dimensions
-- Viewport dimensions
-- Operating-system dark / light preference
-- Operating-system version
-- CPU architecture
-- Platform bitness
-
-Operating-system version, CPU architecture, and bitness depend on the availability of User-Agent Client Hints high-entropy values.
-
----
-
-## 24. Audit Report Runtime State
-
-The Markdown audit report can record runtime-state information including:
-- Isolation-mode status
-- Non-secure-context warning
-- System and device information
-- Network information
-- Location information
+The application tracks and can expose operational state including:
 - Current processing status
-- Active configuration
-- Input processing mode
-- Formatted results
-- Raw results
+- Current CRC64 variant
+- Current Base85 variant
+- Current Base64 validation mode
+- Salt state
+- HMAC state
+- Iteration mode
+- Iteration target
+- Input type
+- File size
+- Text grapheme count
+- Shannon entropy
+- Character encoding
+- Sanitization state
+- Normalization state
+- Hexadecimal case
+- Grouping state
+- Automatic file detection state
+- Network state
+- Location state
+- Battery state
+- Isolation state
+- Storage-isolation completeness
+- Web Cryptography API availability
 
-Network and location information used during report generation is protected by bounded request timeouts.
+The system panel is refreshed once per second.
 
 
 
