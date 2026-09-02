@@ -1,4 +1,4 @@
-# HASH — Complete Capabilities and Operations Reference
+# HASH
 
 ## 1. Input and Preprocessing
 
