@@ -746,4 +746,4 @@ https://hash-generatorg.d55681000.workers.dev/
 "This is a browser-based hash calculator made purely for fun. Honestly, I'm not quite sure how to describe it, so please treat it as something fun rather than a practical tool. Any brand names mentioned are just for laughs—none of it is real, and this project was created solely for my own personal satisfaction."
 
 
-These tasks were completed jointly by Gemini V3.1 Pro and ChatGPT 5.6 Sol. I was only responsible for coordinating the work and compiling their results.
+These tasks were completed by Gemini V3.1 Pro and ChatGPT 5.6 Sol together. I was just responsible for directing the work, copying and pasting things, and putting all the results together.
