@@ -357,7 +357,7 @@
   <main class="container" role="main">
     <section class="input-wrap" id="drop-zone">
       <textarea id="in" placeholder="ここに入力、またはファイルをドロップして計算します" autocomplete="one-time-code" spellcheck="false" autocorrect="off"></textarea>
-      <div id="meta" class="hint">文字数 0｜エントロピー (Entropy): —｜文字コード: UTF-8｜正規化: なし｜不可視文字・改行整形: オフ｜HEX: lowercase｜区切り: 区切りなし｜ステータス: 待機</div>
+      <div id="meta" class="hint">文字数 0｜エントロピー（Entropy）: —｜文字コード: UTF-8｜正規化: なし｜不可視文字・改行整形: オフ｜HEX: lowercase｜区切り: 区切りなし｜ステータス: 待機</div>
       <input type="file" id="f-hidden" />
     </section>
     
@@ -3288,7 +3288,7 @@ const UI = (() => {
     const iterLabel = iterations > 1 ? `｜反復: ${iterations}回 (${AppState.iterMode === 'raw' ? '標準' : AppState.iterMode === 'hex' ? '旧互換' : 'XOR重畳'})` : '';
     const sanitizeLabel = isFile ? '対象外' : (AppState.sanitizeText ? 'オン' : 'オフ');
     const entropyLabel = isFile ? '対象外' : (Number.isFinite(AppState.currentEntropy) ? `${AppState.currentEntropy.toFixed(6)} bits/byte` : '—');
-    els.metaEl.textContent = `${countLabel} ${count}${countUnit}｜エントロピー (Entropy): ${entropyLabel}｜文字コード: ${encodingLabel}｜正規化: ${normLabel}｜不可視文字・改行整形: ${sanitizeLabel}｜HEX: ${hexLabel}｜区切り: ${groupLabel}${optLabel}${iterLabel}｜ステータス: ${statusText}`;
+    els.metaEl.textContent = `${countLabel} ${count}${countUnit}｜エントロピー（Entropy）: ${entropyLabel}｜文字コード: ${encodingLabel}｜正規化: ${normLabel}｜不可視文字・改行整形: ${sanitizeLabel}｜HEX: ${hexLabel}｜区切り: ${groupLabel}${optLabel}${iterLabel}｜ステータス: ${statusText}`;
   }
 
   async function updateAll() {
@@ -3359,7 +3359,7 @@ const UI = (() => {
       }
     }
 
-    // エントロピー (Entropy)は実際にハッシュへ渡すUTF-8バイト列を基準に算出する。
+    // エントロピー（Entropy）は実際にハッシュへ渡すUTF-8バイト列を基準に算出する。
     // 空入力およびファイル入力は、状態欄では未算出として扱う。
     AppState.currentEntropy = isFile ? null : Core.shannonEntropy(bytesToHash);
 
@@ -3460,7 +3460,7 @@ const UI = (() => {
     
     let statusText = `種別: ${analysis.type}`;
     if (analysis.isPolyglot) {
-      statusText += ` ⚠️ [警告: マルチフォーマットの埋め込み (Polyglot) を検出]`;
+      statusText += ` ⚠️ ［警告： マルチフォーマットの埋め込み (Polyglot) を検出]`;
     }
     
     els.inputEl.value = `[File: ${f.name} (${f.size} bytes)]\n[${statusText}]\n※このテキストを編集するとファイル状態が解除されます`;
@@ -3706,8 +3706,8 @@ async function detectBase85Variants(input) {
                 const enteredCharCount = Core.countGraphemes(entered);
                 const hashEntropy = Core.shannonEntropy(Core.utf8Encode(hashTarget));
                 const baseEntropy = Core.shannonEntropy(Core.utf8Encode(entered));
-                const hashEntropySuffix = Number.isFinite(hashEntropy) ? ` / Entropy: ${hashEntropy.toFixed(3)}` : '';
-                const baseEntropySuffix = Number.isFinite(baseEntropy) ? ` / Entropy: ${baseEntropy.toFixed(3)}` : '';
+                const hashEntropySuffix = Number.isFinite(hashEntropy) ? ` / 文字列エントロピー: ${hashEntropy.toFixed(3)} bit/byte` : '';
+                const baseEntropySuffix = Number.isFinite(baseEntropy) ? ` / 文字列エントロピー: ${baseEntropy.toFixed(3)} bit/byte` : '';
                 const hashCountSuffix = ` / 文字数: ${hashCharCount}${hashEntropySuffix}`;
                 const baseCountSuffix = ` / 文字数: ${enteredCharCount}${baseEntropySuffix}`;
 
@@ -4070,11 +4070,11 @@ async function detectBase85Variants(input) {
                     const MAX_TEXT_LEN = 100000;
                     let displayIn = rawIn;
                     if (rawIn.length > MAX_TEXT_LEN) {
-                        displayIn = rawIn.substring(0, MAX_TEXT_LEN) + `\n\n... [警告: 入力テキストが長すぎるため省略されました (全 ${graphemeCount} 文字)] ...`;
+                        displayIn = rawIn.substring(0, MAX_TEXT_LEN) + `\n\n... ［警告： 入力テキストが長すぎるため省略されました (全 ${graphemeCount} 文字）］ ...`;
                     }
 
                     reportLines.push(
-                        `- **種別:** テキスト (Text)`,
+                        `- **種別:** テキスト（Text）`,
                         `- **文字数:** ${graphemeCount}\n`,
                         `**--- CONTENT START ---**\n\`\`\`text\n${displayIn}\n\`\`\`\n**--- CONTENT END ---**\n`
                     );
@@ -4082,8 +4082,8 @@ async function detectBase85Variants(input) {
 
                 reportLines.push('## 4. HASH RESULTS\n');
                 
-                const tableFmt = ['### FORMATTED (表示フォーマット)\n| アルゴリズム | 進捗状況 | 出力 |\n| :--- | :--- | :--- |'];
-                const tableRaw = ['### RAW (純粋出力)\n| アルゴリズム | 進捗状況 | 出力 |\n| :--- | :--- | :--- |'];
+                const tableFmt = ['### FORMATTED（表示形式）\n| アルゴリズム | 進捗状況 | 出力 |\n| :--- | :--- | :--- |'];
+                const tableRaw = ['### RAW（生データ）\n| アルゴリズム | 進捗状況 | 出力 |\n| :--- | :--- | :--- |'];
                 
                 const algIds = ['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','Base64-Enc','Base64-Dec','Base85-Enc','Base85-Dec'];
                 
@@ -4096,9 +4096,9 @@ async function detectBase85Variants(input) {
                     
                     let raw, fmt;
                     if (el.dataset.isBinary === '1' && el._binBytes) {
-                        raw = fmt = `*[Binary Data: ${el._binBytes.length.toLocaleString()} bytes]*`;
+                        raw = fmt = `*[バイナリデータ: ${el._binBytes.length.toLocaleString()} bytes]*`;
                     } else if (el.dataset.isTextBlob === '1') {
-                        raw = fmt = `*[Huge Data Blob - Excluded from plain text report]*`;
+                        raw = fmt = `*[巨大データのためテキストレポートから除外]*`;
                     } else {
                         raw = `\`${esc(el.dataset.raw)}\``;
                         fmt = `\`${esc(el.textContent)}\``;
