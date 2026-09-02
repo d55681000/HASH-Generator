@@ -357,7 +357,7 @@
   <main class="container" role="main">
     <section class="input-wrap" id="drop-zone">
       <textarea id="in" placeholder="ここに入力、またはファイルをドロップして計算します" autocomplete="one-time-code" spellcheck="false" autocorrect="off"></textarea>
-      <div id="meta" class="hint">文字数 0｜文字コード: UTF-8｜正規化: なし｜不可視文字・改行整形: オフ｜HEX: lowercase｜区切り: 区切りなし｜ステータス: 待機</div>
+      <div id="meta" class="hint">文字数 0｜エントロピー (Entropy): —｜文字コード: UTF-8｜正規化: なし｜不可視文字・改行整形: オフ｜HEX: lowercase｜区切り: 区切りなし｜ステータス: 待機</div>
       <input type="file" id="f-hidden" />
     </section>
     
@@ -719,6 +719,7 @@ const AppState = {
   base85Variant: 'Standard ASCII85',
   crc64Variant: 'XZ (ECMA, Reflected)',
   crc64Results: {},
+  currentEntropy: null,
   baseFileDetect: false,
   salt: '',
   hmacKey: '',
@@ -1177,6 +1178,21 @@ const Core = (() => {
   }
 
   function countGraphemes(s){ return seg ? Array.from(seg.segment(s)).length : [...s].length; }
+
+  function shannonEntropy(bytes){
+    if (!bytes || !bytes.length) return null;
+    const freq = new Uint32Array(256);
+    for (let i = 0; i < bytes.length; i++) freq[bytes[i]]++;
+    const total = bytes.length;
+    let h = 0;
+    for (let i = 0; i < 256; i++) {
+      const n = freq[i];
+      if (!n) continue;
+      const p = n / total;
+      h -= p * Math.log2(p);
+    }
+    return h;
+  }
   
   function sanitizeText(s){
     s = s.replace(/[\u200B-\u200D\u2060\uFEFF]/g, '');
@@ -1189,7 +1205,7 @@ const Core = (() => {
     try{ return s.normalize(normMode); } catch{ return s; } 
   }
 
-  return { utf8Encode, utf8Decode, safeAsync, hexToBytes, getFileInfo, analyzeFileStructure, applyGrouping, formatForDisplay, crc32Hex, crc64Hex, md5Hex, sha224Hex, hmacMd5Hex, hmacSha224Hex, digestHex, hmacHex, countGraphemes, sanitizeText, normalizeText, HEX_LUT };
+  return { utf8Encode, utf8Decode, safeAsync, hexToBytes, getFileInfo, analyzeFileStructure, applyGrouping, formatForDisplay, crc32Hex, crc64Hex, md5Hex, sha224Hex, hmacMd5Hex, hmacSha224Hex, digestHex, hmacHex, countGraphemes, shannonEntropy, sanitizeText, normalizeText, HEX_LUT };
 })();
 
 /* =========================================================
@@ -3271,11 +3287,13 @@ const UI = (() => {
     const optLabel = activeOpts.length ? `｜${activeOpts.join('｜')}` : '';
     const iterLabel = iterations > 1 ? `｜反復: ${iterations}回 (${AppState.iterMode === 'raw' ? '標準' : AppState.iterMode === 'hex' ? '旧互換' : 'XOR重畳'})` : '';
     const sanitizeLabel = isFile ? '対象外' : (AppState.sanitizeText ? 'オン' : 'オフ');
-    els.metaEl.textContent = `${countLabel} ${count}${countUnit}｜文字コード: ${encodingLabel}｜正規化: ${normLabel}｜不可視文字・改行整形: ${sanitizeLabel}｜HEX: ${hexLabel}｜区切り: ${groupLabel}${optLabel}${iterLabel}｜ステータス: ${statusText}`;
+    const entropyLabel = isFile ? '対象外' : (Number.isFinite(AppState.currentEntropy) ? `${AppState.currentEntropy.toFixed(6)} bits/byte` : '—');
+    els.metaEl.textContent = `${countLabel} ${count}${countUnit}｜エントロピー (Entropy): ${entropyLabel}｜文字コード: ${encodingLabel}｜正規化: ${normLabel}｜不可視文字・改行整形: ${sanitizeLabel}｜HEX: ${hexLabel}｜区切り: ${groupLabel}${optLabel}${iterLabel}｜ステータス: ${statusText}`;
   }
 
   async function updateAll() {
     AppState.crc64Results = {};
+    AppState.currentEntropy = null;
     AppState.salt = els.saltIn.value;
     AppState.hmacKey = els.hmacIn.value;
     const isHmac = !!AppState.hmacKey;
@@ -3340,6 +3358,10 @@ const UI = (() => {
         displayCount = Core.countGraphemes(v);
       }
     }
+
+    // エントロピー (Entropy)は実際にハッシュへ渡すUTF-8バイト列を基準に算出する。
+    // 空入力およびファイル入力は、状態欄では未算出として扱う。
+    AppState.currentEntropy = isFile ? null : Core.shannonEntropy(bytesToHash);
 
     Engine.resetMasterTask();
     
@@ -3679,12 +3701,22 @@ async function detectBase85Variants(input) {
                 if (!entered) { showToast('一致判定値を入力してください'); break; }
 
                 const hashTarget = entered.replace(/[\s:-]+/g, '').toLowerCase();
+                // Hash判定は空白・コロン・ハイフンを除いた実効文字数、Base判定は入力文字列そのものの文字数を表示する。
+                const hashCharCount = Core.countGraphemes(hashTarget);
+                const enteredCharCount = Core.countGraphemes(entered);
+                const hashEntropy = Core.shannonEntropy(Core.utf8Encode(hashTarget));
+                const baseEntropy = Core.shannonEntropy(Core.utf8Encode(entered));
+                const hashEntropySuffix = Number.isFinite(hashEntropy) ? ` / Entropy: ${hashEntropy.toFixed(3)}` : '';
+                const baseEntropySuffix = Number.isFinite(baseEntropy) ? ` / Entropy: ${baseEntropy.toFixed(3)}` : '';
+                const hashCountSuffix = ` / 文字数: ${hashCharCount}${hashEntropySuffix}`;
+                const baseCountSuffix = ` / 文字数: ${enteredCharCount}${baseEntropySuffix}`;
+
                 if (/^[0-9a-f]{16}$/.test(hashTarget)) {
                     const crc64Matches = Object.entries(AppState.crc64Results || {})
                       .filter(([, value]) => String(value || '').toLowerCase() === hashTarget)
                       .map(([variant]) => variant);
-                    if (crc64Matches.length === 1) { showToast(`一致判定正常 / CRC64一致 / 変種: ${crc64Matches[0]}`); break; }
-                    if (crc64Matches.length > 1) { showToast(`一致判定正常 / CRC64一致 / 変種候補: ${crc64Matches.join(' / ')}`); break; }
+                    if (crc64Matches.length === 1) { showToast(`一致判定正常 / CRC64一致 / 変種: ${crc64Matches[0]}${hashCountSuffix}`); break; }
+                    if (crc64Matches.length > 1) { showToast(`一致判定正常 / CRC64一致 / 変種候補: ${crc64Matches.join(' / ')}${hashCountSuffix}`); break; }
                 }
 
                 const hashAlgorithms = ['CRC32', 'CRC64', 'MD5', 'SHA-1', 'SHA-224', 'SHA-256', 'SHA-384', 'SHA-512'];
@@ -3694,7 +3726,7 @@ async function detectBase85Variants(input) {
                     const raw = (el?.dataset.raw || '').trim().toLowerCase();
                     if (raw && raw === hashTarget) { matched = alg; break; }
                 }
-                if (matched) { showToast(`一致判定正常 / ${matched}一致`); break; }
+                if (matched) { showToast(`一致判定正常 / ${matched}一致${hashCountSuffix}`); break; }
 
                 // Base encodings are case-sensitive; compare their raw values without hash normalization.
                 const baseTargets = ['Base64-Enc', 'Base64-Dec', 'Base85-Enc', 'Base85-Dec'];
@@ -3704,25 +3736,25 @@ async function detectBase85Variants(input) {
                     if ((el?.dataset.raw || '').trim() === entered) { baseMatchedId = id; break; }
                 }
 
-                if (baseMatchedId === 'Base64-Enc') { showToast('一致判定正常 / Base64 Enc一致 / Standard Base64'); break; }
-                if (baseMatchedId === 'Base64-Dec') { showToast('一致判定正常 / Base64 Dec一致'); break; }
+                if (baseMatchedId === 'Base64-Enc') { showToast(`一致判定正常 / Base64 Enc一致 / Standard Base64${baseCountSuffix}`); break; }
+                if (baseMatchedId === 'Base64-Dec') { showToast(`一致判定正常 / Base64 Dec一致${baseCountSuffix}`); break; }
                 if (baseMatchedId === 'Base85-Enc') {
                     const variants = await detectBase85Variants(entered);
-                    if (variants.length === 1) showToast(`一致判定正常 / Base85 Enc一致 / 変種: ${variants[0]}`);
-                    else if (variants.length > 1) showToast(`一致判定正常 / Base85 Enc一致 / 変種候補: ${variants.join(' / ')}`);
-                    else showToast(`一致判定正常 / Base85 Enc一致 / 使用モード: ${AppState.base85Variant}`);
+                    if (variants.length === 1) showToast(`一致判定正常 / Base85 Enc一致 / 変種: ${variants[0]}${baseCountSuffix}`);
+                    else if (variants.length > 1) showToast(`一致判定正常 / Base85 Enc一致 / 変種候補: ${variants.join(' / ')}${baseCountSuffix}`);
+                    else showToast(`一致判定正常 / Base85 Enc一致 / 使用モード: ${AppState.base85Variant}${baseCountSuffix}`);
                     break;
                 }
-                if (baseMatchedId === 'Base85-Dec') { showToast(`一致判定正常 / Base85 Dec一致 / 使用モード: ${AppState.base85Variant}`); break; }
+                if (baseMatchedId === 'Base85-Dec') { showToast(`一致判定正常 / Base85 Dec一致 / 使用モード: ${AppState.base85Variant}${baseCountSuffix}`); break; }
 
                 // Only infer Base85 from non-hex input to avoid misidentifying hash-like values.
                 if (/[^0-9a-fA-F]/.test(entered)) {
                     const variants = await detectBase85Variants(entered);
-                    if (variants.length === 1) { showToast(`一致判定異常 / 一致なし / Base85推定: ${variants[0]}`); break; }
-                    if (variants.length > 1) { showToast(`一致判定異常 / 一致なし / Base85変種候補: ${variants.join(' / ')}`); break; }
+                    if (variants.length === 1) { showToast(`一致判定異常 / 一致なし / Base85推定: ${variants[0]}${baseCountSuffix}`); break; }
+                    if (variants.length > 1) { showToast(`一致判定異常 / 一致なし / Base85変種候補: ${variants.join(' / ')}${baseCountSuffix}`); break; }
                 }
 
-                showToast('一致判定異常 / 一致なし');
+                showToast(`一致判定異常 / 一致なし${hashCountSuffix}`);
                 break;
             }
 
