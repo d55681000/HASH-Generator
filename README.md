@@ -1,4 +1,4 @@
-# HASH
+# Hashing and Encoding Utility — Technical Capabilities and Operations Reference
 
 ## 1. Input and Preprocessing
 
@@ -564,10 +564,10 @@ Locations outside Japan are reported as out of scope.
 
 ---
 
-## 19. ZESS Isolation Mode
+## 19. Zero-Egress Stateless Isolation Mode
 
-### Name
-`ZESS (ZERO-EGRESS STATELESS SANDBOX)`
+### Mode
+`ZERO-EGRESS STATELESS SANDBOX`
 
 ### Activation
 - `?U-571=1`
@@ -605,7 +605,7 @@ It can also remove nodes identified as:
 
 ---
 
-## 21. Emergency Exit
+## 21. Emergency Termination Mechanism
 
 ### Keyboard Triggers
 
@@ -625,13 +625,111 @@ It can also remove nodes identified as:
 - Press `Esc` four times within 500 ms
 - Touch gesture using four or more fingers
 
-### Activation Behavior
+### Termination Behavior
 - Stops page execution.
 - Stops hash workers.
 - Stops the Base64 worker.
 - Stops the Base85 worker.
 - Clears the page.
-- Redirects to Google.
+- Redirects the browser to an external neutral page.
+
+---
+
+## 22. Runtime and Processing Constraints
+
+### Cryptographic API Availability
+- SHA-384 and SHA-512 depend on the availability of the Web Cryptography API (`window.crypto.subtle`).
+- If the required cryptographic API is unavailable:
+  - A restricted-operation warning is displayed.
+  - SHA-384 and SHA-512 controls are visually disabled.
+  - SHA-384 and SHA-512 interaction is blocked.
+- Audit output records a warning when the page is operating outside a secure context.
+
+### Text and File Processing Semantics
+- Text input is encoded as UTF-8 before processing.
+- File input is processed as the original byte sequence.
+- For file input:
+  - Text normalization is not applied.
+  - Invisible-character / line-ending sanitization is not applied.
+  - Text entropy reporting is not applied.
+  - Character encoding is reported as not applicable to the raw file data.
+
+### File Decode Restrictions
+- Base64 Decode does not operate directly on loaded file input.
+- Base85 Decode does not operate directly on loaded file input.
+- These operations are reported as unsupported while processing a file.
+
+### Base85 Validation
+- Whitespace is removed before Base85 decoding.
+- Input characters are validated against the selected Base85 alphabet.
+- Standard ASCII85 and Adobe ASCII85 support partial final encoded blocks.
+- A final Base85 block containing only one encoded character is invalid.
+- ZeroMQ Z85 and RFC 1924 require encoded input lengths to be exact multiples of 5.
+- Decoding rejects Base85 chunks whose numeric value exceeds the unsigned 32-bit range.
+
+### Base85 Text-Encoding Limit
+- Base85 encoding of text input is limited to `50,000,000` input bytes.
+- Inputs above this threshold are reported as exceeding the text-processing limit.
+
+### Raw and Formatted Results
+- Raw calculation results are retained independently from display formatting.
+- Hexadecimal case conversion, grouping, and separators affect presentation rather than the underlying raw result.
+- Base64 and Base85 output may use grouping for presentation.
+- Hexadecimal uppercase / lowercase conversion is not applied to Base64 or Base85 data.
+- Audit reports can therefore contain both formatted and raw result representations.
+
+---
+
+## 23. Network and Environment Diagnostics
+
+### Public IP Detection
+- Detects and labels IPv4 and IPv6 addresses.
+- Reports offline operation when the browser indicates that no network connection is available.
+- External public-IP lookup is disabled in zero-egress isolation mode.
+- Public-IP results are cached.
+- The public-IP request uses a 3-second timeout.
+
+### Network Diagnostics
+When supported by the browser, the tool can report:
+- Effective connection type
+- Estimated downstream bandwidth in Mbps
+- Estimated round-trip time in milliseconds
+
+### Extended Device Information
+When supported by the browser, the tool can report:
+- Logical processor count
+- Estimated device memory
+- GPU renderer
+- Maximum touch-point count
+- Screen color depth
+- HDR / SDR capability
+- Device pixel ratio
+- Screen dimensions
+- Viewport dimensions
+- Operating-system dark / light preference
+- Operating-system version
+- CPU architecture
+- Platform bitness
+
+Operating-system version, CPU architecture, and bitness depend on the availability of User-Agent Client Hints high-entropy values.
+
+---
+
+## 24. Audit Report Runtime State
+
+The Markdown audit report can record runtime-state information including:
+- Isolation-mode status
+- Non-secure-context warning
+- System and device information
+- Network information
+- Location information
+- Current processing status
+- Active configuration
+- Input processing mode
+- Formatted results
+- Raw results
+
+Network and location information used during report generation is protected by bounded request timeouts.
 
 
 
