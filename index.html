@@ -4313,7 +4313,13 @@ async function detectBase85Variants(input) {
                         document.execCommand('copy');
                         document.body.removeChild(tempTextarea);
                     }
-                    showToast(`コピー: ${el.dataset.alg}`); 
+                    let copyLabel = el.dataset.alg || el.id;
+                    if (el.id === 'CRC64') {
+                        copyLabel += ` / ${AppState.crc64Variant}`;
+                    } else if (el.id === 'Base85-Enc' || el.id === 'Base85-Dec') {
+                        copyLabel += ` / ${AppState.base85Variant}`;
+                    }
+                    showToast(`コピー: ${copyLabel}`);
                 } catch(_) {
                     showToast(`コピー失敗: 権限不足`);
                 }
