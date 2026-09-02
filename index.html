@@ -1064,6 +1064,7 @@ const Core = (() => {
       a=ii(a,b,c,d,x[i+0],6,0xf4292244); d=ii(d,a,b,c,x[i+7],10,0x432aff97); c=ii(c,d,a,b,x[i+14],15,0xab9423a7); b=ii(b,c,d,a,x[i+5],21,0xfc93a039);
       a=ii(a,b,c,d,x[i+12],6,0x655b59c3); d=ii(d,a,b,c,x[i+3],10,0x8f0ccc92); c=ii(c,d,a,b,x[i+10],15,0xffeff47d); b=ii(b,c,d,a,x[i+1],21,0x85845dd1);
       a=ii(a,b,c,d,x[i+8],6,0x6fa87e4f); d=ii(d,a,b,c,x[i+15],10,0xfe2ce6e0); c=ii(c,d,a,b,x[i+6],15,0xa3014314); b=ii(b,c,d,a,x[i+13],21,0x4e0811a1);
+      a=ii(a,b,c,d,x[i+4],6,0xf7537e82); d=ii(d,a,b,c,x[i+11],10,0xbd3af235); c=ii(c,d,a,b,x[i+2],15,0x2ad7d2bb); b=ii(b,c,d,a,x[i+9],21,0xeb86d391);
       a=(a+A)|0; b=(b+B)|0; c=(c+C)|0; d=(d+D)|0;
     }
     const out=new Uint8Array(16),words=[a,b,c,d];
@@ -2228,6 +2229,8 @@ const Engine = (() => {
           a=ii(a,b,c,d,x[0],6,0xf4292244); d=ii(d,a,b,c,x[7],10,0x432aff97); c=ii(c,d,a,b,x[14],15,0xab9423a7); b=ii(b,c,d,a,x[5],21,0xfc93a039);
           a=ii(a,b,c,d,x[12],6,0x655b59c3); d=ii(d,a,b,c,x[3],10,0x8f0ccc92); c=ii(c,d,a,b,x[10],15,0xffeff47d); b=ii(b,c,d,a,x[1],21,0x85845dd1);
           a=ii(a,b,c,d,x[8],6,0x6fa87e4f); d=ii(d,a,b,c,x[15],10,0xfe2ce6e0); c=ii(c,d,a,b,x[6],15,0xa3014314); b=ii(b,c,d,a,x[13],21,0x4e0811a1);
+          a=ii(a,b,c,d,x[4],6,0xf7537e82); d=ii(d,a,b,c,x[11],10,0xbd3af235); c=ii(c,d,a,b,x[2],15,0x2ad7d2bb); b=ii(b,c,d,a,x[9],21,0xeb86d391);
+          a=ii(a,b,c,d,x[4],6,0xf7537e82); d=ii(d,a,b,c,x[11],10,0xbd3af235); c=ii(c,d,a,b,x[2],15,0x2ad7d2bb); b=ii(b,c,d,a,x[9],21,0xeb86d391);
           this.md5_h[0]=(this.md5_h[0]+a)|0; this.md5_h[1]=(this.md5_h[1]+b)|0; this.md5_h[2]=(this.md5_h[2]+c)|0; this.md5_h[3]=(this.md5_h[3]+d)|0;
           
           sha1Process(this.sha1_h, new Uint32Array(wSHA));
@@ -2290,6 +2293,7 @@ const Engine = (() => {
             a=ii(a,b,c,d,x[0],6,0xf4292244); d=ii(d,a,b,c,x[7],10,0x432aff97); c=ii(c,d,a,b,x[14],15,0xab9423a7); b=ii(b,c,d,a,x[5],21,0xfc93a039);
             a=ii(a,b,c,d,x[12],6,0x655b59c3); d=ii(d,a,b,c,x[3],10,0x8f0ccc92); c=ii(c,d,a,b,x[10],15,0xffeff47d); b=ii(b,c,d,a,x[1],21,0x85845dd1);
             a=ii(a,b,c,d,x[8],6,0x6fa87e4f); d=ii(d,a,b,c,x[15],10,0xfe2ce6e0); c=ii(c,d,a,b,x[6],15,0xa3014314); b=ii(b,c,d,a,x[13],21,0x4e0811a1);
+          a=ii(a,b,c,d,x[4],6,0xf7537e82); d=ii(d,a,b,c,x[11],10,0xbd3af235); c=ii(c,d,a,b,x[2],15,0x2ad7d2bb); b=ii(b,c,d,a,x[9],21,0xeb86d391);
             h[0]=(h[0]+a)|0; h[1]=(h[1]+b)|0; h[2]=(h[2]+c)|0; h[3]=(h[3]+d)|0;
           }
           const out = new Uint8Array(16);
@@ -2778,9 +2782,45 @@ const UI = (() => {
   let isRendering = false;
   const LIMIT_100KB = 102400;
 
+  let forceEmptyHashOnce = false;
+
   const TEST_VECTORS = {
-    empty:{text:'',expect:{'CRC32':'00000000','CRC64':'0000000000000000','MD5':'d41d8cd98f00b204e9800998ecf8427e','SHA-1':'da39a3ee5e6b4b0d3255bfef95601890afd80709','SHA-224':'d14a028c2a3a2bc9476102bb288234c415a2b01f828ea62ac5b3e42f','SHA-256':'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855','SHA-384':'38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b','SHA-512':'cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e'}},
-    abc:{text:'abc',expect:{'CRC32':'352441c2','CRC64':'3420000000000000','MD5':'900150983cd24fb0d6963f7d28e17f72','SHA-1':'a9993e364706816aba3e25717850c26c9cd0d89d','SHA-224':'23097d223405d8228642a477bda255b32aadbce4bda0b3f7e36c9da7','SHA-256':'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad','SHA-384':'cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7','SHA-512':'ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f'}}
+    empty:{
+      text:'',
+      expect:{
+        'CRC32':'00000000',
+        'CRC64':{
+          'XZ (ECMA, Reflected)':'0000000000000000',
+          'WE (ECMA, Non-Reflected)':'0000000000000000',
+          'ISO (HDLC, Non-Reflected)':'0000000000000000',
+          'Redis (Jones, Reflected)':'0000000000000000'
+        },
+        'MD5':'d41d8cd98f00b204e9800998ecf8427e',
+        'SHA-1':'da39a3ee5e6b4b0d3255bfef95601890afd80709',
+        'SHA-224':'d14a028c2a3a2bc9476102bb288234c415a2b01f828ea62ac5b3e42f',
+        'SHA-256':'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+        'SHA-384':'38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b',
+        'SHA-512':'cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e'
+      }
+    },
+    abc:{
+      text:'abc',
+      expect:{
+        'CRC32':'352441c2',
+        'CRC64':{
+          'XZ (ECMA, Reflected)':'2cd8094a1a277627',
+          'WE (ECMA, Non-Reflected)':'048b813af9f49702',
+          'ISO (HDLC, Non-Reflected)':'000000000c416c7b',
+          'Redis (Jones, Reflected)':'0d0f758a71202054'
+        },
+        'MD5':'900150983cd24fb0d6963f7d28e17f72',
+        'SHA-1':'a9993e364706816aba3e25717850c26c9cd0d89d',
+        'SHA-224':'23097d223405d8228642a477bda255b32aadbce4bda0b3f7e36c9da7',
+        'SHA-256':'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+        'SHA-384':'cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7',
+        'SHA-512':'ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f'
+      }
+    }
   };
 
   function initDOM() {
@@ -3078,8 +3118,11 @@ const UI = (() => {
       }
       const v = Core.normalizeText(cleaned, AppState.normalization);
       if (!v) {
-        if (AppState.salt || AppState.hmacKey) {
-          isEmptyInput = true; bytesToHash = new Uint8Array(0); displayCount = 0;
+        if (AppState.salt || AppState.hmacKey || forceEmptyHashOnce) {
+          isEmptyInput = true;
+          bytesToHash = new Uint8Array(0);
+          displayCount = 0;
+          forceEmptyHashOnce = false;
         } else {
           const emptyRes = {};
           ['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','Base64-Enc','Base64-Dec','Base85-Enc','Base85-Dec'].forEach(id => {
@@ -3094,6 +3137,7 @@ const UI = (() => {
           return;
         }
       } else {
+        forceEmptyHashOnce = false;
         bytesToHash = Core.utf8Encode(v);
         displayCount = Core.countGraphemes(v);
       }
@@ -3479,49 +3523,152 @@ bindDynamicUpdate(els.iterIn, false);
                 break;
             }
             case 'applyTest': {
-                els.inputEl.value = TEST_VECTORS[els.tvSel.value].text;
-                els.saltIn.value = ''; AppState.salt = '';
-                els.hmacIn.value = ''; AppState.hmacKey = '';
-                if (AppState.showSalt) { AppState.showSalt = false; els.saltToggleBtn.textContent = 'Salt: オフ'; els.saltIn.style.display = 'none'; }
-                if (AppState.showHmac) { AppState.showHmac = false; els.hmacToggleBtn.textContent = 'HMAC: オフ'; els.hmacIn.style.display = 'none'; }
+                const test = TEST_VECTORS[els.tvSel.value];
+
+                els.inputEl.value = test.text;
+                forceEmptyHashOnce = (test.text === '');
+
+                els.saltIn.value = '';
+                AppState.salt = '';
+
+                els.hmacIn.value = '';
+                AppState.hmacKey = '';
+
+                if (AppState.showSalt) {
+                    AppState.showSalt = false;
+                    els.saltToggleBtn.textContent = 'Salt: オフ';
+                    els.saltIn.style.display = 'none';
+                }
+
+                if (AppState.showHmac) {
+                    AppState.showHmac = false;
+                    els.hmacToggleBtn.textContent = 'HMAC: オフ';
+                    els.hmacIn.style.display = 'none';
+                }
+
                 els.advInputs.style.display = 'none';
+
                 els.iterIn.value = 1;
                 AppState.iterMode = 'raw';
                 els.iterModeToggleBtn.textContent = '反復: 標準 (Raw)';
+
                 scheduleUpdate();
                 break;
             }
+
             case 'verifyTest': {
-                const vT = Core.normalizeText(Core.sanitizeText(TEST_VECTORS[els.tvSel.value].text), AppState.normalization);
+                const test = TEST_VECTORS[els.tvSel.value];
+
+                const vT = Core.normalizeText(
+                    Core.sanitizeText(test.text),
+                    AppState.normalization
+                );
+
                 const bytes = Core.utf8Encode(vT);
-                const expected = TEST_VECTORS[els.tvSel.value].expect;
-                
-                const tempRes = {'CRC32':'処理中…','CRC64':'処理中…','MD5':'処理中…','SHA-1':'処理中…','SHA-224':'処理中…','SHA-256':'処理中…','SHA-384':'処理中…','SHA-512':'処理中…'};
-                EventBus.emit('hash:results', tempRes);
-                
-                const resultsRaw = await Engine.verifyTestBytes(bytes, AppState.crc64Variant);
-                if (!resultsRaw) return;
-                
-                const results = {
-                  'CRC32': resultsRaw.crc,
-                  'CRC64': resultsRaw.crc64,
-                  'MD5': resultsRaw.md5,
-                  'SHA-1': resultsRaw.sha1,
-                  'SHA-224': resultsRaw.sha224,
-                  'SHA-256': resultsRaw.sha256,
+                const expected = test.expect;
+
+                const tempRes = {
+                    'CRC32':'処理中…',
+                    'CRC64':'処理中…',
+                    'MD5':'処理中…',
+                    'SHA-1':'処理中…',
+                    'SHA-224':'処理中…',
+                    'SHA-256':'処理中…',
+                    'SHA-384':'処理中…',
+                    'SHA-512':'処理中…'
                 };
-                
-                results['SHA-384'] = await Core.safeAsync(() => Core.digestHex('SHA-384', bytes), '未対応/エラー');
-                results['SHA-512'] = await Core.safeAsync(() => Core.digestHex('SHA-512', bytes), '未対応/エラー');
-                
-                let ok = 0; let total = 0;
-                for (const k of ['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512']) {
-                  if (expected[k] !== undefined) {
-                    total++;
-                    if (String(results[k]||'').toLowerCase() === expected[k]) ok++;
-                  }
+
+                EventBus.emit('hash:results', tempRes);
+
+                const resultsRaw = await Engine.verifyTestBytes(
+                    bytes,
+                    AppState.crc64Variant
+                );
+
+                if (!resultsRaw) {
+                    showToast('検証エラー: Workerが利用できません');
+                    return;
                 }
-                showToast(ok===total ? `検証OK ${ok}/${total} (HMAC/Salt無効時)` : `検証NG ${ok}/${total}`);
+
+                const results = {
+                    'CRC32': resultsRaw.crc,
+                    'CRC64': resultsRaw.crc64,
+                    'MD5': resultsRaw.md5,
+                    'SHA-1': resultsRaw.sha1,
+                    'SHA-224': resultsRaw.sha224,
+                    'SHA-256': resultsRaw.sha256
+                };
+
+                results['SHA-384'] = await Core.safeAsync(
+                    () => Core.digestHex('SHA-384', bytes),
+                    '未対応/エラー'
+                );
+
+                results['SHA-512'] = await Core.safeAsync(
+                    () => Core.digestHex('SHA-512', bytes),
+                    '未対応/エラー'
+                );
+
+                let ok = 0;
+                let total = 0;
+                const failed = [];
+
+                for (const k of [
+                    'CRC32',
+                    'CRC64',
+                    'MD5',
+                    'SHA-1',
+                    'SHA-224',
+                    'SHA-256',
+                    'SHA-384',
+                    'SHA-512'
+                ]) {
+                    let expectedValue;
+
+                    if (k === 'CRC64') {
+                        expectedValue = expected.CRC64?.[AppState.crc64Variant];
+                    } else {
+                        expectedValue = expected[k];
+                    }
+
+                    if (expectedValue === undefined) continue;
+
+                    total++;
+
+                    const actualValue =
+                        String(results[k] || '').toLowerCase();
+
+                    const wantedValue =
+                        String(expectedValue).toLowerCase();
+
+                    if (actualValue === wantedValue) {
+                        ok++;
+                    } else {
+                        failed.push(
+                            `${k}: ${actualValue} != ${wantedValue}`
+                        );
+                    }
+                }
+
+                if (failed.length === 0) {
+                    showToast(
+                        `検証OK ${ok}/${total} / 全アルゴリズム正常`
+                    );
+                } else {
+                    const failedNames = failed
+                        .map(x => x.split(':')[0])
+                        .join(', ');
+
+                    showToast(
+                        `検証NG ${ok}/${total} [${failedNames}]`
+                    );
+
+                    console.warn(
+                        'Self-test failures:',
+                        failed
+                    );
+                }
+
                 EventBus.emit('hash:results', results);
                 break;
             }
