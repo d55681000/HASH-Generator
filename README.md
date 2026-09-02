@@ -1,4 +1,4 @@
-# Hashing and Encoding Utility — Technical Capabilities and Operations Reference
+# Hashing and Encoding Utility
 
 ## 1. Input and Preprocessing
 
