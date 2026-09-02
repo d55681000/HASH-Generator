@@ -346,7 +346,7 @@
 </style>
 </head>
 <body>
-  <div id="sec-warn">【制限モード】 セキュアな環境（HTTPS）ではないため、高度な暗号化処理（SHA-384 / SHA-512）は無効化されています。</div>
+  <div id="sec-warn">【制限モード】 この実行環境では Web Crypto API を利用できないため、SHA-384 / SHA-512 は無効化されています。</div>
   <header>
     <h1>SONY HASH</h1>
     <div>
@@ -402,6 +402,8 @@
         <button id="Base64EncToggle" class="link" aria-label="Base64エンコードの切替" data-action="toggleBase64Enc">Base64 Enc: オフ</button>
         <span class="sep hint">/</span>
         <button id="Base64DecToggle" class="link" aria-label="Base64デコードの切替" data-action="toggleBase64Dec">Base64 Dec: オフ</button>
+        <span class="sep hint">/</span>
+        <button id="Base64ModeToggle" class="link" aria-label="Base64デコード判定モードの切替" title="寛容: URL-safe形式・空白除去・パディング補完を許可 / 厳格: RFC 4648準拠の標準Base64形式のみ許可" data-action="toggleBase64Mode">Base64判定: 寛容</button>
         <span class="sep hint">/</span>
         <button id="Base85EncToggle" class="link" aria-label="Base85エンコードの切替" data-action="toggleBase85Enc">Base85 Enc: オフ</button>
         <span class="sep hint">/</span>
@@ -561,6 +563,13 @@
    SECURITY LAYER
 ========================================================= */
 const Security = (() => {
+  const storageIsolation = { localStorage: null, sessionStorage: null };
+  const getStorageIsolationStatus = () => ({
+    localStorage: storageIsolation.localStorage,
+    sessionStorage: storageIsolation.sessionStorage,
+    complete: storageIsolation.localStorage === true && storageIsolation.sessionStorage === true
+  });
+
   const initDomGuard = () => {
     if (typeof MutationObserver === 'undefined') return;
     const observer = new MutationObserver((mutations) => {
@@ -607,8 +616,19 @@ const Security = (() => {
           set: (_, prop, value) => { memStore.set(prop, String(value)); return true; },
           deleteProperty: (_, prop) => { memStore.delete(prop); return true; }
       });
-      Object.defineProperty(window, 'localStorage', { get: () => dummyStorage, configurable: true });
-      Object.defineProperty(window, 'sessionStorage', { get: () => dummyStorage, configurable: true });
+      try {
+        Object.defineProperty(window, 'localStorage', { get: () => dummyStorage, configurable: true });
+        storageIsolation.localStorage = window.localStorage === dummyStorage;
+      } catch (e) {
+        storageIsolation.localStorage = false;
+      }
+
+      try {
+        Object.defineProperty(window, 'sessionStorage', { get: () => dummyStorage, configurable: true });
+        storageIsolation.sessionStorage = window.sessionStorage === dummyStorage;
+      } catch (e) {
+        storageIsolation.sessionStorage = false;
+      }
 
       if (navigator.serviceWorker) navigator.serviceWorker.getRegistrations().then(r => r.forEach(x => x.unregister()));
       if (window.caches) { try { caches.keys().then(k => k.forEach(name => caches.delete(name))); } catch(e){} }
@@ -616,7 +636,7 @@ const Security = (() => {
     }
     initDomGuard();
   }
-  return { init };
+  return { init, getStorageIsolationStatus };
 })();
 
 /* =========================================================
@@ -630,17 +650,19 @@ const PanicSystem = (() => {
 
   const triggerPanic = () => {
     window.stop();
-    
+
+    try { Engine.resetMasterTask(); } catch (e) {}
+    try { Engine.terminateWorker(); } catch (e) {}
+    try { Base64Engine.terminate(); } catch (e) {}
+    try { Base85Engine.terminate(); } catch (e) {}
+
     document.documentElement.innerHTML = '<head><title>Google</title></head><body style="background:#fff; margin:0; padding:0;"></body>';
 
-    try {
-      window.Engine?.resetMasterTask?.();
-      window.Engine?.terminateWorker?.();
-      window.Base64Engine?.terminate?.();
-      window.Base85Engine?.terminate?.();
-    } catch (e) {}
-
-    window.location.replace('https://www.google.com');
+    if (window.__ZESS_MODE__) {
+      window.location.replace('about:blank');
+    } else {
+      window.location.replace('https://www.google.com');
+    }
   };
 
   const handleKeydown = (e) => {
@@ -714,6 +736,7 @@ const AppState = {
   showBaseGroup: false, 
   Base64Encode: false,
   Base64Decode: false,
+  base64Strict: false,
   Base85Encode: false,
   Base85Decode: false,
   base85Variant: 'Standard ASCII85',
@@ -986,7 +1009,7 @@ const Core = (() => {
         }
       } else if (getHex(0, 3) === '494433') {
         const tagSize = (headBytes[6] << 21) | (headBytes[7] << 14) | (headBytes[8] << 7) | headBytes[9];
-        type = `MP3 (ID3v2, Cover: ~${Math.round(tagSize/1024)}KB)`;
+        type = `MP3 (ID3v2, Tag Size: ~${Math.round(tagSize/1024)}KB)`;
       } else if (getHex(0, 16) === '53514C69746520666F726D6174203300') {
         type = 'SQLite 3 Database';
       } else if (magic === '504B0304') {
@@ -1047,7 +1070,6 @@ const Core = (() => {
 
   const CRC_TABLE = (()=>{const t=new Uint32Array(256);for(let i=0;i<256;i++){let c=i;for(let j=0;j<8;j++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[i]=c>>>0;}return t;})();
   function crc32Hex(bytes){let c=0xFFFFFFFF;for(let i=0;i<bytes.length;i++){c=CRC_TABLE[(c^bytes[i])&0xFF]^(c>>>8);}return ((c^0xFFFFFFFF)>>>0).toString(16).padStart(8,'0');}
-  function crc64Hex(bytes) { return "計算中…"; }
 
   function md5Hex(bytes){
     function rol(x,c){return (x<<c)|(x>>> (32-c))}
@@ -1205,7 +1227,7 @@ const Core = (() => {
     try{ return s.normalize(normMode); } catch{ return s; } 
   }
 
-  return { utf8Encode, utf8Decode, safeAsync, hexToBytes, getFileInfo, analyzeFileStructure, applyGrouping, formatForDisplay, crc32Hex, crc64Hex, md5Hex, sha224Hex, hmacMd5Hex, hmacSha224Hex, digestHex, hmacHex, countGraphemes, shannonEntropy, sanitizeText, normalizeText, HEX_LUT };
+  return { utf8Encode, utf8Decode, safeAsync, hexToBytes, getFileInfo, analyzeFileStructure, applyGrouping, formatForDisplay, crc32Hex, md5Hex, sha224Hex, hmacMd5Hex, hmacSha224Hex, digestHex, hmacHex, countGraphemes, shannonEntropy, sanitizeText, normalizeText, HEX_LUT };
 })();
 
 /* =========================================================
@@ -1565,12 +1587,34 @@ const Base64Engine = (() => {
         }
       }
 
-      function decodeBase64(str) {
-        let clean = str.replace(/\\s+/g, '');
-        if (!clean) return { type: 'empty' };
-        if (/[^A-Za-z0-9+/=_\\-]/.test(clean)) throw new Error('Invalid Base64 Characters');
-        clean = clean.replace(/-/g, '+').replace(/_/g, '/');
-        while (clean.length % 4 !== 0) clean += '=';
+      function decodeBase64(str, strict = false) {
+        let clean;
+
+        if (strict) {
+          if (/\\s/.test(str)) throw new Error('Strict Base64: Whitespace Not Allowed');
+          if (/[^A-Za-z0-9+/=]/.test(str)) throw new Error('Strict Base64: Invalid Characters');
+          if (!str) return { type: 'empty' };
+          if (str.length % 4 !== 0) throw new Error('Strict Base64: Invalid Length');
+          if (!/^[A-Za-z0-9+/]*={0,2}$/.test(str)) throw new Error('Strict Base64: Invalid Padding');
+
+          clean = str;
+
+          const padCount = clean.endsWith('==') ? 2 : clean.endsWith('=') ? 1 : 0;
+          if (padCount === 2) {
+            const v = Base64_MAP[clean.charCodeAt(clean.length - 3)];
+            if ((v & 0x0F) !== 0) throw new Error('Strict Base64: Non-zero Pad Bits');
+          } else if (padCount === 1) {
+            const v = Base64_MAP[clean.charCodeAt(clean.length - 2)];
+            if ((v & 0x03) !== 0) throw new Error('Strict Base64: Non-zero Pad Bits');
+          }
+        } else {
+          clean = str.replace(/\\s+/g, '');
+          if (!clean) return { type: 'empty' };
+          if (/[^A-Za-z0-9+/=_\\-]/.test(clean)) throw new Error('Invalid Base64 Characters');
+          if (!/^[A-Za-z0-9+/_\\-]*={0,2}$/.test(clean)) throw new Error('Invalid Base64 Padding');
+          clean = clean.replace(/-/g, '+').replace(/_/g, '/');
+          while (clean.length % 4 !== 0) clean += '=';
+        }
 
         let l = clean.length;
         if (l === 0) return { type: 'empty' };
@@ -1594,7 +1638,7 @@ const Base64Engine = (() => {
       }
 
       onmessage = async function(e) {
-        const { action, payload, reqId, detectFile } = e.data;
+        const { action, payload, reqId, detectFile, strict } = e.data;
         try {
           if(action === 'encode' || action === 'encode_stream') {
             const str = encodeBase64(payload);
@@ -1605,7 +1649,7 @@ const Base64Engine = (() => {
                 postMessage({ reqId, status: 'ok', result: { type: 'text', value: str } });
             }
           } else if(action === 'decode') {
-            const result = decodeBase64(payload);
+            const result = decodeBase64(payload, strict);
             if(result.type === 'empty') {
                postMessage({ reqId, status: 'ok', result });
                return;
@@ -1633,7 +1677,7 @@ const Base64Engine = (() => {
     URL.revokeObjectURL(url);
   }
 
-  function run(action, payload, detectFile = false) {
+  function run(action, payload, detectFile = false, strict = false) {
     return new Promise((resolve) => {
       init();
       const reqId = Date.now() + Math.random();
@@ -1650,7 +1694,7 @@ const Base64Engine = (() => {
         const copy = new Uint8Array(payload).buffer;
         worker.postMessage({ action, payload: new Uint8Array(copy), reqId }, [copy]);
       } else {
-        worker.postMessage({ action, payload, detectFile, reqId });
+        worker.postMessage({ action, payload, detectFile, strict, reqId });
       }
     });
   }
@@ -1662,7 +1706,7 @@ const Base64Engine = (() => {
   return { 
     encode: (bytes) => run('encode', bytes), 
     encodeStream: (bytes) => run('encode_stream', bytes),
-    decode: (str, detectFile) => run('decode', str, detectFile), 
+    decode: (str, detectFile, strict = false) => run('decode', str, detectFile, strict), 
     terminate 
   };
 })();
@@ -2805,8 +2849,18 @@ const Engine = (() => {
         let base64Chunks = [];
         let base85Chunks = [];
         let leftover = new Uint8Array(0);
+        let base85Failed = false;
 
-        if (AppState.Base85Encode && AppState.base85Variant === 'Adobe ASCII85') {
+        const base85RequiresBlock4 =
+            AppState.base85Variant === 'ZeroMQ (Z85)' ||
+            AppState.base85Variant === 'RFC 1924';
+
+        if (AppState.Base85Encode && base85RequiresBlock4 && (file.size % 4 !== 0)) {
+            base85Failed = true;
+            EventBus.emit('hash:results', {'Base85-Enc': '入力長不正（4バイト単位が必要）'});
+        }
+
+        if (AppState.Base85Encode && !base85Failed && AppState.base85Variant === 'Adobe ASCII85') {
             const pre = new TextEncoder().encode('<~');
             if (AppState.streamHandles && AppState.streamHandles.Base85) await AppState.streamHandles.Base85.write(pre).catch(()=>{});
             else base85Chunks.push(pre);
@@ -2846,11 +2900,18 @@ const Engine = (() => {
                     else base64Chunks.push(Base64Res.bytes);
                 }
 
-                if (AppState.Base85Encode) {
+                if (AppState.Base85Encode && !base85Failed) {
                     const Base85Copy = toProcess.slice();
                     const Base85Res = await Base85Engine.encodeStream(Base85Copy, AppState.base85Variant);
-                    if (AppState.streamHandles && AppState.streamHandles.Base85) await AppState.streamHandles.Base85.write(Base85Res.bytes).catch(()=>{});
-                    else base85Chunks.push(Base85Res.bytes);
+
+                    if (Base85Res.type === 'error') {
+                        base85Failed = true;
+                        base85Chunks = [];
+                        EventBus.emit('hash:results', {'Base85-Enc': 'エンコードエラー'});
+                    } else {
+                        if (AppState.streamHandles && AppState.streamHandles.Base85) await AppState.streamHandles.Base85.write(Base85Res.bytes).catch(()=>{});
+                        else base85Chunks.push(Base85Res.bytes);
+                    }
                 }
 
                 bytesSinceLastYield += toProcess.length;
@@ -2866,7 +2927,7 @@ const Engine = (() => {
           if (saltBytes && saltBytes.length > 0) { worker.postMessage({action: 'update', bytes: saltBytes}); }
           worker.postMessage({action: 'finalize'});
 
-          if (AppState.Base85Encode && AppState.base85Variant === 'Adobe ASCII85') {
+          if (AppState.Base85Encode && !base85Failed && AppState.base85Variant === 'Adobe ASCII85') {
               const post = new TextEncoder().encode('~>');
               if (AppState.streamHandles && AppState.streamHandles.Base85) await AppState.streamHandles.Base85.write(post).catch(()=>{});
               else base85Chunks.push(post);
@@ -2881,7 +2942,7 @@ const Engine = (() => {
                   EventBus.emit('hash:results', {'Base64-Enc': { type: 'huge_blob', blob: blob, sizeMB } });
               }
           }
-          if (AppState.Base85Encode) {
+          if (AppState.Base85Encode && !base85Failed) {
               if (AppState.streamHandles && AppState.streamHandles.Base85) {
                   EventBus.emit('hash:results', {'Base85-Enc': '[ディスクへ直接保存完了]'});
               } else {
@@ -3062,6 +3123,7 @@ const UI = (() => {
     
     els.Base64EncToggleBtn = document.getElementById('Base64EncToggle');
     els.Base64DecToggleBtn = document.getElementById('Base64DecToggle');
+    els.Base64ModeToggleBtn = document.getElementById('Base64ModeToggle');
     els.rowBase64Enc = document.getElementById('row-Base64-enc');
     els.rowBase64Dec = document.getElementById('row-Base64-dec');
     els.Base85EncToggleBtn = document.getElementById('Base85EncToggle');
@@ -3114,8 +3176,17 @@ const UI = (() => {
       `日付: ${dateStr}`
     ];
     
-    if (!window.isSecureContext) parts.unshift('【 警告: 非セキュア接続 (HTTP) - ハードウェア暗号化アクセラレータ停止 】');
-    if (window.__ZESS_MODE__) parts.unshift('【 ZESS (ZERO-EGRESS STATELESS SANDBOX) 稼働中 】');
+    if (!window.crypto?.subtle) parts.unshift('【 警告: Web Crypto API 利用不可 - SHA-384 / SHA-512 無効 】');
+    if (window.__ZESS_MODE__) {
+      const zessStorage = Security.getStorageIsolationStatus();
+      if (zessStorage.complete) {
+        parts.unshift('【 ZESS (ZERO-EGRESS STATELESS SANDBOX) 稼働中 / Storage隔離: 正常 】');
+      } else {
+        const localState = zessStorage.localStorage ? '正常' : '失敗';
+        const sessionState = zessStorage.sessionStorage ? '正常' : '失敗';
+        parts.unshift(`【 警告: ZESS 部分隔離 - localStorage: ${localState} / sessionStorage: ${sessionState} 】`);
+      }
+    }
 
     els.sysEl.textContent = parts.join('\n');
     setSysOffset();
@@ -3283,9 +3354,10 @@ const UI = (() => {
     if (AppState.salt) activeOpts.push('Salt適用');
     if (AppState.hmacKey) activeOpts.push('HMAC稼働');
     activeOpts.push(`CRC64: ${AppState.crc64Variant}`);
+    if (AppState.Base64Decode) activeOpts.push(`Base64判定: ${AppState.base64Strict ? '厳格' : '寛容'}`);
     if (AppState.Base85Encode || AppState.Base85Decode) activeOpts.push(`Base85: ${AppState.base85Variant}`);
     const optLabel = activeOpts.length ? `｜${activeOpts.join('｜')}` : '';
-    const iterLabel = iterations > 1 ? `｜反復: ${iterations}回（${AppState.iterMode === 'raw' ? '標準' : AppState.iterMode === 'hex' ? '旧互換' : 'XOR重畳'}）` : '';
+    const iterLabel = iterations > 1 ? `｜反復: ${iterations}回（${AppState.iterMode === 'raw' ? '標準' : AppState.iterMode === 'hex' ? '手渡し' : 'XOR重畳'}）` : '';
     const sanitizeLabel = isFile ? '対象外' : (AppState.sanitizeText ? 'オン' : 'オフ');
     const entropyLabel = isFile ? '対象外' : (Number.isFinite(AppState.currentEntropy) ? `${AppState.currentEntropy.toFixed(6)} bit/byte` : '—');
     els.metaEl.textContent = `${countLabel} ${count}${countUnit}｜エントロピー（Entropy）: ${entropyLabel}｜文字コード: ${encodingLabel}｜正規化: ${normLabel}｜不可視文字・改行整形: ${sanitizeLabel}｜HEX: ${hexLabel}｜区切り: ${groupLabel}${optLabel}${iterLabel}｜ステータス: ${statusText}`;
@@ -3376,7 +3448,7 @@ const UI = (() => {
       if(!raw.trim()) {
         queueRender('Base64-Dec', '', 1, 1, true);
       } else {
-        Base64Engine.decode(raw, AppState.baseFileDetect).then(res => {
+        Base64Engine.decode(raw, AppState.baseFileDetect, AppState.base64Strict).then(res => {
           if (!Engine.masterSignal.aborted) {
             if (res.type === 'error') queueRender('Base64-Dec', 'デコード不可', 1, 1, true);
             else if (res.type === 'binary') queueRender('Base64-Dec', res, 1, 1, true);
@@ -3440,6 +3512,7 @@ const UI = (() => {
 
     if (f.size > maxMB * 1024 * 1024) {
         if (hasStreamSave) {
+            AppState.currentFile = f;
             els.inputEl.value = `[File: ${f.name} (${(f.size/1048576).toFixed(2)} MB)]\n※ファイルが300MBを超えています。下の「巨大ファイル出力開始」ボタンで直接ディスクへ保存してください。`;
             els.hugeFileBtn.style.display = 'inline-block';
             els.fTrigger.style.display = 'none';
@@ -3450,7 +3523,7 @@ const UI = (() => {
         }
     }
 
-    els.inputEl.value = `[File: ${f.name} (${f.size} bytes)]\n🔍 構造のディープスキャンを実行中...`;
+    els.inputEl.value = `[File: ${f.name} (${f.size} bytes)]\nファイル構造を解析中...`;
     els.hugeFileBtn.style.display = 'none';
     els.fTrigger.style.display = 'inline-block';
     
@@ -3502,7 +3575,7 @@ const UI = (() => {
           if(!raw.trim()) queueRender('Base64-Dec', '', 1, 1, true);
           else {
             queueRender('Base64-Dec', '計算中...', 0, 1, false);
-            Base64Engine.decode(raw, AppState.baseFileDetect).then(res => {
+            Base64Engine.decode(raw, AppState.baseFileDetect, AppState.base64Strict).then(res => {
               if (res.type === 'error') queueRender('Base64-Dec', 'デコード不可', 1, 1, true);
               else if (res.type === 'binary') queueRender('Base64-Dec', res, 1, 1, true);
               else queueRender('Base64-Dec', res.value, 1, 1, true);
@@ -3701,7 +3774,10 @@ async function detectBase85Variants(input) {
                 const hashTarget = entered.replace(/[\s:-]+/g, '').toLowerCase();
                 const hashCharCount = Core.countGraphemes(hashTarget);
                 const enteredCharCount = Core.countGraphemes(entered);
-                const hashEntropy = Core.shannonEntropy(Core.utf8Encode(hashTarget));
+                const hashBytes = (/^[0-9a-f]+$/.test(hashTarget) && hashTarget.length % 2 === 0)
+                    ? Core.hexToBytes(hashTarget)
+                    : null;
+                const hashEntropy = hashBytes ? Core.shannonEntropy(hashBytes) : null;
                 const baseEntropy = Core.shannonEntropy(Core.utf8Encode(entered));
                 const hashEntropySuffix = Number.isFinite(hashEntropy) ? ` / Entropy: ${hashEntropy.toFixed(3)} bit/byte` : '';
                 const baseEntropySuffix = Number.isFinite(baseEntropy) ? ` / Entropy: ${baseEntropy.toFixed(3)} bit/byte` : '';
@@ -3777,6 +3853,12 @@ async function detectBase85Variants(input) {
                 scheduleUpdate();
                 break;
             }
+            case 'toggleBase64Mode': {
+                AppState.base64Strict = !AppState.base64Strict;
+                els.Base64ModeToggleBtn.textContent = `Base64判定: ${AppState.base64Strict ? '厳格' : '寛容'}`;
+                scheduleUpdate();
+                break;
+            }
             case 'toggleBase85Enc': {
                 AppState.Base85Encode = !AppState.Base85Encode;
                 els.Base85EncToggleBtn.textContent = `Base85 Enc: ${AppState.Base85Encode ? 'オン' : 'オフ'}`;
@@ -3825,7 +3907,7 @@ async function detectBase85Variants(input) {
             case 'toggleIterMode': {
                 if (AppState.iterMode === 'raw') {
                     AppState.iterMode = 'hex';
-                    els.iterModeToggleBtn.textContent = '反復: 旧互換（Hex）';
+                    els.iterModeToggleBtn.textContent = '反復: 手渡し（Hex）';
                 } else if (AppState.iterMode === 'hex') {
                     AppState.iterMode = 'xor';
                     els.iterModeToggleBtn.textContent = '反復: XOR重畳（XOR）';
@@ -4013,15 +4095,21 @@ async function detectBase85Variants(input) {
 
                 const isFile = !!AppState.currentFile;
                 const normVal = isFile ? 'なし（ファイル）' : (AppState.normalization === 'none' ? 'なし' : AppState.normalization);
-                const iterModeStr = AppState.iterMode === 'raw' ? '標準（Raw）' : AppState.iterMode === 'hex' ? '旧互換（Hex）' : 'XOR重畳（XOR）';
+                const iterModeStr = AppState.iterMode === 'raw' ? '標準（Raw）' : AppState.iterMode === 'hex' ? '手渡し（Hex）' : 'XOR重畳（XOR）';
                 const esc = str => String(str).replace(/\|/g, '\\|').replace(/`/g, '\\`').replace(/\r?\n/g, '<br>');
+
+                const zessStorage = window.__ZESS_MODE__ ? Security.getStorageIsolationStatus() : null;
+                const zessStorageDetail = zessStorage
+                    ? `localStorage=${zessStorage.localStorage ? '正常' : '失敗'}, sessionStorage=${zessStorage.sessionStorage ? '正常' : '失敗'}`
+                    : '';
 
                 const reportLines = [
                     '# SONY HASH 総合監査レポート\n',
                     `- **生成日時（日本標準時）:** ${SysUtils.fmtJapaneseDate(ts)}`,
                     '- **製造:** ソニーグループ株式会社 / インターナショナル・ビジネス・マシーンズ・コーポレーション（IBM） 2026',
-                    window.__ZESS_MODE__ ? '- **【警告】** ZESS（ZERO-EGRESS STATELESS SANDBOX）隔離環境にて稼働中' : '',
-                    !window.isSecureContext ? '- **【警告】** 非セキュア接続（HTTP）— ハードウェア暗号化停止' : '',
+                    window.__ZESS_MODE__ ? '- **ZESS:** ZERO-EGRESS STATELESS SANDBOX 隔離環境にて稼働中' : '',
+                    window.__ZESS_MODE__ && zessStorage && !zessStorage.complete ? `- **【警告】** ZESS Storage 隔離不完全 — ${zessStorageDetail}` : '',
+                    !window.crypto?.subtle ? '- **【警告】** Web Crypto API 利用不可 — SHA-384 / SHA-512 無効' : '',
                     
                     '\n## 1. システム／環境情報\n```text',
                     await SysUtils.deviceInfo(),
@@ -4044,6 +4132,7 @@ async function detectBase85Variants(input) {
                     `| Salt | \`${AppState.salt || '（未設定）'}\` |`,
                     `| HMAC Key | \`${AppState.hmacKey || '（未設定）'}\` |`,
                     `| CRC64 モード | ${AppState.crc64Variant} |`,
+                    `| Base64 判定 | ${AppState.base64Strict ? '厳格' : '寛容'} |`,
                     `| Base85 モード | ${AppState.base85Variant} |`,
                     `| Base自動判別 | ${AppState.baseFileDetect ? 'オン' : 'オフ'} |\n`,
                     
