@@ -987,10 +987,15 @@ The system panel is refreshed once per second.
 
 
 
+---
 
-https://d55681000.github.io/HASH-Generator/
+## Deployment Endpoints
 
-https://hash-generatorg.d55681000.workers.dev/
+- GitHub Pages:
+- https://d55681000.github.io/HASH-Generator/
+- 
+- Cloudflare Workers:
+- https://hash-generatorg.d55681000.workers.dev/
 
 
 
