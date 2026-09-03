@@ -318,6 +318,11 @@
     pointer-events:auto; user-select:text; transition: color 0.4s ease;
     view-transition-name: sys-panel;
   }
+  .unofficial{
+    position:fixed;left:10px;bottom:10px;
+    color:var(--muted);font-size:8px;line-height:1.35;white-space:nowrap;
+    pointer-events:auto; user-select:text; transition: color 0.4s ease;
+  }
   .brandline{color:var(--fg-bright);font-weight:600; transition: color 0.4s ease, text-shadow 0.4s ease;}
   #f-hidden{display:none}
   
@@ -556,6 +561,8 @@
   <aside id="sys" class="sys">
     <div class="brandline">製造: ソニーグループ株式会社 / インターナショナル・ビジネス・マシーンズ・コーポレーション（IBM） 2026</div>
   </aside>
+  
+  <div class="unofficial">非公式・個人制作ツール</div>
   
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
