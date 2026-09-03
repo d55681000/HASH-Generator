@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>SONY HASH</title>
 <script>
-  if(location.search.includes('U-571=1') || location.hash === '#U-571') {
+  const zessParam = new URLSearchParams(location.search).get('U-571');
+  if(zessParam === '1' || location.hash === '#U-571') {
     document.write('<meta http-equiv="Content-Security-Policy" content="default-src \'self\'; script-src \'self\' \'unsafe-inline\' blob:; style-src \'self\' \'unsafe-inline\'; worker-src \'self\' blob:; connect-src \'none\'; object-src \'none\'; base-uri \'none\'; frame-ancestors \'none\';">');
     window.__ZESS_MODE__ = true;
   } else {
@@ -647,31 +648,110 @@ const PanicSystem = (() => {
   let escPressCount = 0;
   let escResetTimeout;
   let lastEscPressTime = 0;
+  let panicTriggered = false;
 
-  const triggerPanic = () => {
-    window.stop();
+  const markPanicState = () => {
+    try {
+      history.replaceState({ __ZESS_PANIC__: 1 }, document.title, window.location.href);
+    } catch (e) {}
+  };
 
+  const wipeRuntimeState = () => {
     try { Engine.resetMasterTask(); } catch (e) {}
     try { Engine.terminateWorker(); } catch (e) {}
     try { Base64Engine.terminate(); } catch (e) {}
     try { Base85Engine.terminate(); } catch (e) {}
+    try { UI.panicReset(); } catch (e) {}
 
-    document.documentElement.innerHTML = '<head><title>Google</title></head><body style="background:#fff; margin:0; padding:0;"></body>';
+    try {
+      if (AppState.streamHandles) {
+        Object.values(AppState.streamHandles).forEach(handle => {
+          if (!handle || typeof handle.abort !== 'function') return;
+          try {
+            const p = handle.abort();
+            if (p && typeof p.catch === 'function') p.catch(() => {});
+          } catch (e) {}
+        });
+      }
+
+      AppState.streamHandles = null;
+      AppState.currentFile = null;
+      AppState.currentEntropy = null;
+      AppState.crc64Results = {};
+      AppState.salt = '';
+      AppState.hmacKey = '';
+      AppState.geoLabel = window.__ZESS_MODE__ ? 'ZESS (位置情報隔離)' : '照会オフ';
+      AppState.geoTs = 0;
+      AppState.netTimeOffset = 0;
+    } catch (e) {}
+
+    try {
+      document.querySelectorAll('textarea, input').forEach(el => {
+        try { el.value = ''; } catch (e) {}
+      });
+
+      document.querySelectorAll('.value').forEach(el => {
+        el.textContent = '';
+        el.dataset.raw = '';
+        el.dataset.empty = '1';
+        delete el._hugeBlob;
+        delete el._hugeString;
+      });
+    } catch (e) {}
 
     if (window.__ZESS_MODE__) {
-      window.location.replace('about:blank');
-    } else {
-      window.location.replace('https://www.google.com');
+      try { localStorage.clear(); } catch (e) {}
+      try { sessionStorage.clear(); } catch (e) {}
     }
+  };
+
+  const sealDocument = () => {
+    try {
+      document.documentElement.innerHTML = '<head><title>Google</title></head><body style="background:#fff; margin:0; padding:0;"></body>';
+    } catch (e) {}
+  };
+
+  const leavePanic = () => {
+    try {
+      if (window.__ZESS_MODE__) {
+        window.location.replace('about:blank');
+      } else {
+        window.location.replace('https://www.google.com');
+      }
+    } catch (e) {
+      sealDocument();
+    }
+  };
+
+  const enforcePanicState = () => {
+    const marked = !!(history.state && history.state.__ZESS_PANIC__ === 1);
+    if (!panicTriggered && !marked) return;
+
+    panicTriggered = true;
+    window.stop();
+    sealDocument();
+    leavePanic();
+  };
+
+  const triggerPanic = () => {
+    if (panicTriggered) return;
+    panicTriggered = true;
+
+    window.stop();
+    clearTimeout(escResetTimeout);
+    markPanicState();
+    wipeRuntimeState();
+    sealDocument();
+    leavePanic();
   };
 
   const handleKeydown = (e) => {
     const keyStr = e.key.toLowerCase();
-    
+
     const isDevTools = isApple 
       ? (e.metaKey && e.altKey && ['i', 'j', 'c'].includes(keyStr)) 
       : (e.ctrlKey && e.shiftKey && ['i', 'j', 'c'].includes(keyStr));
-      
+
     const isF12 = e.key === 'F12';
     const isWinKey = e.key === 'Meta' && !isApple;
 
@@ -687,7 +767,7 @@ const PanicSystem = (() => {
       if (now - lastEscPressTime > 50) {
         escPressCount++;
         lastEscPressTime = now;
-        
+
         clearTimeout(escResetTimeout);
         if (escPressCount >= 4) {
           triggerPanic();
@@ -707,8 +787,17 @@ const PanicSystem = (() => {
   };
 
   function init() {
+    if (history.state && history.state.__ZESS_PANIC__ === 1) {
+      panicTriggered = true;
+      enforcePanicState();
+      return false;
+    }
+
     document.addEventListener('keydown', handleKeydown, true);
     document.addEventListener('touchstart', handleTouch, { passive: false, capture: true });
+    window.addEventListener('pageshow', enforcePanicState, true);
+    window.addEventListener('popstate', enforcePanicState, true);
+    return true;
   }
 
   return { init };
@@ -3152,11 +3241,22 @@ const UI = (() => {
     }
   }
 
-  function showToast(msg) {
-    els.toastEl.textContent = msg;
-    els.toastEl.classList.add('show');
-    setTimeout(() => els.toastEl.classList.remove('show'), 900);
+  let toastTimer = null;
+const TOAST_DURATION = 1500;
+
+function showToast(msg) {
+  els.toastEl.textContent = msg;
+  els.toastEl.classList.add('show');
+
+  if (toastTimer) {
+    clearTimeout(toastTimer);
   }
+
+  toastTimer = setTimeout(() => {
+    els.toastEl.classList.remove('show');
+    toastTimer = null;
+  }, TOAST_DURATION);
+}
 
   function setSysOffset() {
     const h = els.sysEl.getBoundingClientRect().height || 0;
@@ -4248,9 +4348,13 @@ async function detectBase85Variants(input) {
             case 'toggleZess': {
                 const locationUrl = new URL(window.location.href);
                 if (window.__ZESS_MODE__) {
-                    locationUrl.searchParams.delete('U-571'); locationUrl.hash = ''; window.location.href = locationUrl.toString();
+                    locationUrl.searchParams.delete('U-571');
+                    locationUrl.hash = '';
+                    window.location.replace(locationUrl.toString());
                 } else {
-                    locationUrl.searchParams.set('U-571', '1'); window.location.href = locationUrl.toString();
+                    locationUrl.searchParams.set('U-571', '1');
+                    locationUrl.hash = '';
+                    window.location.replace(locationUrl.toString());
                 }
                 break;
             }
@@ -4398,12 +4502,34 @@ async function detectBase85Variants(input) {
     window.addEventListener('beforeunload', () => { Engine.terminateWorker(); Base64Engine.terminate(); Base85Engine.terminate(); });
   }
 
+  function panicReset() {
+    scheduled = false;
+    isRendering = false;
+    forceEmptyHashOnce = false;
+
+    for (const key of Object.keys(renderState)) {
+      const state = renderState[key];
+      if (state && state.blob) state.blob = null;
+      delete renderState[key];
+    }
+
+    Object.values(els).forEach(el => {
+      if (!el || typeof el !== 'object') return;
+      try {
+        if ('value' in el) el.value = '';
+        if (el.dataset) el.dataset.raw = '';
+        delete el._hugeBlob;
+        delete el._hugeString;
+      } catch (e) {}
+    });
+  }
+
   function init() {
     initDOM();
     attachEvents();
   }
 
-  return { init, updateSysPanel };
+  return { init, updateSysPanel, panicReset };
 })();
 
 /* =========================================================
@@ -4427,7 +4553,7 @@ const PresetLoader = (() => {
 ========================================================= */
 (async function initApp() {
   Security.init();
-  PanicSystem.init();
+  if (!PanicSystem.init()) return;
   Engine.init();
   UI.init();
   PresetLoader.init();
