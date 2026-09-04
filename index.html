@@ -253,6 +253,9 @@
   .result-col{display:flex;flex-direction:column;flex:1;min-width:0;}
   .prog-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;height:14px;}
   .prog-text{margin:0;font-size:10px;line-height:1;}
+  .progress-meta{display:flex;align-items:center;gap:10px;min-width:0;}
+  .history-text{margin:0;font-size:10px;line-height:1;color:var(--muted);transition:color 0.2s ease;}
+  .history-text.full{color:var(--alert);}
   .task-actions{display:flex;align-items:center;gap:4px;}
   .task-actions .link{margin-left:0;}
   .stop-btn,.abort-btn{margin:0;font-size:10px;line-height:1;display:none;padding:0 4px;}
@@ -484,56 +487,56 @@
       <div class="row">
         <div class="label">CRC32</div>
         <div class="result-col">
-          <div class="prog-bar"><span id="prog-CRC32" class="hint prog-text">待機</span><span class="task-actions"><button class="link stop-btn warn" data-alg="CRC32" data-action="stopAlg">[停止]</button><button class="link abort-btn warn" data-alg="CRC32" data-action="abortAlg">[中止]</button></span></div>
+          <div class="prog-bar"><span class="progress-meta"><span id="prog-CRC32" class="hint prog-text">待機</span><span id="history-CRC32" class="hint history-text">履歴 0/65535</span></span><span class="task-actions"><button class="link stop-btn warn" data-alg="CRC32" data-action="stopAlg">[停止]</button><button class="link abort-btn warn" data-alg="CRC32" data-action="abortAlg">[中止]</button></span></div>
           <div id="CRC32" class="value" data-alg="CRC32" tabindex="0" data-action="copyValue">入力待ち</div>
         </div>
       </div>
       <div class="row">
         <div class="label" id="label-CRC64" data-action="cycleCrc64" style="cursor:pointer;text-decoration:underline;" title="クリックでCRC-64の規格を切り替えます">CRC64</div>
         <div class="result-col">
-          <div class="prog-bar"><span id="prog-CRC64" class="hint prog-text">待機</span><span class="task-actions"><button class="link stop-btn warn" data-alg="CRC64" data-action="stopAlg">[停止]</button><button class="link abort-btn warn" data-alg="CRC64" data-action="abortAlg">[中止]</button></span></div>
+          <div class="prog-bar"><span class="progress-meta"><span id="prog-CRC64" class="hint prog-text">待機</span><span id="history-CRC64" class="hint history-text">履歴 0/65535</span></span><span class="task-actions"><button class="link stop-btn warn" data-alg="CRC64" data-action="stopAlg">[停止]</button><button class="link abort-btn warn" data-alg="CRC64" data-action="abortAlg">[中止]</button></span></div>
           <div id="CRC64" class="value" data-alg="CRC64" tabindex="0" data-action="copyValue">入力待ち</div>
         </div>
       </div>
       <div class="row">
         <div class="label" id="label-MD5">MD5</div>
         <div class="result-col">
-          <div class="prog-bar"><span id="prog-MD5" class="hint prog-text">待機</span><span class="task-actions"><button class="link stop-btn warn" data-alg="MD5" data-action="stopAlg">[停止]</button><button class="link abort-btn warn" data-alg="MD5" data-action="abortAlg">[中止]</button></span></div>
+          <div class="prog-bar"><span class="progress-meta"><span id="prog-MD5" class="hint prog-text">待機</span><span id="history-MD5" class="hint history-text">履歴 0/65535</span></span><span class="task-actions"><button class="link stop-btn warn" data-alg="MD5" data-action="stopAlg">[停止]</button><button class="link abort-btn warn" data-alg="MD5" data-action="abortAlg">[中止]</button></span></div>
           <div id="MD5" class="value" data-alg="MD5" tabindex="0" data-action="copyValue">入力待ち</div>
         </div>
       </div>
       <div class="row">
         <div class="label" id="label-SHA-1">SHA-1</div>
         <div class="result-col">
-          <div class="prog-bar"><span id="prog-SHA-1" class="hint prog-text">待機</span><span class="task-actions"><button class="link stop-btn warn" data-alg="SHA-1" data-action="stopAlg">[停止]</button><button class="link abort-btn warn" data-alg="SHA-1" data-action="abortAlg">[中止]</button></span></div>
+          <div class="prog-bar"><span class="progress-meta"><span id="prog-SHA-1" class="hint prog-text">待機</span><span id="history-SHA-1" class="hint history-text">履歴 0/65535</span></span><span class="task-actions"><button class="link stop-btn warn" data-alg="SHA-1" data-action="stopAlg">[停止]</button><button class="link abort-btn warn" data-alg="SHA-1" data-action="abortAlg">[中止]</button></span></div>
           <div id="SHA-1" class="value" data-alg="SHA-1" tabindex="0" data-action="copyValue">入力待ち</div>
         </div>
       </div>
       <div class="row">
         <div class="label" id="label-SHA-224">SHA-224</div>
         <div class="result-col">
-          <div class="prog-bar"><span id="prog-SHA-224" class="hint prog-text">待機</span><span class="task-actions"><button class="link stop-btn warn" data-alg="SHA-224" data-action="stopAlg">[停止]</button><button class="link abort-btn warn" data-alg="SHA-224" data-action="abortAlg">[中止]</button></span></div>
+          <div class="prog-bar"><span class="progress-meta"><span id="prog-SHA-224" class="hint prog-text">待機</span><span id="history-SHA-224" class="hint history-text">履歴 0/65535</span></span><span class="task-actions"><button class="link stop-btn warn" data-alg="SHA-224" data-action="stopAlg">[停止]</button><button class="link abort-btn warn" data-alg="SHA-224" data-action="abortAlg">[中止]</button></span></div>
           <div id="SHA-224" class="value" data-alg="SHA-224" tabindex="0" data-action="copyValue">入力待ち</div>
         </div>
       </div>
       <div class="row">
         <div class="label" id="label-SHA-256">SHA-256</div>
         <div class="result-col">
-          <div class="prog-bar"><span id="prog-SHA-256" class="hint prog-text">待機</span><span class="task-actions"><button class="link stop-btn warn" data-alg="SHA-256" data-action="stopAlg">[停止]</button><button class="link abort-btn warn" data-alg="SHA-256" data-action="abortAlg">[中止]</button></span></div>
+          <div class="prog-bar"><span class="progress-meta"><span id="prog-SHA-256" class="hint prog-text">待機</span><span id="history-SHA-256" class="hint history-text">履歴 0/65535</span></span><span class="task-actions"><button class="link stop-btn warn" data-alg="SHA-256" data-action="stopAlg">[停止]</button><button class="link abort-btn warn" data-alg="SHA-256" data-action="abortAlg">[中止]</button></span></div>
           <div id="SHA-256" class="value" data-alg="SHA-256" tabindex="0" data-action="copyValue">入力待ち</div>
         </div>
       </div>
       <div class="row" id="row-SHA-384">
         <div class="label" id="label-SHA-384">SHA-384</div>
         <div class="result-col">
-          <div class="prog-bar"><span id="prog-SHA-384" class="hint prog-text">待機</span><span class="task-actions"><button class="link stop-btn warn" data-alg="SHA-384" data-action="stopAlg">[停止]</button><button class="link abort-btn warn" data-alg="SHA-384" data-action="abortAlg">[中止]</button></span></div>
+          <div class="prog-bar"><span class="progress-meta"><span id="prog-SHA-384" class="hint prog-text">待機</span><span id="history-SHA-384" class="hint history-text">履歴 0/65535</span></span><span class="task-actions"><button class="link stop-btn warn" data-alg="SHA-384" data-action="stopAlg">[停止]</button><button class="link abort-btn warn" data-alg="SHA-384" data-action="abortAlg">[中止]</button></span></div>
           <div id="SHA-384" class="value" data-alg="SHA-384" tabindex="0" data-action="copyValue">入力待ち</div>
         </div>
       </div>
       <div class="row" id="row-SHA-512">
         <div class="label" id="label-SHA-512">SHA-512</div>
         <div class="result-col">
-          <div class="prog-bar"><span id="prog-SHA-512" class="hint prog-text">待機</span><span class="task-actions"><button class="link stop-btn warn" data-alg="SHA-512" data-action="stopAlg">[停止]</button><button class="link abort-btn warn" data-alg="SHA-512" data-action="abortAlg">[中止]</button></span></div>
+          <div class="prog-bar"><span class="progress-meta"><span id="prog-SHA-512" class="hint prog-text">待機</span><span id="history-SHA-512" class="hint history-text">履歴 0/65535</span></span><span class="task-actions"><button class="link stop-btn warn" data-alg="SHA-512" data-action="stopAlg">[停止]</button><button class="link abort-btn warn" data-alg="SHA-512" data-action="abortAlg">[中止]</button></span></div>
           <div id="SHA-512" class="value" data-alg="SHA-512" tabindex="0" data-action="copyValue">入力待ち</div>
         </div>
       </div>
@@ -837,6 +840,7 @@ const AppState = {
   separator: ' ',
   testVector: 'empty',
   showTest: false,
+  iterations: 1,
   iterMode: 'raw',
   showSalt: false,
   showHmac: false,
@@ -2086,6 +2090,9 @@ const Engine = (() => {
   const WORKER_THRESHOLD = 200000;
   const hasWorker = !!window.Worker;
   let worker = null;
+  let iterativeSessionActive = false;
+  let iterativeSessionId = 0;
+  let iterativeTargetRevision = 0;
 
   const TaskManager = (() => {
     let master = new AbortController();
@@ -2104,7 +2111,7 @@ const Engine = (() => {
         algs.set(id, ctrl);
         master.signal.addEventListener('abort', () => { if (!ctrl.signal.aborted) ctrl.abort(); });
         ctrl.signal.addEventListener('abort', () => {
-            if (worker) worker.postMessage({ action: 'abort', algId: id });
+            if (worker) worker.postMessage({ action: 'abort', algId: id, sessionId: iterativeSessionId });
         });
         return ctrl.signal;
       },
@@ -2588,6 +2595,172 @@ const Engine = (() => {
       let hasher = null;
       const pausedTasks = {};
       const resumeWaiters = {};
+      const taskHistories = {};
+      const HISTORY_LIMIT = 65535;
+      const CONTROL_YIELD_INTERVAL = 8;
+      const PROGRESS_INTERVAL = 32;
+      const DIGEST_BYTES = {
+        'CRC32': 4,
+        'MD5': 16,
+        'SHA-1': 20,
+        'SHA-224': 28,
+        'SHA-256': 32,
+        'SHA-384': 48,
+        'SHA-512': 64
+      };
+
+      class IterationHistory {
+        constructor(width) {
+          this.width = width;
+          this.capacity = 0;
+          this.data = new Uint8Array(0);
+          this.start = 0;
+          this.count = 0;
+          this.firstIter = 0;
+        }
+        _ensureCapacity(needed) {
+          if (needed <= this.capacity) return;
+          let next = this.capacity ? this.capacity * 2 : 64;
+          if (next < needed) next = needed;
+          if (next > HISTORY_LIMIT) next = HISTORY_LIMIT;
+          const buf = new Uint8Array(next * this.width);
+          for (let n = 0; n < this.count; n++) {
+            const src = ((this.start + n) % this.capacity) * this.width;
+            buf.set(this.data.subarray(src, src + this.width), n * this.width);
+          }
+          this.data = buf;
+          this.capacity = next;
+          this.start = 0;
+        }
+        clear(release = false) {
+          if (release) {
+            this.data = new Uint8Array(0);
+            this.capacity = 0;
+          }
+          this.start = 0;
+          this.count = 0;
+          this.firstIter = 0;
+        }
+        reserve(iter) {
+          let index;
+          if (this.count === 0) {
+            this._ensureCapacity(1);
+            this.start = 0;
+            this.firstIter = iter;
+            this.count = 1;
+            index = 0;
+          } else {
+            const expected = this.firstIter + this.count;
+            if (iter !== expected) throw new Error('Non-sequential history write: ' + iter + ' != ' + expected);
+            if (this.count < HISTORY_LIMIT) {
+              this._ensureCapacity(this.count + 1);
+              index = (this.start + this.count) % this.capacity;
+              this.count++;
+            } else {
+              this.start = (this.start + 1) % this.capacity;
+              this.firstIter++;
+              index = (this.start + this.count - 1) % this.capacity;
+            }
+          }
+          const pos = index * this.width;
+          return this.data.subarray(pos, pos + this.width);
+        }
+        push(iter, snapshot) {
+          if (!snapshot || snapshot.length !== this.width) return;
+          this.reserve(iter).set(snapshot);
+        }
+        has(iter) {
+          return this.count > 0 && iter >= this.firstIter && iter < this.firstIter + this.count;
+        }
+        get(iter) {
+          if (!this.has(iter)) return null;
+          const offset = iter - this.firstIter;
+          const index = (this.start + offset) % this.capacity;
+          const pos = index * this.width;
+          return this.data.slice(pos, pos + this.width);
+        }
+        truncate(iter) {
+          if (!this.has(iter)) return false;
+          this.count = iter - this.firstIter + 1;
+          return true;
+        }
+      }
+
+      const IterationRuntime = (() => {
+        const tasks = {};
+        const allowed = {
+          running: new Set(['paused', 'parked', 'terminated', 'error']),
+          paused: new Set(['running', 'parked', 'terminated', 'error']),
+          parked: new Set(['running', 'paused', 'terminated', 'error']),
+          error: new Set(['terminated']),
+          terminated: new Set()
+        };
+        const terminal = state => state === 'terminated' || state === 'error';
+        const begin = (alg, sessionId, generation, target, revision) => {
+          tasks[alg] = {
+            sessionId,
+            generation,
+            state: 'running',
+            target: normalizeTarget(target),
+            targetRevision: Math.max(0, Number(revision) || 0),
+            currentIter: 0,
+            hex: ''
+          };
+          return tasks[alg];
+        };
+        const get = alg => tasks[alg] || null;
+        const setState = (alg, next) => {
+          const task = get(alg);
+          if (!task) return false;
+          if (task.state === next) return true;
+          if (!allowed[task.state] || !allowed[task.state].has(next)) {
+            throw new Error('Invalid iteration state: ' + task.state + ' -> ' + next + ' (' + alg + ')');
+          }
+          task.state = next;
+          return true;
+        };
+        const update = (alg, iter, hex) => {
+          const task = get(alg);
+          if (!task) return;
+          task.currentIter = Math.max(0, Number(iter) || 0);
+          if (typeof hex === 'string') task.hex = hex;
+        };
+        const setTarget = (sessionId, target, revision) => {
+          const nextTarget = normalizeTarget(target);
+          const nextRevision = Math.max(0, Number(revision) || 0);
+          const changed = [];
+          for (const [alg, task] of Object.entries(tasks)) {
+            if (task.sessionId !== sessionId || terminal(task.state)) continue;
+            if (nextRevision < task.targetRevision) continue;
+            task.target = nextTarget;
+            task.targetRevision = nextRevision;
+            changed.push(alg);
+          }
+          return changed;
+        };
+        const terminate = alg => {
+          const task = get(alg);
+          if (!task || task.state === 'terminated') return;
+          setState(alg, 'terminated');
+        };
+        const isSession = (alg, sessionId) => {
+          const task = get(alg);
+          return !!task && task.sessionId === sessionId;
+        };
+        return { begin, get, setState, update, setTarget, terminate, isSession, terminal };
+      })();
+
+      function bytesToHex(bytes) {
+        let s = '';
+        for (let i = 0; i < bytes.length; i++) s += HEX_LUT[bytes[i]];
+        return s;
+      }
+
+      function normalizeTarget(value) {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return 1;
+        return Math.max(1, Math.min(4294967295, Math.floor(n)));
+      }
 
       function wakeTask(alg) {
         const resume = resumeWaiters[alg];
@@ -2596,64 +2769,123 @@ const Engine = (() => {
         resume();
       }
 
-      async function pauseCheckpoint(alg, myGen, iter, total, hex) {
-        if (!pausedTasks[alg]) return true;
+      function waitTaskSignal(alg) {
+        return new Promise(resolve => { resumeWaiters[alg] = resolve; });
+      }
 
-        postMessage({ action: 'pause_ack', algId: alg, hex, iter, total });
+      function buildTaskMessage(alg, action, hex, iter, total, history, extra = null) {
+        const task = IterationRuntime.get(alg);
+        const msg = {
+          action,
+          algId: alg,
+          hex,
+          iter,
+          total,
+          historyCount: history ? history.count : 0,
+          historyLimit: HISTORY_LIMIT,
+          sessionId: task ? task.sessionId : 0,
+          taskGeneration: task ? task.generation : 0,
+          targetRevision: task ? task.targetRevision : 0,
+          taskState: task ? task.state : 'error'
+        };
+        if (extra) Object.assign(msg, extra);
+        return msg;
+      }
 
-        while (pausedTasks[alg] && currentTaskGen[alg] === myGen) {
-          await new Promise(resolve => { resumeWaiters[alg] = resolve; });
-        }
+      function postIterState(alg, status, hex, iter, total, history, extra = null) {
+        if (status === 'progress') IterationRuntime.setState(alg, 'running');
+        else if (status === 'done') IterationRuntime.setState(alg, 'parked');
+        else if (status === 'aborted') IterationRuntime.terminate(alg);
+        else if (status === 'error') IterationRuntime.setState(alg, 'error');
+        IterationRuntime.update(alg, iter, hex);
+        const msg = buildTaskMessage(alg, 'iter_progress', hex, iter, total, history, extra);
+        msg.status = status;
+        postMessage(msg);
+      }
 
-        if (currentTaskGen[alg] !== myGen) {
-          if (currentTaskGen[alg] === -1) {
-            postMessage({ action: 'iter_progress', algId: alg, status: 'aborted', hex, iter, total });
-          }
-          return false;
-        }
-        return true;
+      function postPauseState(alg, hex, iter, total, history, extra = null) {
+        IterationRuntime.setState(alg, 'paused');
+        IterationRuntime.update(alg, iter, hex);
+        postMessage(buildTaskMessage(alg, 'pause_ack', hex, iter, total, history, extra));
+      }
+
+      function postTargetAck(alg, hex, iter, total, history, extra = null) {
+        IterationRuntime.update(alg, iter, hex);
+        postMessage(buildTaskMessage(alg, 'target_ack', hex, iter, total, history, extra));
+      }
+
+      function failTask(alg, message = 'エラー', generation = null) {
+        const task = IterationRuntime.get(alg);
+        if (!task || task.state === 'terminated') return;
+        if (generation !== null && (task.generation !== generation || currentTaskGen[alg] !== generation)) return;
+        if (taskHistories[alg]) taskHistories[alg].clear(true);
+        delete taskHistories[alg];
+        postIterState(alg, 'error', message, task.currentIter, task.target, null);
       }
 
       onmessage = e => {
-        const { action, bytes, key, crc64Variant, iterations, algorithms, saltBytes, algId, iterMode, reqId } = e.data;
-        
+        const { action, bytes, key, crc64Variant, iterations, algorithms, saltBytes, algId, iterMode, reqId, target, sessionId = 0, targetRevision = 0 } = e.data;
+
+        if (action === 'set_target') {
+            const changed = IterationRuntime.setTarget(sessionId, target, targetRevision);
+            changed.forEach(wakeTask);
+            return;
+        }
         if (action === 'pause_all') {
-            for (let k in currentTaskGen) {
-                if (currentTaskGen[k] !== -1) pausedTasks[k] = true;
+            for (const alg of Object.keys(currentTaskGen)) {
+                const task = IterationRuntime.get(alg);
+                if (!task || task.sessionId !== sessionId || task.state !== 'running') continue;
+                pausedTasks[alg] = true;
             }
             return;
         }
         if (action === 'resume_all') {
-            for (let k in pausedTasks) {
-                pausedTasks[k] = false;
-                wakeTask(k);
+            for (const alg of Object.keys(currentTaskGen)) {
+                const task = IterationRuntime.get(alg);
+                if (!task || task.sessionId !== sessionId || task.state !== 'paused') continue;
+                pausedTasks[alg] = false;
+                wakeTask(alg);
             }
             return;
         }
         if (action === 'pause') {
-            if (currentTaskGen[algId] !== -1) pausedTasks[algId] = true;
+            const task = IterationRuntime.get(algId);
+            if (task && task.sessionId === sessionId && task.state === 'running') pausedTasks[algId] = true;
             return;
         }
         if (action === 'resume') {
-            pausedTasks[algId] = false;
-            wakeTask(algId);
+            const task = IterationRuntime.get(algId);
+            if (task && task.sessionId === sessionId && task.state === 'paused') {
+                pausedTasks[algId] = false;
+                wakeTask(algId);
+            }
             return;
         }
         if (action === 'abort_all') {
-            for (let k in currentTaskGen) {
-                currentTaskGen[k] = -1;
-                pausedTasks[k] = false;
-                wakeTask(k);
+            for (const alg of Object.keys(currentTaskGen)) {
+                const task = IterationRuntime.get(alg);
+                if (!task || task.sessionId !== sessionId || IterationRuntime.terminal(task.state)) continue;
+                currentTaskGen[alg] = -1;
+                pausedTasks[alg] = false;
+                if (taskHistories[alg]) taskHistories[alg].clear(true);
+                delete taskHistories[alg];
+                IterationRuntime.terminate(alg);
+                wakeTask(alg);
             }
             return;
         }
         if (action === 'abort') {
+            const task = IterationRuntime.get(algId);
+            if (!task || task.sessionId !== sessionId || IterationRuntime.terminal(task.state)) return;
             currentTaskGen[algId] = -1;
             pausedTasks[algId] = false;
+            if (taskHistories[algId]) taskHistories[algId].clear(true);
+            delete taskHistories[algId];
+            IterationRuntime.terminate(algId);
             wakeTask(algId);
             return;
         }
-        
+
         if (action === 'init') {
           hasher = new IncrementalHasher(crc64Variant);
           if(key && key.length) hasher.initHmac(key);
@@ -2678,190 +2910,365 @@ const Engine = (() => {
                 currentTaskGen[alg] = myGen;
                 pausedTasks[alg] = false;
                 wakeTask(alg);
+                IterationRuntime.begin(alg, sessionId, myGen, iterations, targetRevision);
+
                 (async () => {
-                    let currentBytes = bytes;
+                    let currentIter = 0;
                     let finalHex = '';
                     let lastPostTime = performance.now();
-                    
+                    let lastYieldTime = lastPostTime;
+                    let lastDoneTarget = -1;
+                    let appliedRevision = Math.max(0, Number(targetRevision) || 0);
+
                     const isSubtle = alg === 'SHA-384' || alg === 'SHA-512';
                     const hasSubtle = !!(self.crypto && self.crypto.subtle);
 
                     if (alg === 'CRC64') {
+                        const variantCount = CRC64_VARIANTS.length;
+                        const snapshotWidth = variantCount * 8 * (iterMode === 'xor' ? 2 : 1);
+                        const history = new IterationHistory(snapshotWidth);
+                        taskHistories[alg] = history;
                         const currentByVariant = {}, xorByVariant = {};
+                        let crc64All = {};
+                        let saltScratch = null;
                         for (const variant of CRC64_VARIANTS) currentByVariant[variant] = bytes;
 
-                        for (let i = 1; i <= iterations; i++) {
+                        const resetToZero = () => {
+                            currentIter = 0;
+                            finalHex = '';
+                            crc64All = {};
+                            for (const variant of CRC64_VARIANTS) {
+                                currentByVariant[variant] = bytes;
+                                delete xorByVariant[variant];
+                            }
+                            history.clear(true);
+                        };
+
+                        const restoreTo = targetIter => {
+                            const snap = history.get(targetIter);
+                            if (!snap) return false;
+                            let pos = 0;
+                            const rawByVariant = {};
+                            crc64All = {};
+                            for (const variant of CRC64_VARIANTS) {
+                                const raw = snap.slice(pos, pos + 8);
+                                pos += 8;
+                                rawByVariant[variant] = raw;
+                            }
+                            for (const variant of CRC64_VARIANTS) {
+                                const raw = rawByVariant[variant];
+                                const rawHex = bytesToHex(raw);
+                                if (iterMode === 'xor') {
+                                    const acc = snap.slice(pos, pos + 8);
+                                    pos += 8;
+                                    xorByVariant[variant] = acc;
+                                    crc64All[variant] = bytesToHex(acc);
+                                    currentByVariant[variant] = raw;
+                                } else {
+                                    delete xorByVariant[variant];
+                                    crc64All[variant] = rawHex;
+                                    currentByVariant[variant] = iterMode === 'raw' ? raw : utf8Encode(rawHex);
+                                }
+                            }
+                            currentIter = targetIter;
+                            finalHex = crc64All[crc64Variant] || crc64All[CRC64_VARIANTS[0]] || '';
+                            history.truncate(targetIter);
+                            return true;
+                        };
+
+                        while (true) {
+                            const task = IterationRuntime.get(alg);
+                            const total = task ? task.target : 1;
                             if (currentTaskGen[alg] !== myGen) {
-                                if (currentTaskGen[alg] === -1) postMessage({ action: 'iter_progress', algId: alg, status: 'aborted', hex: finalHex, iter: i - 1, total: iterations });
+                                if (currentTaskGen[alg] === -1) postIterState(alg, 'aborted', finalHex, currentIter, total, null, { crc64All });
                                 return;
                             }
-                            if (pausedTasks[alg] && !await pauseCheckpoint(alg, myGen, i - 1, iterations, finalHex)) return;
 
-                            const crc64All = {};
+                            if (task && task.targetRevision !== appliedRevision) {
+                                if (total < currentIter) {
+                                    if (!restoreTo(total)) resetToZero();
+                                    lastDoneTarget = -1;
+                                }
+                                appliedRevision = task.targetRevision;
+                                IterationRuntime.update(alg, currentIter, finalHex);
+                                if (pausedTasks[alg]) IterationRuntime.setState(alg, 'paused');
+                                else if (currentIter >= total) IterationRuntime.setState(alg, 'parked');
+                                else IterationRuntime.setState(alg, 'running');
+                                postTargetAck(alg, finalHex, currentIter, total, history, { crc64All });
+                            }
+
+                            if (pausedTasks[alg]) {
+                                postPauseState(alg, finalHex, currentIter, total, history, { crc64All });
+                                await waitTaskSignal(alg);
+                                continue;
+                            }
+
+                            if (currentIter >= total) {
+                                if (lastDoneTarget !== total) {
+                                    postIterState(alg, 'done', finalHex, currentIter, total, history, { crc64All });
+                                    lastDoneTarget = total;
+                                }
+                                await waitTaskSignal(alg);
+                                continue;
+                            }
+
+                            IterationRuntime.setState(alg, 'running');
+                            lastDoneTarget = -1;
+                            const i = currentIter + 1;
+                            const rawByVariant = {};
+                            crc64All = {};
+
                             for (const variant of CRC64_VARIANTS) {
                                 let payload = currentByVariant[variant];
                                 if (saltBytes && saltBytes.length > 0 && (iterMode !== 'xor' || i === 1)) {
-                                    const salted = new Uint8Array(payload.length + saltBytes.length);
-                                    salted.set(payload, 0); salted.set(saltBytes, payload.length); payload = salted;
+                                    const needed = payload.length + saltBytes.length;
+                                    if (!saltScratch || saltScratch.length !== needed) saltScratch = new Uint8Array(needed);
+                                    saltScratch.set(payload, 0);
+                                    saltScratch.set(saltBytes, payload.length);
+                                    payload = saltScratch;
                                 }
 
                                 const engine = createCrc64Engine(variant);
                                 engine.update(payload);
-                                let variantHex = engine.finalize();
-                                const currentHashBytes = hexToBytes(variantHex);
+                                const rawHex = engine.finalize();
+                                const rawBytes = hexToBytes(rawHex);
+                                rawByVariant[variant] = rawBytes;
 
                                 if (iterMode === 'xor') {
-                                    if (!xorByVariant[variant]) xorByVariant[variant] = new Uint8Array(currentHashBytes);
+                                    if (!xorByVariant[variant]) xorByVariant[variant] = new Uint8Array(rawBytes);
                                     else {
                                         const acc = xorByVariant[variant];
-                                        for (let j = 0; j < acc.length; j++) acc[j] ^= currentHashBytes[j];
+                                        for (let j = 0; j < acc.length; j++) acc[j] ^= rawBytes[j];
                                     }
-                                    let xorHex = '';
-                                    for (let j = 0; j < xorByVariant[variant].length; j++) xorHex += HEX_LUT[xorByVariant[variant][j]];
-                                    variantHex = xorHex;
-                                    currentByVariant[variant] = currentHashBytes;
-                                } else if (i < iterations) {
-                                    currentByVariant[variant] = iterMode === 'raw' ? currentHashBytes : utf8Encode(variantHex);
+                                    crc64All[variant] = bytesToHex(xorByVariant[variant]);
+                                    currentByVariant[variant] = rawBytes;
+                                } else {
+                                    crc64All[variant] = rawHex;
+                                    currentByVariant[variant] = iterMode === 'raw' ? rawBytes : utf8Encode(rawHex);
                                 }
-                                crc64All[variant] = variantHex;
                             }
 
-                            finalHex = crc64All[crc64Variant] || crc64All[CRC64_VARIANTS[0]];
+                            finalHex = crc64All[crc64Variant] || crc64All[CRC64_VARIANTS[0]] || '';
+                            currentIter = i;
+                            IterationRuntime.update(alg, currentIter, finalHex);
+
+                            const snapshot = history.reserve(currentIter);
+                            let pos = 0;
+                            for (const variant of CRC64_VARIANTS) {
+                                snapshot.set(rawByVariant[variant], pos);
+                                pos += 8;
+                            }
+                            if (iterMode === 'xor') {
+                                for (const variant of CRC64_VARIANTS) {
+                                    snapshot.set(xorByVariant[variant], pos);
+                                    pos += 8;
+                                }
+                            }
+                            const checkpointTask = IterationRuntime.get(alg);
+                            if (checkpointTask && (checkpointTask.targetRevision !== appliedRevision || pausedTasks[alg])) continue;
+
+                            const activeTask = checkpointTask;
+                            const activeTotal = activeTask ? activeTask.target : total;
                             const now = performance.now();
-                            if (now - lastPostTime >= 8 || i === iterations) {
-                                postMessage({ action: 'iter_progress', algId: alg, status: i === iterations ? 'done' : 'progress', hex: finalHex, crc64All, iter: i, total: iterations });
+                            const done = currentIter >= activeTotal;
+                            if (now - lastPostTime >= PROGRESS_INTERVAL || done) {
+                                postIterState(alg, done ? 'done' : 'progress', finalHex, currentIter, activeTotal, history, { crc64All });
+                                if (done) lastDoneTarget = activeTotal;
                                 lastPostTime = now;
+                            }
+                            if (now - lastYieldTime >= CONTROL_YIELD_INTERVAL || done) {
+                                lastYieldTime = now;
                                 await new Promise(r => setTimeout(r, 0));
                                 if (currentTaskGen[alg] !== myGen) {
-                                    if (currentTaskGen[alg] === -1) {
-                                        postMessage({ action: 'iter_progress', algId: alg, status: 'aborted', hex: finalHex, iter: i, total: iterations });
-                                    }
+                                    const latestTask = IterationRuntime.get(alg);
+                                    if (currentTaskGen[alg] === -1) postIterState(alg, 'aborted', finalHex, currentIter, latestTask ? latestTask.target : activeTotal, null, { crc64All });
                                     return;
                                 }
                             }
                         }
-                        return;
                     }
-                    
+
                     let temp;
                     if (!isSubtle) {
                         temp = new IncrementalHasher(crc64Variant);
                         if (key && key.length) temp.initHmac(key);
                     }
 
+                    const digestBytes = DIGEST_BYTES[alg];
+                    const snapshotWidth = digestBytes * (iterMode === 'xor' ? 2 : 1);
+                    const history = new IterationHistory(snapshotWidth);
+                    taskHistories[alg] = history;
+                    let currentBytes = bytes;
                     let xorBuffer = null;
                     let xorAccumulator32 = null;
                     let xorAccumulator8 = null;
+                    let saltScratch = null;
 
-                    for (let i = 1; i <= iterations; i++) {
+                    const resetToZero = () => {
+                        currentIter = 0;
+                        finalHex = '';
+                        currentBytes = bytes;
+                        xorBuffer = null;
+                        xorAccumulator32 = null;
+                        xorAccumulator8 = null;
+                        history.clear(true);
+                    };
+
+                    const restoreTo = targetIter => {
+                        const snap = history.get(targetIter);
+                        if (!snap) return false;
+                        const raw = snap.slice(0, digestBytes);
+                        const rawHex = bytesToHex(raw);
+                        if (iterMode === 'xor') {
+                            const acc = snap.slice(digestBytes, digestBytes * 2);
+                            xorBuffer = new ArrayBuffer(digestBytes);
+                            xorAccumulator32 = new Uint32Array(xorBuffer);
+                            xorAccumulator8 = new Uint8Array(xorBuffer);
+                            xorAccumulator8.set(acc);
+                            finalHex = bytesToHex(acc);
+                            currentBytes = raw;
+                        } else {
+                            xorBuffer = null;
+                            xorAccumulator32 = null;
+                            xorAccumulator8 = null;
+                            finalHex = rawHex;
+                            currentBytes = iterMode === 'raw' ? raw : utf8Encode(rawHex);
+                        }
+                        currentIter = targetIter;
+                        history.truncate(targetIter);
+                        return true;
+                    };
+
+                    while (true) {
+                        const task = IterationRuntime.get(alg);
+                        const total = task ? task.target : 1;
                         if (currentTaskGen[alg] !== myGen) {
-                            if (currentTaskGen[alg] === -1) {
-                                postMessage({ action: 'iter_progress', algId: alg, status: 'aborted', hex: finalHex, iter: i - 1, total: iterations });
-                            }
+                            if (currentTaskGen[alg] === -1) postIterState(alg, 'aborted', finalHex, currentIter, total, null);
                             return;
                         }
-                        if (pausedTasks[alg] && !await pauseCheckpoint(alg, myGen, i - 1, iterations, finalHex)) return;
-                        
+
+                        if (task && task.targetRevision !== appliedRevision) {
+                            if (total < currentIter) {
+                                if (!restoreTo(total)) resetToZero();
+                                lastDoneTarget = -1;
+                            }
+                            appliedRevision = task.targetRevision;
+                            IterationRuntime.update(alg, currentIter, finalHex);
+                            if (pausedTasks[alg]) IterationRuntime.setState(alg, 'paused');
+                            else if (currentIter >= total) IterationRuntime.setState(alg, 'parked');
+                            else IterationRuntime.setState(alg, 'running');
+                            postTargetAck(alg, finalHex, currentIter, total, history);
+                        }
+
+                        if (pausedTasks[alg]) {
+                            postPauseState(alg, finalHex, currentIter, total, history);
+                            await waitTaskSignal(alg);
+                            continue;
+                        }
+
+                        if (currentIter >= total) {
+                            if (lastDoneTarget !== total) {
+                                postIterState(alg, 'done', finalHex, currentIter, total, history);
+                                lastDoneTarget = total;
+                            }
+                            await waitTaskSignal(alg);
+                            continue;
+                        }
+
+                        IterationRuntime.setState(alg, 'running');
+                        lastDoneTarget = -1;
+                        const i = currentIter + 1;
                         let payload = currentBytes;
                         if (saltBytes && saltBytes.length > 0) {
                             if (iterMode !== 'xor' || i === 1) {
-                                payload = new Uint8Array(currentBytes.length + saltBytes.length);
-                                payload.set(currentBytes, 0);
-                                payload.set(saltBytes, currentBytes.length);
+                                const needed = currentBytes.length + saltBytes.length;
+                                if (!saltScratch || saltScratch.length !== needed) saltScratch = new Uint8Array(needed);
+                                saltScratch.set(currentBytes, 0);
+                                saltScratch.set(saltBytes, currentBytes.length);
+                                payload = saltScratch;
                             }
                         }
-                        
+
+                        let rawHex;
                         if (isSubtle) {
                             if (!hasSubtle) {
-                                finalHex = '未対応/エラー';
-                                postMessage({ action: 'iter_progress', algId: alg, status: 'done', hex: finalHex, iter: iterations, total: iterations });
+                                failTask(alg, '未対応/エラー', myGen);
                                 return;
                             }
                             try {
-                                finalHex = (key && key.length) 
+                                rawHex = (key && key.length) 
                                     ? await hmacHexSubtle(alg, key, payload) 
                                     : await digestHexSubtle(alg, payload);
                             } catch(e) {
-                                finalHex = 'エラー';
-                                postMessage({ action: 'iter_progress', algId: alg, status: 'done', hex: finalHex, iter: iterations, total: iterations });
+                                failTask(alg, 'エラー', myGen);
                                 return;
                             }
                             if (currentTaskGen[alg] !== myGen) {
-                                if (currentTaskGen[alg] === -1) {
-                                    postMessage({ action: 'iter_progress', algId: alg, status: 'aborted', hex: finalHex, iter: i, total: iterations });
-                                }
+                                const latestTask = IterationRuntime.get(alg);
+                                if (currentTaskGen[alg] === -1) postIterState(alg, 'aborted', finalHex, currentIter, latestTask ? latestTask.target : total, null);
                                 return;
                             }
                         } else {
                             temp.reset();
                             temp.update(payload);
                             const res = temp.finalizeHmacOrNormal();
-                            
-                            if (alg === 'CRC32') finalHex = res.crc;
-                            else if (alg === 'CRC64') finalHex = res.crc64;
-                            else if (alg === 'MD5') finalHex = res.md5;
-                            else if (alg === 'SHA-1') finalHex = res.sha1;
-                            else if (alg === 'SHA-224') finalHex = res.sha224;
-                            else if (alg === 'SHA-256') finalHex = res.sha256;
+
+                            if (alg === 'CRC32') rawHex = res.crc;
+                            else if (alg === 'MD5') rawHex = res.md5;
+                            else if (alg === 'SHA-1') rawHex = res.sha1;
+                            else if (alg === 'SHA-224') rawHex = res.sha224;
+                            else if (alg === 'SHA-256') rawHex = res.sha256;
                         }
 
-                        const currentHashBytes = hexToBytes(finalHex);
+                        const currentHashBytes = hexToBytes(rawHex);
 
                         if (iterMode === 'xor') {
                             const currentHash32 = new Uint32Array(currentHashBytes.buffer);
-
-                            if (i === 1) {
+                            if (i === 1 || !xorAccumulator8) {
                                 xorBuffer = new ArrayBuffer(currentHashBytes.length);
                                 xorAccumulator32 = new Uint32Array(xorBuffer);
                                 xorAccumulator8 = new Uint8Array(xorBuffer);
-                                for (let j = 0; j < currentHash32.length; j++) {
-                                    xorAccumulator32[j] = currentHash32[j];
-                                }
+                                for (let j = 0; j < currentHash32.length; j++) xorAccumulator32[j] = currentHash32[j];
                             } else {
-                                for (let j = 0; j < currentHash32.length; j++) {
-                                    xorAccumulator32[j] ^= currentHash32[j];
-                                }
+                                for (let j = 0; j < currentHash32.length; j++) xorAccumulator32[j] ^= currentHash32[j];
                             }
-
-                            const now = performance.now();
-                            if (now - lastPostTime >= 8 || i === iterations) {
-                                let tempHex = '';
-                                for (let j = 0; j < xorAccumulator8.length; j++) {
-                                    tempHex += HEX_LUT[xorAccumulator8[j]];
-                                }
-                                finalHex = tempHex;
-                                postMessage({ action: 'iter_progress', algId: alg, status: i === iterations ? 'done' : 'progress', hex: finalHex, iter: i, total: iterations });
-                                lastPostTime = now;
-                                await new Promise(r => setTimeout(r, 0));
-                                if (currentTaskGen[alg] !== myGen) {
-                                    if (currentTaskGen[alg] === -1) {
-                                        postMessage({ action: 'iter_progress', algId: alg, status: 'aborted', hex: finalHex, iter: i, total: iterations });
-                                    }
-                                    return;
-                                }
-                            }
-                            
+                            finalHex = bytesToHex(xorAccumulator8);
                             currentBytes = currentHashBytes;
                         } else {
-                            const now = performance.now();
-                            if (now - lastPostTime >= 8 || i === iterations) {
-                                postMessage({ action: 'iter_progress', algId: alg, status: i === iterations ? 'done' : 'progress', hex: finalHex, iter: i, total: iterations });
-                                lastPostTime = now;
-                                await new Promise(r => setTimeout(r, 0));
-                                if (currentTaskGen[alg] !== myGen) {
-                                    if (currentTaskGen[alg] === -1) {
-                                        postMessage({ action: 'iter_progress', algId: alg, status: 'aborted', hex: finalHex, iter: i, total: iterations });
-                                    }
-                                    return;
-                                }
-                            }
-                            if (i < iterations) {
-                                currentBytes = (iterMode === 'raw') ? hexToBytes(finalHex) : utf8Encode(finalHex);
+                            finalHex = rawHex;
+                            currentBytes = iterMode === 'raw' ? currentHashBytes : utf8Encode(rawHex);
+                        }
+
+                        currentIter = i;
+                        IterationRuntime.update(alg, currentIter, finalHex);
+                        const snapshot = history.reserve(currentIter);
+                        snapshot.set(currentHashBytes, 0);
+                        if (iterMode === 'xor') snapshot.set(xorAccumulator8, digestBytes);
+
+                        const checkpointTask = IterationRuntime.get(alg);
+                        if (checkpointTask && (checkpointTask.targetRevision !== appliedRevision || pausedTasks[alg])) continue;
+
+                        const activeTask = checkpointTask;
+                        const activeTotal = activeTask ? activeTask.target : total;
+                        const now = performance.now();
+                        const done = currentIter >= activeTotal;
+                        if (now - lastPostTime >= PROGRESS_INTERVAL || done) {
+                            postIterState(alg, done ? 'done' : 'progress', finalHex, currentIter, activeTotal, history);
+                            if (done) lastDoneTarget = activeTotal;
+                            lastPostTime = now;
+                        }
+                        if (now - lastYieldTime >= CONTROL_YIELD_INTERVAL || done) {
+                            lastYieldTime = now;
+                            await new Promise(r => setTimeout(r, 0));
+                            if (currentTaskGen[alg] !== myGen) {
+                                const latestTask = IterationRuntime.get(alg);
+                                if (currentTaskGen[alg] === -1) postIterState(alg, 'aborted', finalHex, currentIter, latestTask ? latestTask.target : activeTotal, null);
+                                return;
                             }
                         }
                     }
                 })().catch(e => {
-                    postMessage({ action: 'iter_progress', algId: alg, status: 'done', hex: 'エラー', iter: iterations, total: iterations });
+                    failTask(alg, 'エラー', myGen);
                 });
             }
         }
@@ -2879,22 +3286,29 @@ const Engine = (() => {
       worker = createWorkerBlob();
       worker.onmessage = ev => {
           const data = ev.data;
-          if (data.action === 'pause_ack') {
-              EventBus.emit('hash:paused', data);
-              return;
-          }
-          if (data.action === 'iter_progress') {
-              if (
-                  data.algId === 'CRC64' &&
-                  data.crc64All
-              ) {
-                  AppState.crc64Results =
-                      data.crc64All;
+          const isIterationMessage = data && (
+              data.action === 'pause_ack' ||
+              data.action === 'target_ack' ||
+              data.action === 'iter_progress'
+          );
 
-                  data.hex =
-                      data.crc64All[
-                          AppState.crc64Variant
-                      ] || data.hex;
+          if (isIterationMessage) {
+              if (data.sessionId !== iterativeSessionId) return;
+              const terminalMessage = data.action === 'iter_progress' && (data.status === 'aborted' || data.status === 'error');
+              if (!terminalMessage && (Number(data.targetRevision) || 0) < iterativeTargetRevision) return;
+
+              if (data.algId === 'CRC64' && data.crc64All) {
+                  AppState.crc64Results = data.crc64All;
+                  data.hex = data.crc64All[AppState.crc64Variant] || data.hex;
+              }
+
+              if (data.action === 'pause_ack') {
+                  EventBus.emit('hash:paused', data);
+                  return;
+              }
+              if (data.action === 'target_ack') {
+                  EventBus.emit('hash:targetAck', data);
+                  return;
               }
 
               EventBus.emit('hash:render', {
@@ -2902,15 +3316,23 @@ const Engine = (() => {
                   hex: data.hex,
                   iter: data.iter,
                   total: data.total,
+                  historyCount: data.historyCount,
+                  historyLimit: data.historyLimit,
+                  sessionId: data.sessionId,
+                  targetRevision: data.targetRevision,
+                  taskGeneration: data.taskGeneration,
+                  taskState: data.taskState,
                   isDone: data.status === 'done',
                   isAborted: data.status === 'aborted',
+                  isError: data.status === 'error',
                   isOOM: false
               });
+              return;
+          }
 
-          } else if (data.md5) {
+          if (data.md5) {
               if (data.crc64All) {
-                  AppState.crc64Results =
-                      data.crc64All;
+                  AppState.crc64Results = data.crc64All;
               }
 
               EventBus.emit('hash:results', {
@@ -2929,8 +3351,7 @@ const Engine = (() => {
               });
           } else if (data.crc64 && !data.md5) {
               if (data.crc64All) {
-                  AppState.crc64Results =
-                      data.crc64All;
+                  AppState.crc64Results = data.crc64All;
               }
 
               EventBus.emit('hash:results', {
@@ -2952,7 +3373,11 @@ const Engine = (() => {
   }
   
   function terminateWorker() {
+    iterativeSessionActive = false;
+    iterativeSessionId++;
+    iterativeTargetRevision = 0;
     if (worker) { worker.terminate(); worker = null; }
+    EventBus.emit('hash:sessionEnd', { reason: 'terminated' });
   }
   
   function verifyTestBytes(bytes, crc64Variant) {
@@ -3191,24 +3616,47 @@ const Engine = (() => {
     }
 
     const activeAlgs = ['CRC32', 'CRC64', 'MD5', 'SHA-1', 'SHA-224', 'SHA-256', 'SHA-384', 'SHA-512'];
+    iterativeSessionActive = hasWorker;
+    iterativeSessionId++;
+    iterativeTargetRevision = 0;
+    const sessionId = iterativeSessionId;
     activeAlgs.forEach(alg => TaskManager.startAlg(alg));
     if (hasWorker) {
+        EventBus.emit('hash:session', { sessionId, target: iterations, targetRevision: 0, algorithms: activeAlgs });
         worker.postMessage({
-            action: 'hashIterative', bytes: bytesToHash, saltBytes, key: hmacKeyBytes, crc64Variant: AppState.crc64Variant, iterations, algorithms: activeAlgs, iterMode: AppState.iterMode
+            action: 'hashIterative', bytes: bytesToHash, saltBytes, key: hmacKeyBytes, crc64Variant: AppState.crc64Variant, iterations, algorithms: activeAlgs, iterMode: AppState.iterMode, sessionId, targetRevision: 0
         });
     }
+  }
+
+  function resetMasterTask(reason = 'reset') {
+    iterativeSessionActive = false;
+    TaskManager.resetMaster();
+    iterativeSessionId++;
+    iterativeTargetRevision = 0;
+    EventBus.emit('hash:sessionEnd', { reason });
+  }
+
+  function setIterationTarget(target) {
+    if (!worker || !iterativeSessionActive) return null;
+    iterativeTargetRevision++;
+    const revision = iterativeTargetRevision;
+    worker.postMessage({ action: 'set_target', target, sessionId: iterativeSessionId, targetRevision: revision });
+    return { sessionId: iterativeSessionId, targetRevision: revision };
   }
 
   function init() { ensureWorker(); }
   return { 
       init, hasWorker, WORKER_THRESHOLD, hashFile, hashText, terminateWorker, verifyTestBytes,
       get masterSignal() { return TaskManager.masterSignal; },
-      resetMasterTask: () => TaskManager.resetMaster(),
+      get hasIterationSession() { return iterativeSessionActive; },
+      resetMasterTask,
+      setIterationTarget,
       cancelTask: (algId) => TaskManager.cancelAlg(algId),
-      pauseTask: (algId) => { if (worker) worker.postMessage({ action: 'pause', algId }); },
-      resumeTask: (algId) => { if (worker) worker.postMessage({ action: 'resume', algId }); },
-      pauseAllTasks: () => { if (worker) worker.postMessage({ action: 'pause_all' }); },
-      resumeAllTasks: () => { if (worker) worker.postMessage({ action: 'resume_all' }); }
+      pauseTask: (algId) => { if (worker && iterativeSessionActive) worker.postMessage({ action: 'pause', algId, sessionId: iterativeSessionId }); },
+      resumeTask: (algId) => { if (worker && iterativeSessionActive) worker.postMessage({ action: 'resume', algId, sessionId: iterativeSessionId }); },
+      pauseAllTasks: () => { if (worker && iterativeSessionActive) worker.postMessage({ action: 'pause_all', sessionId: iterativeSessionId }); },
+      resumeAllTasks: () => { if (worker && iterativeSessionActive) worker.postMessage({ action: 'resume_all', sessionId: iterativeSessionId }); }
   };
 })();
 
@@ -3366,22 +3814,173 @@ function showToast(msg) {
   }, TOAST_DURATION);
 }
 
-  function setAlgPauseControls(algId, paused) {
+  const IterationSession = (() => {
+    const tasks = new Map();
+    let active = false;
+    let sessionId = 0;
+    let target = 1;
+    let targetRevision = 0;
+
+    const begin = data => {
+      tasks.clear();
+      active = true;
+      sessionId = data.sessionId;
+      target = data.target || 1;
+      targetRevision = data.targetRevision || 0;
+      (data.algorithms || []).forEach(alg => {
+        tasks.set(alg, {
+          algId: alg,
+          state: 'running',
+          currentIter: 0,
+          total: target,
+          historyCount: 0,
+          historyLimit: 65535,
+          targetRevision
+        });
+      });
+    };
+
+    const end = reason => {
+      active = false;
+      if (reason === 'aborted') {
+        for (const task of tasks.values()) {
+          task.state = 'terminated';
+          task.historyCount = 0;
+        }
+      } else {
+        tasks.clear();
+      }
+    };
+
+    const setTarget = (nextTarget, revision) => {
+      target = nextTarget;
+      targetRevision = revision;
+    };
+
+    const apply = data => {
+      if (!data || data.sessionId !== sessionId) return false;
+      const revision = Number(data.targetRevision) || 0;
+      const task = tasks.get(data.algId);
+      if (!task) return false;
+      const terminalState = data.taskState === 'terminated' || data.taskState === 'error';
+      if (revision < targetRevision && !terminalState) return false;
+      task.state = data.taskState || task.state;
+      task.currentIter = Math.max(0, Number(data.iter) || 0);
+      task.total = Math.max(1, Number(data.total) || target);
+      task.historyCount = Math.max(0, Number(data.historyCount) || 0);
+      task.historyLimit = Math.max(1, Number(data.historyLimit) || 65535);
+      task.targetRevision = revision;
+      if (revision >= targetRevision) {
+        targetRevision = revision;
+        target = task.total;
+      }
+      return true;
+    };
+
+    const get = algId => tasks.get(algId) || null;
+    const values = () => Array.from(tasks.values());
+    const hasMutableTasks = () => values().some(task => task.state !== 'terminated' && task.state !== 'error');
+
+    return {
+      begin,
+      end,
+      setTarget,
+      apply,
+      get,
+      values,
+      hasMutableTasks,
+      get active() { return active; },
+      get target() { return target; },
+      get targetRevision() { return targetRevision; }
+    };
+  })();
+
+  function renderHistory(algId, count = 0, limit = 65535) {
+    const el = document.getElementById(`history-${algId}`);
+    if (!el) return;
+    const safeCount = Math.max(0, Math.min(limit, Number(count) || 0));
+    el.textContent = `履歴 ${safeCount}/${limit}`;
+    el.classList.toggle('full', safeCount >= limit);
+  }
+
+  function resetHistories() {
+    document.querySelectorAll('.history-text').forEach(el => {
+      el.textContent = '履歴 0/65535';
+      el.classList.remove('full');
+    });
+  }
+
+  function updateIterationMetaTarget(target) {
+    if (!els.metaEl) return;
+    let meta = els.metaEl.textContent.replace(/｜反復: \d+回（[^）]*）/g, '');
+    if (target > 1) {
+      const mode = AppState.iterMode === 'raw' ? '標準' : AppState.iterMode === 'hex' ? '手渡し' : 'XOR重畳';
+      meta = meta.replace('｜ステータス:', `｜反復: ${target}回（${mode}）｜ステータス:`);
+    }
+    els.metaEl.textContent = meta;
+  }
+
+  function setMetaStatus(status) {
+    if (!els.metaEl) return;
+    AppState.currentStatus = status;
+    if (/ステータス: [^｜]+/.test(els.metaEl.textContent)) {
+      els.metaEl.textContent = els.metaEl.textContent.replace(/ステータス: [^｜]+/, `ステータス: ${status}`);
+    }
+  }
+
+  function commitIterationTarget() {
+    let target = parseInt(els.iterIn.value, 10) || 1;
+    target = Math.max(1, Math.min(4294967295, target));
+    els.iterIn.value = target;
+
+    const previous = AppState.iterations || 1;
+    if (target === previous) return;
+    AppState.iterations = target;
+
+    if (scheduled || AppState.currentFile || !Engine.hasIterationSession) {
+      scheduleUpdate();
+      return;
+    }
+
+    updateIterationMetaTarget(target);
+    if (!IterationSession.hasMutableTasks()) return;
+
+    const ticket = Engine.setIterationTarget(target);
+    if (!ticket) {
+      scheduleUpdate();
+      return;
+    }
+    IterationSession.setTarget(target, ticket.targetRevision);
+  }
+
+  function renderAlgControls(algId, state, total = AppState.iterations || 1) {
     const stopBtn = document.querySelector(`.stop-btn[data-alg="${algId}"]`);
     const abortBtn = document.querySelector(`.abort-btn[data-alg="${algId}"]`);
     if (!stopBtn) return;
-    if (stopBtn.dataset.terminated === '1') {
-        stopBtn.style.display = 'none';
-        if (abortBtn) abortBtn.style.display = 'none';
-        return;
+
+    if (state === 'terminated') stopBtn.dataset.terminated = '1';
+    else delete stopBtn.dataset.terminated;
+
+    if (state === 'paused') {
+      stopBtn.textContent = '[再開]';
+      stopBtn.dataset.action = 'resumeAlg';
+      stopBtn.classList.remove('warn');
+      stopBtn.style.display = 'inline-block';
+      if (abortBtn) abortBtn.style.display = 'inline-block';
+      return;
     }
 
-    stopBtn.textContent = paused ? '[再開]' : '[停止]';
-    stopBtn.dataset.action = paused ? 'resumeAlg' : 'stopAlg';
-    stopBtn.classList.toggle('warn', !paused);
-    stopBtn.style.display = 'inline-block';
+    if (state === 'running' && total > 1) {
+      stopBtn.textContent = '[停止]';
+      stopBtn.dataset.action = 'stopAlg';
+      stopBtn.classList.add('warn');
+      stopBtn.style.display = 'inline-block';
+      if (abortBtn) abortBtn.style.display = 'none';
+      return;
+    }
 
-    if (abortBtn) abortBtn.style.display = paused ? 'inline-block' : 'none';
+    stopBtn.style.display = 'none';
+    if (abortBtn) abortBtn.style.display = 'none';
   }
 
   function setAllPauseControls(paused) {
@@ -3397,19 +3996,45 @@ function showToast(msg) {
   }
 
   function syncPauseControls() {
-    const activeBtns = Array.from(document.querySelectorAll('.stop-btn')).filter(btn => btn.style.display !== 'none' && btn.dataset.terminated !== '1');
-    if (!activeBtns.length) return;
+    const tasks = IterationSession.values();
+    tasks.forEach(task => renderAlgControls(task.algId, task.state, task.total));
 
-    const allPaused = activeBtns.every(btn => btn.dataset.action === 'resumeAlg');
-    setAllPauseControls(allPaused);
+    const activeTasks = tasks.filter(task => task.state === 'running' || task.state === 'paused');
+    const stopAllWrap = document.getElementById('stop-all-wrap');
 
-    if (allPaused && els.metaEl && els.metaEl.textContent.includes('ステータス: 計算中')) {
-        AppState.currentStatus = '一時停止';
-        els.metaEl.textContent = els.metaEl.textContent.replace('ステータス: 計算中', 'ステータス: 一時停止');
-    } else if (!allPaused && els.metaEl && els.metaEl.textContent.includes('ステータス: 一時停止')) {
-        AppState.currentStatus = '計算中';
-        els.metaEl.textContent = els.metaEl.textContent.replace('ステータス: 一時停止', 'ステータス: 計算中');
+    if (!activeTasks.length) {
+      if (stopAllWrap) stopAllWrap.style.display = 'none';
+      if (!tasks.length) return;
+
+      if (tasks.some(task => task.state === 'error')) setMetaStatus('エラー');
+      else if (tasks.every(task => task.state === 'terminated')) setMetaStatus('中止');
+      else setMetaStatus('完了');
+      return;
     }
+
+    const allPaused = activeTasks.every(task => task.state === 'paused');
+    setAllPauseControls(allPaused);
+    if (stopAllWrap) {
+      const shouldShow = allPaused || activeTasks.some(task => task.state === 'running' && task.total > 1);
+      stopAllWrap.style.display = shouldShow ? 'inline-block' : 'none';
+    }
+    setMetaStatus(allPaused ? '一時停止' : '計算中');
+  }
+
+  function renderIterationAck(data) {
+    if (!IterationSession.apply(data)) return;
+    if (data.hex) renderResults({[data.algId]: data.hex});
+    renderHistory(data.algId, data.historyCount, data.historyLimit || 65535);
+
+    const progEl = document.getElementById(`prog-${data.algId}`);
+    if (progEl) {
+      if (data.taskState === 'paused') progEl.textContent = `一時停止 (${data.iter}/${data.total})`;
+      else if (data.taskState === 'parked') progEl.textContent = `完了 (${data.iter}/${data.total})`;
+      else if (data.taskState === 'terminated') progEl.textContent = `中止 (${data.iter}/${data.total})`;
+      else if (data.taskState === 'error') progEl.textContent = `エラー (${data.iter}/${data.total})`;
+      else progEl.textContent = `${data.iter} / ${data.total}`;
+    }
+    syncPauseControls();
   }
 
   function setSysOffset() {
@@ -3446,7 +4071,7 @@ function showToast(msg) {
     setSysOffset();
   }
 
-  function queueRender(algId, value, currentIter, totalIter, isDone = false, isAborted = false, isOOM = false) {
+  function queueRender(algId, value, currentIter, totalIter, isDone = false, isAborted = false, isOOM = false, historyCount = null, historyLimit = 65535, isError = false, taskState = null) {
     if (typeof value === 'object') {
         if (value.type === 'huge_blob') {
              renderState[algId] = { valueString: '', isHugeBlob: true, blob: value.blob, sizeMB: value.sizeMB, isDone: true };
@@ -3461,7 +4086,7 @@ function showToast(msg) {
              return;
         }
     } else {
-        renderState[algId] = { valueString: value, currentIter, totalIter, isDone, isAborted, isOOM };
+        renderState[algId] = { valueString: value, currentIter, totalIter, isDone, isAborted, isOOM, isError, historyCount, historyLimit, taskState };
     }
     if (!isRendering) {
         isRendering = true;
@@ -3469,15 +4094,33 @@ function showToast(msg) {
     }
   }
 
+  EventBus.on('hash:session', data => {
+      IterationSession.begin(data);
+      syncPauseControls();
+  });
+  EventBus.on('hash:sessionEnd', data => {
+      IterationSession.end(data && data.reason);
+      if (data && data.reason === 'aborted') resetHistories();
+      syncPauseControls();
+  });
   EventBus.on('hash:render', data => {
-      queueRender(data.algId, data.hex, data.iter, data.total, data.isDone, data.isAborted, data.isOOM);
+      let stateChanged = false;
+      if (data.taskState) {
+          const before = IterationSession.get(data.algId);
+          const previousState = before ? before.state : null;
+          if (!IterationSession.apply(data)) return;
+          stateChanged = previousState !== data.taskState;
+      }
+      queueRender(data.algId, data.hex, data.iter, data.total, data.isDone, data.isAborted, data.isOOM, data.historyCount, data.historyLimit, data.isError, data.taskState);
+      if (stateChanged) syncPauseControls();
   });
   EventBus.on('hash:paused', data => {
       delete renderState[data.algId];
-      if (data.hex) renderResults({[data.algId]: data.hex});
-      const progEl = document.getElementById(`prog-${data.algId}`);
-      if (progEl) progEl.textContent = `一時停止 (${data.iter}/${data.total})`;
-      syncPauseControls();
+      renderIterationAck(data);
+  });
+  EventBus.on('hash:targetAck', data => {
+      delete renderState[data.algId];
+      renderIterationAck(data);
   });
   EventBus.on('hash:results', res => {
       for (const [id, val] of Object.entries(res)) {
@@ -3490,24 +4133,21 @@ function showToast(msg) {
     for (const [algId, state] of Object.entries(renderState)) {
         const el = document.getElementById(algId);
         const progEl = document.getElementById(`prog-${algId}`);
-        const stopBtn = document.querySelector(`.stop-btn[data-alg="${algId}"]`);
-        const abortBtn = document.querySelector(`.abort-btn[data-alg="${algId}"]`);
         if (!el) continue;
 
         if (progEl) {
-            if (state.isAborted) progEl.textContent = `中止 (${state.currentIter}/${state.totalIter})`;
+            if (state.isError) progEl.textContent = `エラー (${state.currentIter}/${state.totalIter})`;
+            else if (state.isAborted) progEl.textContent = `中止 (${state.currentIter}/${state.totalIter})`;
             else if (state.isOOM) progEl.textContent = `上限到達 (${state.currentIter}/${state.totalIter})`;
-            else if (state.isDone) progEl.textContent = `完了 (${state.totalIter}/${state.totalIter})`;
+            else if (state.isDone) progEl.textContent = `完了 (${state.currentIter}/${state.totalIter})`;
             else progEl.textContent = `${state.currentIter} / ${state.totalIter}`;
         }
-        if (stopBtn) {
-            if (state.isAborted) stopBtn.dataset.terminated = '1';
-            const terminated = stopBtn.dataset.terminated === '1';
-            stopBtn.style.display = (terminated || state.isDone || state.isAborted || state.isOOM) ? 'none' : 'inline-block';
-            if (abortBtn && (terminated || state.isDone || state.isAborted || state.isOOM)) {
-                abortBtn.style.display = 'none';
-            }
+        if (state.historyCount !== null && state.historyCount !== undefined) {
+            renderHistory(algId, state.historyCount, state.historyLimit || 65535);
         }
+
+        const task = IterationSession.get(algId);
+        if (task) renderAlgControls(algId, task.state, task.total);
 
         if (state.isHugeBlob) {
             el.textContent = `[巨大データ: ${state.sizeMB} MB] クリックしてTXT保存`;
@@ -3546,23 +4186,13 @@ function showToast(msg) {
             el.dataset.empty = '1';
         }
 
-        if (state.isDone || state.isAborted || state.isOOM) delete renderState[algId];
+        if (state.isDone || state.isAborted || state.isOOM || state.isError) delete renderState[algId];
     }
     if (Object.keys(renderState).length > 0) {
         requestAnimationFrame(renderLoop);
     } else {
         isRendering = false;
         syncPauseControls();
-
-        const hasActiveTasks = Array.from(document.querySelectorAll('.stop-btn')).some(btn => btn.style.display !== 'none');
-        if (!hasActiveTasks) {
-            if (els.metaEl && /ステータス: (計算中|一時停止)/.test(els.metaEl.textContent)) {
-                AppState.currentStatus = '完了';
-                els.metaEl.textContent = els.metaEl.textContent.replace(/ステータス: (計算中|一時停止)/, 'ステータス: 完了');
-            }
-            const stopAllWrap = document.getElementById('stop-all-wrap');
-            if (stopAllWrap) stopAllWrap.style.display = 'none';
-        }
     }
   }
 
@@ -3664,6 +4294,7 @@ function showToast(msg) {
         iterations = 1;
         els.iterIn.value = 1;
     }
+    AppState.iterations = iterations;
     
     if (AppState.currentFile && raw.startsWith('[File:')) {
       isFile = true; displayCount = AppState.currentFile.size;
@@ -3686,6 +4317,8 @@ function showToast(msg) {
           displayCount = 0;
           forceEmptyHashOnce = false;
         } else {
+          Engine.resetMasterTask();
+          resetHistories();
           const emptyRes = {};
           ['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','Base64-Enc','Base64-Dec','Base85-Enc','Base85-Dec'].forEach(id => {
               emptyRes[id] = '';
@@ -3712,17 +4345,20 @@ function showToast(msg) {
     AppState.currentEntropy = isFile ? null : Core.shannonEntropy(bytesToHash);
 
     Engine.resetMasterTask();
+    resetHistories();
     
     document.querySelectorAll('.prog-text').forEach(el => el.textContent = '計算中...');
     document.querySelectorAll('.stop-btn').forEach(el => {
         delete el.dataset.terminated;
-        setAlgPauseControls(el.dataset.alg, false);
-        if (el.dataset.alg.includes('Base')) el.style.display = 'none';
-        else el.style.display = iterations > 1 ? 'inline-block' : 'none';
+        el.textContent = '[停止]';
+        el.dataset.action = 'stopAlg';
+        el.classList.add('warn');
+        el.style.display = 'none';
     });
+    document.querySelectorAll('.abort-btn').forEach(el => el.style.display = 'none');
     setAllPauseControls(false);
     const stopAllWrap = document.getElementById('stop-all-wrap');
-    if (stopAllWrap) stopAllWrap.style.display = iterations > 1 ? 'inline-block' : 'none';
+    if (stopAllWrap) stopAllWrap.style.display = 'none';
     updateMeta(displayCount, isFile, '計算中', iterations);
 
     if (AppState.Base64Decode && !isFile) {
@@ -3931,7 +4567,15 @@ const bindDynamicUpdate = (el, isRealtime = false) => {
 
 bindDynamicUpdate(els.saltIn, true);
 bindDynamicUpdate(els.hmacIn, true);
-bindDynamicUpdate(els.iterIn, false);
+
+els.iterIn.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    commitIterationTarget();
+    els.iterIn.blur();
+  }
+});
+els.iterIn.addEventListener('change', commitIterationTarget);
 
 async function detectBase85Variants(input) {
   const compact = input.replace(/\s+/g, '');
@@ -4239,12 +4883,12 @@ async function detectBase85Variants(input) {
             }
             case 'iterUp': {
                 els.iterIn.value = (parseInt(els.iterIn.value, 10) || 1) + 1;
-                scheduleUpdate();
+                commitIterationTarget();
                 break;
             }
             case 'iterDown': {
                 els.iterIn.value = Math.max(1, (parseInt(els.iterIn.value, 10) || 1) - 1);
-                scheduleUpdate();
+                commitIterationTarget();
                 break;
             }
             case 'applyTest': {
@@ -4578,63 +5222,29 @@ async function detectBase85Variants(input) {
                 break;
             }
             case 'stopAlg': {
-                const algId = actionEl.dataset.alg;
-                Engine.pauseTask(algId);
-                setAlgPauseControls(algId, true);
-                syncPauseControls();
+                Engine.pauseTask(actionEl.dataset.alg);
                 break;
             }
             case 'resumeAlg': {
-                const algId = actionEl.dataset.alg;
-                Engine.resumeTask(algId);
-                setAlgPauseControls(algId, false);
-                syncPauseControls();
+                Engine.resumeTask(actionEl.dataset.alg);
                 break;
             }
             case 'abortAlg': {
-                const algId = actionEl.dataset.alg;
-                Engine.cancelTask(algId);
-                const stopBtn = document.querySelector(`.stop-btn[data-alg="${algId}"]`);
-                const abortBtn = document.querySelector(`.abort-btn[data-alg="${algId}"]`);
-                if (stopBtn) {
-                    stopBtn.dataset.terminated = '1';
-                    stopBtn.style.display = 'none';
-                }
-                if (abortBtn) abortBtn.style.display = 'none';
-                syncPauseControls();
+                Engine.cancelTask(actionEl.dataset.alg);
                 break;
             }
             case 'stopAll': {
                 Engine.pauseAllTasks();
-                document.querySelectorAll('.stop-btn').forEach(btn => {
-                    if (btn.style.display !== 'none' && btn.dataset.terminated !== '1') setAlgPauseControls(btn.dataset.alg, true);
-                });
-                syncPauseControls();
                 showToast('すべての計算を一時停止します');
                 break;
             }
             case 'resumeAll': {
                 Engine.resumeAllTasks();
-                document.querySelectorAll('.stop-btn[data-action="resumeAlg"]').forEach(btn => {
-                    if (btn.style.display !== 'none' && btn.dataset.terminated !== '1') setAlgPauseControls(btn.dataset.alg, false);
-                });
-                syncPauseControls();
                 showToast('すべての計算を再開しました');
                 break;
             }
             case 'abortAll': {
-                Engine.resetMasterTask();
-                document.querySelectorAll('.stop-btn').forEach(btn => {
-                    btn.dataset.terminated = '1';
-                    btn.style.display = 'none';
-                });
-                document.querySelectorAll('.abort-btn').forEach(btn => btn.style.display = 'none');
-                const stopAllWrap = document.getElementById('stop-all-wrap');
-                if (stopAllWrap) stopAllWrap.style.display = 'none';
-                if (els.metaEl && /ステータス: (計算中|一時停止)/.test(els.metaEl.textContent)) {
-                    AppState.currentStatus = '中止';
-                    els.metaEl.textContent = els.metaEl.textContent.replace(/ステータス: (計算中|一時停止)/, 'ステータス: 中止');
-                }
+                Engine.resetMasterTask('aborted');
                 showToast('すべての計算を中止しました');
                 break;
             }
