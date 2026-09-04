@@ -253,7 +253,9 @@
   .result-col{display:flex;flex-direction:column;flex:1;min-width:0;}
   .prog-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;height:14px;}
   .prog-text{margin:0;font-size:10px;line-height:1;}
-  .stop-btn{margin:0;font-size:10px;line-height:1;display:none;padding:0 4px;}
+  .task-actions{display:flex;align-items:center;gap:4px;}
+  .task-actions .link{margin-left:0;}
+  .stop-btn,.abort-btn{margin:0;font-size:10px;line-height:1;display:none;padding:0 4px;}
   
   @keyframes caret-blink {
     0%, 100% { opacity: 1; }
@@ -471,8 +473,7 @@
       <button id="verify" class="link" data-action="verifyTest">検証</button>
       <span class="sep hint">|</span>
       <button id="save" class="link" data-action="saveResults">保存</button>
-      <span class="sep hint">|</span>
-      <button id="stop-all" class="link warn" data-action="stopAll" style="display:none;">[全停止]</button>
+      <span id="stop-all-wrap" style="display:none;"><span class="sep hint">|</span><button id="stop-all" class="link warn" data-action="stopAll">[全停止]</button><button id="abort-all" class="link warn" data-action="abortAll" style="display:none;">[全中止]</button></span>
       <span class="sep hint">|</span>
       <button id="geoToggle" class="link" aria-label="位置情報の照会" data-action="toggleGeo">位置: オフ</button>
       <span class="sep hint">|</span>
@@ -483,56 +484,56 @@
       <div class="row">
         <div class="label">CRC32</div>
         <div class="result-col">
-          <div class="prog-bar"><span id="prog-CRC32" class="hint prog-text">待機</span><button class="link stop-btn warn" data-alg="CRC32" data-action="stopAlg">[停止]</button></div>
+          <div class="prog-bar"><span id="prog-CRC32" class="hint prog-text">待機</span><span class="task-actions"><button class="link stop-btn warn" data-alg="CRC32" data-action="stopAlg">[停止]</button><button class="link abort-btn warn" data-alg="CRC32" data-action="abortAlg">[中止]</button></span></div>
           <div id="CRC32" class="value" data-alg="CRC32" tabindex="0" data-action="copyValue">入力待ち</div>
         </div>
       </div>
       <div class="row">
         <div class="label" id="label-CRC64" data-action="cycleCrc64" style="cursor:pointer;text-decoration:underline;" title="クリックでCRC-64の規格を切り替えます">CRC64</div>
         <div class="result-col">
-          <div class="prog-bar"><span id="prog-CRC64" class="hint prog-text">待機</span><button class="link stop-btn warn" data-alg="CRC64" data-action="stopAlg">[停止]</button></div>
+          <div class="prog-bar"><span id="prog-CRC64" class="hint prog-text">待機</span><span class="task-actions"><button class="link stop-btn warn" data-alg="CRC64" data-action="stopAlg">[停止]</button><button class="link abort-btn warn" data-alg="CRC64" data-action="abortAlg">[中止]</button></span></div>
           <div id="CRC64" class="value" data-alg="CRC64" tabindex="0" data-action="copyValue">入力待ち</div>
         </div>
       </div>
       <div class="row">
         <div class="label" id="label-MD5">MD5</div>
         <div class="result-col">
-          <div class="prog-bar"><span id="prog-MD5" class="hint prog-text">待機</span><button class="link stop-btn warn" data-alg="MD5" data-action="stopAlg">[停止]</button></div>
+          <div class="prog-bar"><span id="prog-MD5" class="hint prog-text">待機</span><span class="task-actions"><button class="link stop-btn warn" data-alg="MD5" data-action="stopAlg">[停止]</button><button class="link abort-btn warn" data-alg="MD5" data-action="abortAlg">[中止]</button></span></div>
           <div id="MD5" class="value" data-alg="MD5" tabindex="0" data-action="copyValue">入力待ち</div>
         </div>
       </div>
       <div class="row">
         <div class="label" id="label-SHA-1">SHA-1</div>
         <div class="result-col">
-          <div class="prog-bar"><span id="prog-SHA-1" class="hint prog-text">待機</span><button class="link stop-btn warn" data-alg="SHA-1" data-action="stopAlg">[停止]</button></div>
+          <div class="prog-bar"><span id="prog-SHA-1" class="hint prog-text">待機</span><span class="task-actions"><button class="link stop-btn warn" data-alg="SHA-1" data-action="stopAlg">[停止]</button><button class="link abort-btn warn" data-alg="SHA-1" data-action="abortAlg">[中止]</button></span></div>
           <div id="SHA-1" class="value" data-alg="SHA-1" tabindex="0" data-action="copyValue">入力待ち</div>
         </div>
       </div>
       <div class="row">
         <div class="label" id="label-SHA-224">SHA-224</div>
         <div class="result-col">
-          <div class="prog-bar"><span id="prog-SHA-224" class="hint prog-text">待機</span><button class="link stop-btn warn" data-alg="SHA-224" data-action="stopAlg">[停止]</button></div>
+          <div class="prog-bar"><span id="prog-SHA-224" class="hint prog-text">待機</span><span class="task-actions"><button class="link stop-btn warn" data-alg="SHA-224" data-action="stopAlg">[停止]</button><button class="link abort-btn warn" data-alg="SHA-224" data-action="abortAlg">[中止]</button></span></div>
           <div id="SHA-224" class="value" data-alg="SHA-224" tabindex="0" data-action="copyValue">入力待ち</div>
         </div>
       </div>
       <div class="row">
         <div class="label" id="label-SHA-256">SHA-256</div>
         <div class="result-col">
-          <div class="prog-bar"><span id="prog-SHA-256" class="hint prog-text">待機</span><button class="link stop-btn warn" data-alg="SHA-256" data-action="stopAlg">[停止]</button></div>
+          <div class="prog-bar"><span id="prog-SHA-256" class="hint prog-text">待機</span><span class="task-actions"><button class="link stop-btn warn" data-alg="SHA-256" data-action="stopAlg">[停止]</button><button class="link abort-btn warn" data-alg="SHA-256" data-action="abortAlg">[中止]</button></span></div>
           <div id="SHA-256" class="value" data-alg="SHA-256" tabindex="0" data-action="copyValue">入力待ち</div>
         </div>
       </div>
       <div class="row" id="row-SHA-384">
         <div class="label" id="label-SHA-384">SHA-384</div>
         <div class="result-col">
-          <div class="prog-bar"><span id="prog-SHA-384" class="hint prog-text">待機</span><button class="link stop-btn warn" data-alg="SHA-384" data-action="stopAlg">[停止]</button></div>
+          <div class="prog-bar"><span id="prog-SHA-384" class="hint prog-text">待機</span><span class="task-actions"><button class="link stop-btn warn" data-alg="SHA-384" data-action="stopAlg">[停止]</button><button class="link abort-btn warn" data-alg="SHA-384" data-action="abortAlg">[中止]</button></span></div>
           <div id="SHA-384" class="value" data-alg="SHA-384" tabindex="0" data-action="copyValue">入力待ち</div>
         </div>
       </div>
       <div class="row" id="row-SHA-512">
         <div class="label" id="label-SHA-512">SHA-512</div>
         <div class="result-col">
-          <div class="prog-bar"><span id="prog-SHA-512" class="hint prog-text">待機</span><button class="link stop-btn warn" data-alg="SHA-512" data-action="stopAlg">[停止]</button></div>
+          <div class="prog-bar"><span id="prog-SHA-512" class="hint prog-text">待機</span><span class="task-actions"><button class="link stop-btn warn" data-alg="SHA-512" data-action="stopAlg">[停止]</button><button class="link abort-btn warn" data-alg="SHA-512" data-action="abortAlg">[中止]</button></span></div>
           <div id="SHA-512" class="value" data-alg="SHA-512" tabindex="0" data-action="copyValue">入力待ち</div>
         </div>
       </div>
@@ -2585,16 +2586,71 @@ const Engine = (() => {
       let currentTaskGen = {};
       let absoluteTaskCounter = 0;
       let hasher = null;
+      const pausedTasks = {};
+      const resumeWaiters = {};
+
+      function wakeTask(alg) {
+        const resume = resumeWaiters[alg];
+        if (!resume) return;
+        delete resumeWaiters[alg];
+        resume();
+      }
+
+      async function pauseCheckpoint(alg, myGen, iter, total, hex) {
+        if (!pausedTasks[alg]) return true;
+
+        postMessage({ action: 'pause_ack', algId: alg, hex, iter, total });
+
+        while (pausedTasks[alg] && currentTaskGen[alg] === myGen) {
+          await new Promise(resolve => { resumeWaiters[alg] = resolve; });
+        }
+
+        if (currentTaskGen[alg] !== myGen) {
+          if (currentTaskGen[alg] === -1) {
+            postMessage({ action: 'iter_progress', algId: alg, status: 'aborted', hex, iter, total });
+          }
+          return false;
+        }
+        return true;
+      }
 
       onmessage = e => {
         const { action, bytes, key, crc64Variant, iterations, algorithms, saltBytes, algId, iterMode, reqId } = e.data;
         
+        if (action === 'pause_all') {
+            for (let k in currentTaskGen) {
+                if (currentTaskGen[k] !== -1) pausedTasks[k] = true;
+            }
+            return;
+        }
+        if (action === 'resume_all') {
+            for (let k in pausedTasks) {
+                pausedTasks[k] = false;
+                wakeTask(k);
+            }
+            return;
+        }
+        if (action === 'pause') {
+            if (currentTaskGen[algId] !== -1) pausedTasks[algId] = true;
+            return;
+        }
+        if (action === 'resume') {
+            pausedTasks[algId] = false;
+            wakeTask(algId);
+            return;
+        }
         if (action === 'abort_all') {
-            for (let k in currentTaskGen) currentTaskGen[k] = -1;
+            for (let k in currentTaskGen) {
+                currentTaskGen[k] = -1;
+                pausedTasks[k] = false;
+                wakeTask(k);
+            }
             return;
         }
         if (action === 'abort') {
             currentTaskGen[algId] = -1;
+            pausedTasks[algId] = false;
+            wakeTask(algId);
             return;
         }
         
@@ -2620,6 +2676,8 @@ const Engine = (() => {
                 absoluteTaskCounter++;
                 const myGen = absoluteTaskCounter;
                 currentTaskGen[alg] = myGen;
+                pausedTasks[alg] = false;
+                wakeTask(alg);
                 (async () => {
                     let currentBytes = bytes;
                     let finalHex = '';
@@ -2637,6 +2695,7 @@ const Engine = (() => {
                                 if (currentTaskGen[alg] === -1) postMessage({ action: 'iter_progress', algId: alg, status: 'aborted', hex: finalHex, iter: i - 1, total: iterations });
                                 return;
                             }
+                            if (pausedTasks[alg] && !await pauseCheckpoint(alg, myGen, i - 1, iterations, finalHex)) return;
 
                             const crc64All = {};
                             for (const variant of CRC64_VARIANTS) {
@@ -2673,7 +2732,12 @@ const Engine = (() => {
                                 postMessage({ action: 'iter_progress', algId: alg, status: i === iterations ? 'done' : 'progress', hex: finalHex, crc64All, iter: i, total: iterations });
                                 lastPostTime = now;
                                 await new Promise(r => setTimeout(r, 0));
-                                if (currentTaskGen[alg] !== myGen) return;
+                                if (currentTaskGen[alg] !== myGen) {
+                                    if (currentTaskGen[alg] === -1) {
+                                        postMessage({ action: 'iter_progress', algId: alg, status: 'aborted', hex: finalHex, iter: i, total: iterations });
+                                    }
+                                    return;
+                                }
                             }
                         }
                         return;
@@ -2696,6 +2760,7 @@ const Engine = (() => {
                             }
                             return;
                         }
+                        if (pausedTasks[alg] && !await pauseCheckpoint(alg, myGen, i - 1, iterations, finalHex)) return;
                         
                         let payload = currentBytes;
                         if (saltBytes && saltBytes.length > 0) {
@@ -2721,7 +2786,12 @@ const Engine = (() => {
                                 postMessage({ action: 'iter_progress', algId: alg, status: 'done', hex: finalHex, iter: iterations, total: iterations });
                                 return;
                             }
-                            if (currentTaskGen[alg] !== myGen) return;
+                            if (currentTaskGen[alg] !== myGen) {
+                                if (currentTaskGen[alg] === -1) {
+                                    postMessage({ action: 'iter_progress', algId: alg, status: 'aborted', hex: finalHex, iter: i, total: iterations });
+                                }
+                                return;
+                            }
                         } else {
                             temp.reset();
                             temp.update(payload);
@@ -2763,7 +2833,12 @@ const Engine = (() => {
                                 postMessage({ action: 'iter_progress', algId: alg, status: i === iterations ? 'done' : 'progress', hex: finalHex, iter: i, total: iterations });
                                 lastPostTime = now;
                                 await new Promise(r => setTimeout(r, 0));
-                                if (currentTaskGen[alg] !== myGen) return;
+                                if (currentTaskGen[alg] !== myGen) {
+                                    if (currentTaskGen[alg] === -1) {
+                                        postMessage({ action: 'iter_progress', algId: alg, status: 'aborted', hex: finalHex, iter: i, total: iterations });
+                                    }
+                                    return;
+                                }
                             }
                             
                             currentBytes = currentHashBytes;
@@ -2773,7 +2848,12 @@ const Engine = (() => {
                                 postMessage({ action: 'iter_progress', algId: alg, status: i === iterations ? 'done' : 'progress', hex: finalHex, iter: i, total: iterations });
                                 lastPostTime = now;
                                 await new Promise(r => setTimeout(r, 0));
-                                if (currentTaskGen[alg] !== myGen) return;
+                                if (currentTaskGen[alg] !== myGen) {
+                                    if (currentTaskGen[alg] === -1) {
+                                        postMessage({ action: 'iter_progress', algId: alg, status: 'aborted', hex: finalHex, iter: i, total: iterations });
+                                    }
+                                    return;
+                                }
                             }
                             if (i < iterations) {
                                 currentBytes = (iterMode === 'raw') ? hexToBytes(finalHex) : utf8Encode(finalHex);
@@ -2799,6 +2879,10 @@ const Engine = (() => {
       worker = createWorkerBlob();
       worker.onmessage = ev => {
           const data = ev.data;
+          if (data.action === 'pause_ack') {
+              EventBus.emit('hash:paused', data);
+              return;
+          }
           if (data.action === 'iter_progress') {
               if (
                   data.algId === 'CRC64' &&
@@ -3120,7 +3204,11 @@ const Engine = (() => {
       init, hasWorker, WORKER_THRESHOLD, hashFile, hashText, terminateWorker, verifyTestBytes,
       get masterSignal() { return TaskManager.masterSignal; },
       resetMasterTask: () => TaskManager.resetMaster(),
-      cancelTask: (algId) => TaskManager.cancelAlg(algId)
+      cancelTask: (algId) => TaskManager.cancelAlg(algId),
+      pauseTask: (algId) => { if (worker) worker.postMessage({ action: 'pause', algId }); },
+      resumeTask: (algId) => { if (worker) worker.postMessage({ action: 'resume', algId }); },
+      pauseAllTasks: () => { if (worker) worker.postMessage({ action: 'pause_all' }); },
+      resumeAllTasks: () => { if (worker) worker.postMessage({ action: 'resume_all' }); }
   };
 })();
 
@@ -3278,6 +3366,52 @@ function showToast(msg) {
   }, TOAST_DURATION);
 }
 
+  function setAlgPauseControls(algId, paused) {
+    const stopBtn = document.querySelector(`.stop-btn[data-alg="${algId}"]`);
+    const abortBtn = document.querySelector(`.abort-btn[data-alg="${algId}"]`);
+    if (!stopBtn) return;
+    if (stopBtn.dataset.terminated === '1') {
+        stopBtn.style.display = 'none';
+        if (abortBtn) abortBtn.style.display = 'none';
+        return;
+    }
+
+    stopBtn.textContent = paused ? '[再開]' : '[停止]';
+    stopBtn.dataset.action = paused ? 'resumeAlg' : 'stopAlg';
+    stopBtn.classList.toggle('warn', !paused);
+    stopBtn.style.display = 'inline-block';
+
+    if (abortBtn) abortBtn.style.display = paused ? 'inline-block' : 'none';
+  }
+
+  function setAllPauseControls(paused) {
+    const stopAllBtn = document.getElementById('stop-all');
+    const abortAllBtn = document.getElementById('abort-all');
+    if (!stopAllBtn) return;
+
+    stopAllBtn.textContent = paused ? '[全再開]' : '[全停止]';
+    stopAllBtn.dataset.action = paused ? 'resumeAll' : 'stopAll';
+    stopAllBtn.classList.toggle('warn', !paused);
+
+    if (abortAllBtn) abortAllBtn.style.display = paused ? 'inline-block' : 'none';
+  }
+
+  function syncPauseControls() {
+    const activeBtns = Array.from(document.querySelectorAll('.stop-btn')).filter(btn => btn.style.display !== 'none' && btn.dataset.terminated !== '1');
+    if (!activeBtns.length) return;
+
+    const allPaused = activeBtns.every(btn => btn.dataset.action === 'resumeAlg');
+    setAllPauseControls(allPaused);
+
+    if (allPaused && els.metaEl && els.metaEl.textContent.includes('ステータス: 計算中')) {
+        AppState.currentStatus = '一時停止';
+        els.metaEl.textContent = els.metaEl.textContent.replace('ステータス: 計算中', 'ステータス: 一時停止');
+    } else if (!allPaused && els.metaEl && els.metaEl.textContent.includes('ステータス: 一時停止')) {
+        AppState.currentStatus = '計算中';
+        els.metaEl.textContent = els.metaEl.textContent.replace('ステータス: 一時停止', 'ステータス: 計算中');
+    }
+  }
+
   function setSysOffset() {
     const h = els.sysEl.getBoundingClientRect().height || 0;
     const pad = Math.ceil(h + 24);
@@ -3320,8 +3454,10 @@ function showToast(msg) {
              renderResults({[algId]: value});
              const progEl = document.getElementById(`prog-${algId}`);
              const btnEl = document.querySelector(`.stop-btn[data-alg="${algId}"]`);
+             const abortBtn = document.querySelector(`.abort-btn[data-alg="${algId}"]`);
              if (progEl) progEl.textContent = `完了 (1/1)`;
              if (btnEl) btnEl.style.display = 'none';
+             if (abortBtn) abortBtn.style.display = 'none';
              return;
         }
     } else {
@@ -3336,6 +3472,13 @@ function showToast(msg) {
   EventBus.on('hash:render', data => {
       queueRender(data.algId, data.hex, data.iter, data.total, data.isDone, data.isAborted, data.isOOM);
   });
+  EventBus.on('hash:paused', data => {
+      delete renderState[data.algId];
+      if (data.hex) renderResults({[data.algId]: data.hex});
+      const progEl = document.getElementById(`prog-${data.algId}`);
+      if (progEl) progEl.textContent = `一時停止 (${data.iter}/${data.total})`;
+      syncPauseControls();
+  });
   EventBus.on('hash:results', res => {
       for (const [id, val] of Object.entries(res)) {
           if (typeof val === 'string' && val.includes('エラー')) queueRender(id, val, 0, 1, true);
@@ -3348,16 +3491,22 @@ function showToast(msg) {
         const el = document.getElementById(algId);
         const progEl = document.getElementById(`prog-${algId}`);
         const stopBtn = document.querySelector(`.stop-btn[data-alg="${algId}"]`);
+        const abortBtn = document.querySelector(`.abort-btn[data-alg="${algId}"]`);
         if (!el) continue;
 
         if (progEl) {
-            if (state.isAborted) progEl.textContent = `停止 (${state.currentIter}/${state.totalIter})`;
+            if (state.isAborted) progEl.textContent = `中止 (${state.currentIter}/${state.totalIter})`;
             else if (state.isOOM) progEl.textContent = `上限到達 (${state.currentIter}/${state.totalIter})`;
             else if (state.isDone) progEl.textContent = `完了 (${state.totalIter}/${state.totalIter})`;
             else progEl.textContent = `${state.currentIter} / ${state.totalIter}`;
         }
         if (stopBtn) {
-            stopBtn.style.display = (state.isDone || state.isAborted || state.isOOM) ? 'none' : 'inline-block';
+            if (state.isAborted) stopBtn.dataset.terminated = '1';
+            const terminated = stopBtn.dataset.terminated === '1';
+            stopBtn.style.display = (terminated || state.isDone || state.isAborted || state.isOOM) ? 'none' : 'inline-block';
+            if (abortBtn && (terminated || state.isDone || state.isAborted || state.isOOM)) {
+                abortBtn.style.display = 'none';
+            }
         }
 
         if (state.isHugeBlob) {
@@ -3403,12 +3552,17 @@ function showToast(msg) {
         requestAnimationFrame(renderLoop);
     } else {
         isRendering = false;
-        if (els.metaEl && els.metaEl.textContent.includes('ステータス: 計算中')) {
-            AppState.currentStatus = '完了';
-            els.metaEl.textContent = els.metaEl.textContent.replace('ステータス: 計算中', 'ステータス: 完了');
+        syncPauseControls();
+
+        const hasActiveTasks = Array.from(document.querySelectorAll('.stop-btn')).some(btn => btn.style.display !== 'none');
+        if (!hasActiveTasks) {
+            if (els.metaEl && /ステータス: (計算中|一時停止)/.test(els.metaEl.textContent)) {
+                AppState.currentStatus = '完了';
+                els.metaEl.textContent = els.metaEl.textContent.replace(/ステータス: (計算中|一時停止)/, 'ステータス: 完了');
+            }
+            const stopAllWrap = document.getElementById('stop-all-wrap');
+            if (stopAllWrap) stopAllWrap.style.display = 'none';
         }
-        const stopAllBtn = document.getElementById('stop-all');
-        if (stopAllBtn) stopAllBtn.style.display = 'none';
     }
   }
 
@@ -3538,8 +3692,12 @@ function showToast(msg) {
               const prog = document.getElementById(`prog-${id}`);
               if (prog) prog.textContent = '待機';
               const btn = document.querySelector(`.stop-btn[data-alg="${id}"]`);
+              const abortBtn = document.querySelector(`.abort-btn[data-alg="${id}"]`);
               if (btn) btn.style.display = 'none';
+              if (abortBtn) abortBtn.style.display = 'none';
           });
+          const stopAllWrap = document.getElementById('stop-all-wrap');
+          if (stopAllWrap) stopAllWrap.style.display = 'none';
           renderResults(emptyRes);
           updateMeta(0, false, '待機', 1);
           return;
@@ -3557,11 +3715,14 @@ function showToast(msg) {
     
     document.querySelectorAll('.prog-text').forEach(el => el.textContent = '計算中...');
     document.querySelectorAll('.stop-btn').forEach(el => {
+        delete el.dataset.terminated;
+        setAlgPauseControls(el.dataset.alg, false);
         if (el.dataset.alg.includes('Base')) el.style.display = 'none';
         else el.style.display = iterations > 1 ? 'inline-block' : 'none';
     });
-    const stopAllBtn = document.getElementById('stop-all');
-    if (stopAllBtn) stopAllBtn.style.display = iterations > 1 ? 'inline-block' : 'none';
+    setAllPauseControls(false);
+    const stopAllWrap = document.getElementById('stop-all-wrap');
+    if (stopAllWrap) stopAllWrap.style.display = iterations > 1 ? 'inline-block' : 'none';
     updateMeta(displayCount, isFile, '計算中', iterations);
 
     if (AppState.Base64Decode && !isFile) {
@@ -4417,20 +4578,64 @@ async function detectBase85Variants(input) {
                 break;
             }
             case 'stopAlg': {
-                Engine.cancelTask(actionEl.dataset.alg);
-                actionEl.style.display = 'none';
+                const algId = actionEl.dataset.alg;
+                Engine.pauseTask(algId);
+                setAlgPauseControls(algId, true);
+                syncPauseControls();
+                break;
+            }
+            case 'resumeAlg': {
+                const algId = actionEl.dataset.alg;
+                Engine.resumeTask(algId);
+                setAlgPauseControls(algId, false);
+                syncPauseControls();
+                break;
+            }
+            case 'abortAlg': {
+                const algId = actionEl.dataset.alg;
+                Engine.cancelTask(algId);
+                const stopBtn = document.querySelector(`.stop-btn[data-alg="${algId}"]`);
+                const abortBtn = document.querySelector(`.abort-btn[data-alg="${algId}"]`);
+                if (stopBtn) {
+                    stopBtn.dataset.terminated = '1';
+                    stopBtn.style.display = 'none';
+                }
+                if (abortBtn) abortBtn.style.display = 'none';
+                syncPauseControls();
                 break;
             }
             case 'stopAll': {
+                Engine.pauseAllTasks();
+                document.querySelectorAll('.stop-btn').forEach(btn => {
+                    if (btn.style.display !== 'none' && btn.dataset.terminated !== '1') setAlgPauseControls(btn.dataset.alg, true);
+                });
+                syncPauseControls();
+                showToast('すべての計算を一時停止します');
+                break;
+            }
+            case 'resumeAll': {
+                Engine.resumeAllTasks();
+                document.querySelectorAll('.stop-btn[data-action="resumeAlg"]').forEach(btn => {
+                    if (btn.style.display !== 'none' && btn.dataset.terminated !== '1') setAlgPauseControls(btn.dataset.alg, false);
+                });
+                syncPauseControls();
+                showToast('すべての計算を再開しました');
+                break;
+            }
+            case 'abortAll': {
                 Engine.resetMasterTask();
-                document.querySelectorAll('.stop-btn').forEach(btn => btn.style.display = 'none');
-                const stopAllBtn = document.getElementById('stop-all');
-                if (stopAllBtn) stopAllBtn.style.display = 'none';
-                if (els.metaEl && els.metaEl.textContent.includes('ステータス: 計算中')) {
+                document.querySelectorAll('.stop-btn').forEach(btn => {
+                    btn.dataset.terminated = '1';
+                    btn.style.display = 'none';
+                });
+                document.querySelectorAll('.abort-btn').forEach(btn => btn.style.display = 'none');
+                const stopAllWrap = document.getElementById('stop-all-wrap');
+                if (stopAllWrap) stopAllWrap.style.display = 'none';
+                if (els.metaEl && /ステータス: (計算中|一時停止)/.test(els.metaEl.textContent)) {
                     AppState.currentStatus = '中止';
-                    els.metaEl.textContent = els.metaEl.textContent.replace('ステータス: 計算中', 'ステータス: 中止');
+                    els.metaEl.textContent = els.metaEl.textContent.replace(/ステータス: (計算中|一時停止)/, 'ステータス: 中止');
                 }
-                showToast('すべての計算を強制停止しました');
+                showToast('すべての計算を中止しました');
                 break;
             }
             case 'copyValue': {
