@@ -4076,6 +4076,7 @@ function showToast(msg) {
         if (value.type === 'huge_blob') {
              renderState[algId] = { valueString: '', isHugeBlob: true, blob: value.blob, sizeMB: value.sizeMB, isDone: true };
         } else {
+             delete renderState[algId];
              renderResults({[algId]: value});
              const progEl = document.getElementById(`prog-${algId}`);
              const btnEl = document.querySelector(`.stop-btn[data-alg="${algId}"]`);
@@ -4806,40 +4807,41 @@ async function detectBase85Variants(input) {
                 AppState.Base64Encode = !AppState.Base64Encode;
                 els.Base64EncToggleBtn.textContent = `Base64 Enc: ${AppState.Base64Encode ? 'オン' : 'オフ'}`;
                 els.rowBase64Enc.style.display = AppState.Base64Encode ? 'flex' : 'none';
-                scheduleUpdate();
+                updateBaseOnly('Base64Enc');
                 break;
             }
             case 'toggleBase64Dec': {
                 AppState.Base64Decode = !AppState.Base64Decode;
                 els.Base64DecToggleBtn.textContent = `Base64 Dec: ${AppState.Base64Decode ? 'オン' : 'オフ'}`;
                 els.rowBase64Dec.style.display = AppState.Base64Decode ? 'flex' : 'none';
-                scheduleUpdate();
+                updateBaseOnly('Base64Dec');
                 break;
             }
             case 'toggleBase64Mode': {
                 AppState.base64Strict = !AppState.base64Strict;
                 els.Base64ModeToggleBtn.textContent = `Base64判定: ${AppState.base64Strict ? '厳格' : '寛容'}`;
-                scheduleUpdate();
+                updateBaseOnly('Base64Dec');
                 break;
             }
             case 'toggleBase85Enc': {
                 AppState.Base85Encode = !AppState.Base85Encode;
                 els.Base85EncToggleBtn.textContent = `Base85 Enc: ${AppState.Base85Encode ? 'オン' : 'オフ'}`;
                 els.rowBase85Enc.style.display = AppState.Base85Encode ? 'flex' : 'none';
-                scheduleUpdate();
+                updateBaseOnly('Base85Enc');
                 break;
             }
             case 'toggleBase85Dec': {
                 AppState.Base85Decode = !AppState.Base85Decode;
                 els.Base85DecToggleBtn.textContent = `Base85 Dec: ${AppState.Base85Decode ? 'オン' : 'オフ'}`;
                 els.rowBase85Dec.style.display = AppState.Base85Decode ? 'flex' : 'none';
-                scheduleUpdate();
+                updateBaseOnly('Base85Dec');
                 break;
             }
             case 'toggleBaseFileDetect': {
                 AppState.baseFileDetect = !AppState.baseFileDetect;
                 els.baseFileDetectToggleBtn.textContent = `Base自動判別: ${AppState.baseFileDetect ? 'オン' : 'オフ'}`;
-                scheduleUpdate();
+                updateBaseOnly('Base64Dec');
+                updateBaseOnly('Base85Dec');
                 break;
             }
             case 'triggerFile': {
@@ -5306,7 +5308,8 @@ async function detectBase85Variants(input) {
                 const base85Variants = ['Standard ASCII85', 'Adobe ASCII85', 'ZeroMQ (Z85)', 'RFC 1924'];
                 const bIdx = base85Variants.indexOf(AppState.base85Variant);
                 AppState.base85Variant = base85Variants[(bIdx + 1) % base85Variants.length];
-                scheduleUpdate();
+                updateBaseOnly('Base85Enc');
+                updateBaseOnly('Base85Dec');
                 showToast(`Base85 モード切替: ${AppState.base85Variant}`);
                 break;
             }
