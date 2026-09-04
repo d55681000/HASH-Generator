@@ -91,7 +91,7 @@
   
   *{box-sizing:border-box}
   html,body{height:100%}
-  button,input,select,textarea{font-family:inherit}
+  button,input,textarea{font-family:inherit}
   body{
     margin:0;background-color:var(--bg);color:var(--fg);
     font-family:var(--font-stack);
@@ -212,17 +212,6 @@
   .text-input:focus { background: transparent; box-shadow: 0 1px 0 var(--fg-bright); }
   .text-input::placeholder{color:var(--muted);opacity:0.6;}
   
-  select.link {
-    appearance: none; -webkit-appearance: none; -moz-appearance: none;
-    background: transparent; border: none; outline: none; color: var(--muted);
-    cursor: pointer; padding-right: 14px;
-    background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2210%22%20height%3D%225%22%20viewBox%3D%220%200%2010%205%22%3E%3Cpath%20fill%3D%22%239fb4c6%22%20d%3D%22M0%200l5%205%205-5z%22%2F%3E%3C%2Fsvg%3E");
-    background-repeat: no-repeat; background-position: right center; background-size: 8px 4px;
-    transition: color 0.2s ease;
-  }
-  select.link:focus { color: var(--fg-bright); }
-  select.link option { background: var(--bg); color: var(--fg); }
-
   .number-wrap { position: relative; display: inline-flex; align-items: center; }
   .number-input {
     appearance: textfield; -moz-appearance: textfield;
@@ -420,20 +409,33 @@
       </span>
       
       <span class="sep hint">/</span>
-      <label for="grouping" class="hint" style="margin-right: -4px;">区切り:</label>
-      <select id="grouping" class="link">
-        <option value="0">区切りなし</option>
-        <option value="2">2文字</option>
-        <option value="4">4文字</option>
-        <option value="6">6文字</option>
-        <option value="8">8文字</option>
-        <option value="10">10文字</option>
-        <option value="12">12文字</option>
-        <option value="14">14文字</option>
-        <option value="16">16文字</option>
-        <option value="32">32文字</option>
-        <option value="64">64文字</option>
-      </select>
+      <button id="groupingToggle" class="link" aria-label="区切り文字数の切替" data-action="toggleGrouping">区切り: 区切りなし [+]</button>
+
+      <span id="groupingOptionsContainer" class="base-group-container hidden">
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setGrouping" data-grouping="0">なし</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setGrouping" data-grouping="2">2文字</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setGrouping" data-grouping="4">4文字</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setGrouping" data-grouping="6">6文字</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setGrouping" data-grouping="8">8文字</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setGrouping" data-grouping="10">10文字</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setGrouping" data-grouping="12">12文字</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setGrouping" data-grouping="14">14文字</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setGrouping" data-grouping="16">16文字</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setGrouping" data-grouping="32">32文字</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setGrouping" data-grouping="64">64文字</button>
+      </span>
+
       <span class="sep hint">/</span>
       <label for="sep-in" class="hint" style="margin-right: -4px;">区切り文字:</label>
       <input type="text" id="sep-in" class="text-input" value=" " style="width: 50px;" placeholder="空（なし）" autocomplete="off" spellcheck="false" title="任意の文字列を入力（例：空白、カンマ、AND など）">
@@ -454,12 +456,17 @@
       </div>
       <span class="sep hint">|</span>
 
-      <span class="hint" style="margin-right: -4px;">テスト:</span>
-      <select id="tv" class="link">
-        <option value="empty">空</option>
-        <option value="abc">abc</option>
-        <option value="digits">123456789</option>
-      </select>
+      <button id="testToggle" class="link" aria-label="テストベクトルの切替" data-action="toggleTest">テスト: 空 [+]</button>
+
+      <span id="testOptionsContainer" class="base-group-container hidden">
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setTest" data-test="empty">空</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setTest" data-test="abc">abc</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setTest" data-test="digits">123456789</button>
+      </span>
+
       <button id="apply" class="link" data-action="applyTest">適用</button>
       <button id="verify" class="link" data-action="verifyTest">検証</button>
       <span class="sep hint">|</span>
@@ -825,7 +832,10 @@ const AppState = {
   sanitizeText: false,
   hexUpper: false,
   grouping: 0,
+  showGrouping: false,
   separator: ' ',
+  testVector: 'empty',
+  showTest: false,
   iterMode: 'raw',
   showSalt: false,
   showHmac: false,
@@ -3196,8 +3206,10 @@ const UI = (() => {
     els.sanitizeToggleBtn = document.getElementById('sanitizeToggle');
     els.hexBtn = document.getElementById('hexcase');
     els.toastEl = document.getElementById('toast');
-    els.tvSel = document.getElementById('tv');
-    els.groupingSel = document.getElementById('grouping');
+    els.testToggle = document.getElementById('testToggle');
+    els.testOptionsContainer = document.getElementById('testOptionsContainer');
+    els.groupingToggle = document.getElementById('groupingToggle');
+    els.groupingOptionsContainer = document.getElementById('groupingOptionsContainer');
     els.sepIn = document.getElementById('sep-in');
     els.geoBtn = document.getElementById('geoToggle');
     els.zessBtn = document.getElementById('zessToggle');
@@ -3788,12 +3800,6 @@ async function detectBase85Variants(input) {
   return candidates;
 }
 
-    els.groupingSel.addEventListener('change', () => {
-      AppState.grouping = parseInt(els.groupingSel.value, 10) || 0;
-      reformatAll();
-      els.metaEl.textContent = els.metaEl.textContent.replace(/区切り:\s*(区切りなし|\d+文字)/, `区切り: ${AppState.grouping ? AppState.grouping + '文字' : '区切りなし'}`);
-    });
-
     els.sepIn.addEventListener('input', () => {
       AppState.separator = els.sepIn.value;
       if (AppState.grouping > 0) {
@@ -3937,6 +3943,50 @@ async function detectBase85Variants(input) {
                 break;
             }
 
+            case 'toggleGrouping': {
+                AppState.showGrouping = !AppState.showGrouping;
+                els.groupingToggle.textContent = AppState.showGrouping
+                    ? '区切り: 折畳 [-]'
+                    : `区切り: ${AppState.grouping ? AppState.grouping + '文字' : '区切りなし'} [+]`;
+                if (AppState.showGrouping) {
+                    els.groupingOptionsContainer.classList.remove('hidden');
+                } else {
+                    els.groupingOptionsContainer.classList.add('hidden');
+                }
+                break;
+            }
+
+            case 'setGrouping': {
+                AppState.grouping = parseInt(actionEl.dataset.grouping, 10) || 0;
+                AppState.showGrouping = false;
+                els.groupingOptionsContainer.classList.add('hidden');
+                els.groupingToggle.textContent = `区切り: ${AppState.grouping ? AppState.grouping + '文字' : '区切りなし'} [+]`;
+                reformatAll();
+                els.metaEl.textContent = els.metaEl.textContent.replace(/区切り:\s*(区切りなし|\d+文字)/, `区切り: ${AppState.grouping ? AppState.grouping + '文字' : '区切りなし'}`);
+                break;
+            }
+
+            case 'toggleTest': {
+                AppState.showTest = !AppState.showTest;
+                const testLabel = AppState.testVector === 'empty' ? '空' : AppState.testVector === 'digits' ? '123456789' : 'abc';
+                els.testToggle.textContent = AppState.showTest ? 'テスト: 折畳 [-]' : `テスト: ${testLabel} [+]`;
+                if (AppState.showTest) {
+                    els.testOptionsContainer.classList.remove('hidden');
+                } else {
+                    els.testOptionsContainer.classList.add('hidden');
+                }
+                break;
+            }
+
+            case 'setTest': {
+                AppState.testVector = actionEl.dataset.test;
+                AppState.showTest = false;
+                const testLabel = AppState.testVector === 'empty' ? '空' : AppState.testVector === 'digits' ? '123456789' : 'abc';
+                els.testOptionsContainer.classList.add('hidden');
+                els.testToggle.textContent = `テスト: ${testLabel} [+]`;
+                break;
+            }
+
             case 'toggleBaseGroup': {
                 AppState.showBaseGroup = !AppState.showBaseGroup;
                 els.baseGroupToggle.textContent = AppState.showBaseGroup ? 'BASE: 折畳 [-]' : 'BASE: 展開 [+]';
@@ -4037,7 +4087,7 @@ async function detectBase85Variants(input) {
                 break;
             }
             case 'applyTest': {
-                const test = TEST_VECTORS[els.tvSel.value];
+                const test = TEST_VECTORS[AppState.testVector];
 
                 els.inputEl.value = test.text;
                 forceEmptyHashOnce = (test.text === '');
@@ -4071,7 +4121,7 @@ async function detectBase85Variants(input) {
             }
 
             case 'verifyTest': {
-                const test = TEST_VECTORS[els.tvSel.value];
+                const test = TEST_VECTORS[AppState.testVector];
 
                 const testText = AppState.sanitizeText ? Core.sanitizeText(test.text) : test.text;
                 const vT = Core.normalizeText(testText, AppState.normalization);
