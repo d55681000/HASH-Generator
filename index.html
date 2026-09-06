@@ -1333,10 +1333,17 @@ const Core = (() => {
         arr.push(0xc0 | (charcode >> 6), 0x80 | (charcode & 0x3f));
       } else if (charcode < 0xd800 || charcode >= 0xe000) {
         arr.push(0xe0 | (charcode >> 12), 0x80 | ((charcode >> 6) & 0x3f), 0x80 | (charcode & 0x3f));
+      } else if (charcode < 0xdc00) {
+        const next = str.charCodeAt(i + 1);
+        if (next >= 0xdc00 && next < 0xe000) {
+          i++;
+          charcode = 0x10000 + (((charcode & 0x3ff) << 10) | (next & 0x3ff));
+          arr.push(0xf0 | (charcode >> 18), 0x80 | ((charcode >> 12) & 0x3f), 0x80 | ((charcode >> 6) & 0x3f), 0x80 | (charcode & 0x3f));
+        } else {
+          arr.push(0xef, 0xbf, 0xbd);
+        }
       } else {
-        i++;
-        charcode = 0x10000 + (((charcode & 0x3ff) << 10) | (str.charCodeAt(i) & 0x3ff));
-        arr.push(0xf0 | (charcode >> 18), 0x80 | ((charcode >> 12) & 0x3f), 0x80 | ((charcode >> 6) & 0x3f), 0x80 | (charcode & 0x3f));
+        arr.push(0xef, 0xbf, 0xbd);
       }
     }
     return new Uint8Array(arr);
@@ -2097,7 +2104,7 @@ const BaseCodec = (() => {
   const Base64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   const BASE85_CHARSETS = {
     'ZeroMQ (Z85)': '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#',
-    'RFC 1924': '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!#$%&()*+-;<=>?@^_' + String.fromCharCode(96) + '{|}~',
+    'RFC 1924 Alphabet': '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!#$%&()*+-;<=>?@^_' + String.fromCharCode(96) + '{|}~',
     'Standard ASCII85': (function(){ let s=''; for(let i=33; i<=117; i++) s+=String.fromCharCode(i); return s; })(),
     'Adobe ASCII85': (function(){ let s=''; for(let i=33; i<=117; i++) s+=String.fromCharCode(i); return s; })()
   };
@@ -2261,7 +2268,15 @@ const Base64Engine = (() => {
           if (/[^A-Za-z0-9+/=_\\-]/.test(clean)) throw new Error('Invalid Base64 Characters');
           if (!/^[A-Za-z0-9+/_\\-]*={0,2}$/.test(clean)) throw new Error('Invalid Base64 Padding');
           clean = clean.replace(/-/g, '+').replace(/_/g, '/');
-          while (clean.length % 4 !== 0) clean += '=';
+
+          const padCount = clean.endsWith('==') ? 2 : clean.endsWith('=') ? 1 : 0;
+          const dataLen = clean.length - padCount;
+          const extra = dataLen % 4;
+          if (extra === 1) throw new Error('Invalid Base64 Length');
+
+          const requiredPad = extra === 0 ? 0 : 4 - extra;
+          if (padCount > requiredPad) throw new Error('Invalid Base64 Padding');
+          clean = clean.substring(0, dataLen) + '='.repeat(requiredPad);
         }
 
         let l = clean.length;
@@ -2382,7 +2397,7 @@ const Base85Engine = (() => {
 
       const DECODE_MAPS = {
         'ZeroMQ (Z85)': createDecodeMap(CHARSETS['ZeroMQ (Z85)']),
-        'RFC 1924': createDecodeMap(CHARSETS['RFC 1924']),
+        'RFC 1924 Alphabet': createDecodeMap(CHARSETS['RFC 1924 Alphabet']),
         'Standard ASCII85': createDecodeMap(CHARSETS['Standard ASCII85']),
         'Adobe ASCII85': createDecodeMap(CHARSETS['Adobe ASCII85'])
       };
@@ -2827,10 +2842,13 @@ const Engine = (() => {
           if (charcode < 0x80) arr.push(charcode);
           else if (charcode < 0x800) arr.push(0xc0 | (charcode >> 6), 0x80 | (charcode & 0x3f));
           else if (charcode < 0xd800 || charcode >= 0xe000) arr.push(0xe0 | (charcode >> 12), 0x80 | ((charcode >> 6) & 0x3f), 0x80 | (charcode & 0x3f));
-          else {
-            i++; charcode = 0x10000 + (((charcode & 0x3ff) << 10) | (str.charCodeAt(i) & 0x3ff));
-            arr.push(0xf0 | (charcode >> 18), 0x80 | ((charcode >> 12) & 0x3f), 0x80 | ((charcode >> 6) & 0x3f), 0x80 | (charcode & 0x3f));
-          }
+          else if (charcode < 0xdc00) {
+            const next = str.charCodeAt(i + 1);
+            if (next >= 0xdc00 && next < 0xe000) {
+              i++; charcode = 0x10000 + (((charcode & 0x3ff) << 10) | (next & 0x3ff));
+              arr.push(0xf0 | (charcode >> 18), 0x80 | ((charcode >> 12) & 0x3f), 0x80 | ((charcode >> 6) & 0x3f), 0x80 | (charcode & 0x3f));
+            } else arr.push(0xef, 0xbf, 0xbd);
+          } else arr.push(0xef, 0xbf, 0xbd);
         }
         return new Uint8Array(arr);
       }
@@ -4294,7 +4312,7 @@ const Engine = (() => {
 
         const base85RequiresBlock4 =
             AppState.base85Variant === 'ZeroMQ (Z85)' ||
-            AppState.base85Variant === 'RFC 1924';
+            AppState.base85Variant === 'RFC 1924 Alphabet';
 
         if (AppState.Base85Encode && base85RequiresBlock4 && (file.size % 4 !== 0)) {
             base85Failed = true;
@@ -5652,7 +5670,7 @@ async function detectBase85Variants(input) {
   const compact = input.replace(/\s+/g, '');
   if (compact.startsWith('<~') && compact.endsWith('~>')) return ['Adobe ASCII85'];
 
-  const variants = ['Standard ASCII85', 'Adobe ASCII85', 'ZeroMQ (Z85)', 'RFC 1924'];
+  const variants = ['Standard ASCII85', 'Adobe ASCII85', 'ZeroMQ (Z85)', 'RFC 1924 Alphabet'];
   const candidates = [];
   for (const variant of variants) {
     try {
@@ -6425,7 +6443,7 @@ async function detectBase85Variants(input) {
             case 'cycleBase85': {
                 const hashOutputAffected = AppState.hashOutputOrder.includes('base85');
                 if (hashOutputAffected && AppState.continuousCompareEnabled) disarmContinuousCompare(true);
-                const base85Variants = ['Standard ASCII85', 'Adobe ASCII85', 'ZeroMQ (Z85)', 'RFC 1924'];
+                const base85Variants = ['Standard ASCII85', 'Adobe ASCII85', 'ZeroMQ (Z85)', 'RFC 1924 Alphabet'];
                 const bIdx = base85Variants.indexOf(AppState.base85Variant);
                 AppState.base85Variant = base85Variants[(bIdx + 1) % base85Variants.length];
                 els.base85VariantToggleBtn.textContent = `Base85形式: ${AppState.base85Variant}`;
