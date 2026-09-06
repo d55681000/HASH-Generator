@@ -42,9 +42,9 @@
   body[data-system="terminal"]{
     --sys-font-stack:Consolas,"Cascadia Mono","Cascadia Code",ui-monospace,SFMono-Regular,Menlo,Monaco,"Liberation Mono","DejaVu Sans Mono","Noto Sans Mono CJK JP","MS Gothic","ＭＳ ゴシック","Courier New",monospace;
     --sys-font-size:16px;
-    --sys-font-smoothing:antialiased;
-    --sys-moz-font-smoothing:auto;
-    --sys-text-rendering:auto;
+    --sys-font-smoothing:none;
+    --sys-moz-font-smoothing:grayscale;
+    --sys-text-rendering:optimizeSpeed;
     --sys-caret-shape:auto;
     --sys-font-variant-numeric:tabular-nums slashed-zero;
     --sys-line-height:1.55;
@@ -458,16 +458,16 @@
   <header>
     <h1>SONY HASH</h1>
     <div class="header-actions">
+      <button id="fs" class="link" aria-label="全画面" data-action="toggleFullscreen">全画面</button>
       <button id="themeToggle" class="link" aria-label="テーマ設定の展開・折畳" data-action="toggleTheme">テーマ [+]</button>
       <span id="themeOptionsContainer" class="base-group-container hidden">
         <span class="sep hint">/</span>
-        <button id="systemThemeToggle" class="link" aria-label="システムテーマの切替" data-theme-kind="system" data-action="cycleVisualTheme">システム: MODERN</button>
+        <button id="systemThemeToggle" class="link" aria-label="システムテーマの切替" data-theme-kind="system" data-action="cycleVisualTheme">システム: NORMAL</button>
         <span class="sep hint">/</span>
-        <button id="displayThemeToggle" class="link" aria-label="ディスプレイテーマの切替" data-theme-kind="display" data-action="cycleVisualTheme">ディスプレイ: CRT</button>
+        <button id="displayThemeToggle" class="link" aria-label="ディスプレイテーマの切替" data-theme-kind="display" data-action="cycleVisualTheme">ディスプレイ: DEFAULT</button>
         <span class="sep hint">/</span>
         <button id="backgroundThemeToggle" class="link" aria-label="背景テーマの切替" data-theme-kind="background" data-action="cycleVisualTheme">背景: DEFAULT</button>
       </span>
-      <button id="fs" class="link" aria-label="全画面" data-action="toggleFullscreen">全画面</button>
     </div>
   </header>
   <main class="container" role="main">
@@ -1054,16 +1054,16 @@ const MonospaceGuard = (() => {
 const VisualTheme = (() => {
   const REGISTRY = Object.freeze({
     system: Object.freeze([
-      Object.freeze({ id: 'modern', label: 'MODERN', kind: 'system' }),
-      Object.freeze({ id: 'terminal', label: 'TERMINAL', kind: 'system' })
+      Object.freeze({ id: 'modern', label: 'NORMAL', kind: 'system' }),
+      Object.freeze({ id: 'terminal', label: 'DEFAULT', kind: 'system' })
     ]),
     display: Object.freeze([
-      Object.freeze({ id: 'modern', label: 'MODERN', kind: 'display' }),
-      Object.freeze({ id: 'crt', label: 'CRT', kind: 'display' })
+      Object.freeze({ id: 'modern', label: 'NORMAL', kind: 'display' }),
+      Object.freeze({ id: 'crt', label: 'DEFAULT', kind: 'display' })
     ]),
     background: Object.freeze([
       Object.freeze({ id: 'default', label: 'DEFAULT', kind: 'background', overrides: Object.freeze([]) }),
-      Object.freeze({ id: 'cmd', label: 'Command Prompt', kind: 'background', overrides: Object.freeze(['font', 'fontSmoothing', 'mozFontSmoothing', 'textRendering', 'caretShape']) }),
+      Object.freeze({ id: 'cmd', label: 'Command', kind: 'background', overrides: Object.freeze(['font', 'fontSmoothing', 'mozFontSmoothing', 'textRendering', 'caretShape']) }),
       Object.freeze({ id: 'ps', label: 'PowerShell', kind: 'background', overrides: Object.freeze(['font']) })
     ])
   });
