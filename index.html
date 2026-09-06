@@ -358,7 +358,7 @@
   <main class="container" role="main">
     <section class="input-wrap" id="drop-zone">
       <textarea id="in" placeholder="ここに入力、またはファイルをドロップして計算します" autocomplete="one-time-code" spellcheck="false" autocorrect="off"></textarea>
-      <div id="meta" class="hint">文字数 0｜エントロピー（Entropy）: —｜文字コード: UTF-8｜正規化: なし｜不可視文字・改行整形: オフ｜HEX: lowercase｜区切り: 区切りなし｜ステータス: 待機</div>
+      <div id="meta" class="hint">文字数 0｜エントロピー（Entropy）: —｜文字コード: UTF-8｜正規化: なし｜不可視文字・改行整形: オフ｜コピー: 実値｜HEX: lowercase｜区切り: 区切りなし｜区切り文字: " "｜ステータス: 待機</div>
       <input type="file" id="f-hidden" />
     </section>
     
@@ -389,8 +389,6 @@
       <span class="hint">オプション:</span>
       <button id="norm" class="link" aria-label="正規化の切替" data-action="toggleNorm">正規化: なし</button><span class="sep hint">/</span>
       <button id="sanitizeToggle" class="link" aria-label="不可視文字・改行整形の切替" title="ゼロ幅文字などを除去し、改行コードをLFに統一します" data-action="toggleSanitize">不可視文字・改行整形: オフ</button><span class="sep hint">/</span>
-      <button id="hexcase" class="link" aria-label="HEX大文字・小文字の切替" data-action="toggleHex">HEX: lowercase</button>
-      <span class="sep hint">/</span>
       <button id="saltToggle" class="link" aria-label="Saltの切替" data-action="toggleSalt">Salt: オフ</button>
       <span class="sep hint">/</span>
       <button id="hmacToggle" class="link" aria-label="HMACの切替" data-action="toggleHmac">HMAC: オフ</button>
@@ -417,6 +415,8 @@
         <button id="hashOutputToggle" class="link" aria-label="HASH出力フィルタの切替" data-action="toggleHashOutputGroup">HASH出力: オフ [+]</button>
         <span id="hashOutputOptionsContainer" class="base-group-container hidden">
           <span class="sep hint">/</span>
+          <button id="hashOutputHandoffToggle" class="link" aria-label="HASH出力受渡しモードの切替" title="多段エンコードの各段で、前段のバイト列をHEX文字列として渡すか、そのままRawバイト列で渡すかを切り替えます" data-action="toggleHashOutputHandoff">出力: 手渡し（Hex）</button>
+          <span class="sep hint">/</span>
           <button id="hashBase64Toggle" class="link" aria-label="HASH結果Base64出力の切替" title="有効化した順に多段エンコードします。* は先行エンコードを示します" data-action="toggleHashBase64">Base64: オフ</button>
           <span class="sep hint">/</span>
           <button id="hashBase85Toggle" class="link" aria-label="HASH結果Base85出力の切替" title="有効化した順に多段エンコードします。* は先行エンコードを示します" data-action="toggleHashBase85">Base85: オフ</button>
@@ -425,6 +425,40 @@
         <button id="baseFileDetectToggle" class="link" aria-label="Base自動ファイル判別の切替" data-action="toggleBaseFileDetect">Base自動判別: オフ</button>
       </span>
       
+      <span class="sep hint">|</span>
+      <button id="f-trigger" class="link" data-action="triggerFile">ファイル読込</button>
+      <button id="huge-file-btn" class="link warn" data-action="processHugeFile" style="display:none;">巨大ファイル出力開始</button>
+      <span class="sep hint">|</span>
+      
+      <button id="iterModeToggle" class="link" aria-label="反復モードの切替" data-action="toggleIterMode">反復: 手渡し（Hex）</button>
+      <span class="sep hint">/</span>
+      <label for="iter" class="hint" style="margin-right: -4px;">回数:</label>
+      <div class="number-wrap">
+        <input type="number" id="iter" class="text-input number-input" value="1" min="1" max="4294967295" autocomplete="off" spellcheck="false" autocorrect="off">
+        <div class="spinner-controls">
+          <span class="spinner-btn" id="iter-up" data-action="iterUp">△</span>
+          <span class="spinner-btn" id="iter-down" data-action="iterDown">▽</span>
+        </div>
+      </div>
+      <span class="sep hint">|</span>
+
+      <button id="testToggle" class="link" aria-label="テストベクトルの切替" data-action="toggleTest">テスト: 空 [+]</button>
+
+      <span id="testOptionsContainer" class="base-group-container hidden">
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setTest" data-test="empty">空</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setTest" data-test="abc">abc</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setTest" data-test="digits">123456789</button>
+      </span>
+
+      <button id="apply" class="link" data-action="applyTest">適用</button>
+      <button id="verify" class="link" data-action="verifyTest">検証</button>
+      <span class="sep hint">|</span>
+      <button id="copyModeToggle" class="link" aria-label="コピー対象の切替" title="実値: 未整形の最終出力 / 表示: 大文字・小文字、区切りを含む画面表示" data-action="toggleCopyMode">コピー: 実値</button>
+      <span class="sep hint">/</span>
+      <button id="hexcase" class="link" aria-label="HEX大文字・小文字の切替" data-action="toggleHex">HEX: lowercase</button>
       <span class="sep hint">/</span>
       <button id="groupingToggle" class="link" aria-label="区切り文字数の切替" data-action="toggleGrouping">区切り: 区切りなし [+]</button>
 
@@ -456,36 +490,6 @@
       <span class="sep hint">/</span>
       <label for="sep-in" class="hint" style="margin-right: -4px;">区切り文字:</label>
       <input type="text" id="sep-in" class="text-input" value=" " style="width: 50px;" placeholder="空（なし）" autocomplete="off" spellcheck="false" title="任意の文字列を入力（例：空白、カンマ、AND など）">
-      <span class="sep hint">|</span>
-      <button id="f-trigger" class="link" data-action="triggerFile">ファイル読込</button>
-      <button id="huge-file-btn" class="link warn" data-action="processHugeFile" style="display:none;">巨大ファイル出力開始</button>
-      <span class="sep hint">|</span>
-      
-      <button id="iterModeToggle" class="link" aria-label="反復モードの切替" data-action="toggleIterMode">反復: 標準（Raw）</button>
-      <span class="sep hint">/</span>
-      <label for="iter" class="hint" style="margin-right: -4px;">回数:</label>
-      <div class="number-wrap">
-        <input type="number" id="iter" class="text-input number-input" value="1" min="1" max="4294967295" autocomplete="off" spellcheck="false" autocorrect="off">
-        <div class="spinner-controls">
-          <span class="spinner-btn" id="iter-up" data-action="iterUp">△</span>
-          <span class="spinner-btn" id="iter-down" data-action="iterDown">▽</span>
-        </div>
-      </div>
-      <span class="sep hint">|</span>
-
-      <button id="testToggle" class="link" aria-label="テストベクトルの切替" data-action="toggleTest">テスト: 空 [+]</button>
-
-      <span id="testOptionsContainer" class="base-group-container hidden">
-        <span class="sep hint">/</span>
-        <button class="link" data-action="setTest" data-test="empty">空</button>
-        <span class="sep hint">/</span>
-        <button class="link" data-action="setTest" data-test="abc">abc</button>
-        <span class="sep hint">/</span>
-        <button class="link" data-action="setTest" data-test="digits">123456789</button>
-      </span>
-
-      <button id="apply" class="link" data-action="applyTest">適用</button>
-      <button id="verify" class="link" data-action="verifyTest">検証</button>
       <span class="sep hint">|</span>
       <button id="save" class="link" data-action="saveResults">保存</button>
       <span id="stop-all-wrap" style="display:none;"><span class="sep hint">|</span><button id="stop-all" class="link warn" data-action="stopAll">[全停止]</button><button id="abort-all" class="link warn" data-action="abortAll" style="display:none;">[全中止]</button></span>
@@ -714,6 +718,8 @@ const PanicSystem = (() => {
       AppState.continuousCompareEnabled = false;
       AppState.continuousCompareTarget = null;
       AppState.continuousCompareHit = null;
+      AppState.copyMode = 'actual';
+      AppState.hashOutputHandoff = 'hex';
       AppState.geoLabel = window.__ZESS_MODE__ ? 'ZESS (位置情報隔離)' : '照会オフ';
       AppState.geoTs = 0;
       AppState.netTimeOffset = 0;
@@ -857,7 +863,8 @@ const AppState = {
   testVector: 'empty',
   showTest: false,
   iterations: 1,
-  iterMode: 'raw',
+  iterMode: 'hex',
+  copyMode: 'actual',
   showSalt: false,
   showHmac: false,
   showCompare: false,
@@ -872,6 +879,7 @@ const AppState = {
   Base85Decode: false,
   base85Variant: 'Standard ASCII85',
   showHashOutput: false,
+  hashOutputHandoff: 'hex',
   hashOutputOrder: [],
   crc64Variant: 'XZ (ECMA, Reflected)',
   crc64Results: {},
@@ -1192,13 +1200,34 @@ const Core = (() => {
     return chunks ? chunks.join(separator) : hex;
   }
 
-  function formatForDisplay(rawText, hexUpper, groupSize, skipCaseConversion = false) {
+  function removeGrouping(formattedText, groupSize, separator = ' ') {
+    const n = groupSize | 0;
+    if(!n || !separator) return formattedText;
+    let out = '';
+    let pos = 0;
+
+    while (pos < formattedText.length) {
+      const remaining = formattedText.length - pos;
+      if (remaining <= n) {
+        out += formattedText.slice(pos);
+        break;
+      }
+      out += formattedText.slice(pos, pos + n);
+      pos += n;
+      if (formattedText.slice(pos, pos + separator.length) !== separator) return null;
+      pos += separator.length;
+    }
+
+    return out;
+  }
+
+  function formatForDisplay(rawText, hexUpper, groupSize, skipCaseConversion = false, separator = AppState.separator) {
     const isSystemMessage = /[^\x21-\x7E]/.test(rawText);
     if (isSystemMessage) {
       return rawText;
     }
     const h = skipCaseConversion ? rawText : (hexUpper ? rawText.toUpperCase() : rawText.toLowerCase());
-    return applyGrouping(h, groupSize, AppState.separator);
+    return applyGrouping(h, groupSize, separator);
   }
 
   const CRC_TABLE = (()=>{const t=new Uint32Array(256);for(let i=0;i<256;i++){let c=i;for(let j=0;j<8;j++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[i]=c>>>0;}return t;})();
@@ -1360,7 +1389,7 @@ const Core = (() => {
     try{ return s.normalize(normMode); } catch{ return s; } 
   }
 
-  return { utf8Encode, utf8Decode, safeAsync, hexToBytes, getFileInfo, analyzeFileStructure, applyGrouping, formatForDisplay, crc32Hex, md5Hex, sha224Hex, hmacMd5Hex, hmacSha224Hex, digestHex, hmacHex, countGraphemes, shannonEntropy, sanitizeText, normalizeText, HEX_LUT };
+  return { utf8Encode, utf8Decode, safeAsync, hexToBytes, getFileInfo, analyzeFileStructure, applyGrouping, removeGrouping, formatForDisplay, crc32Hex, md5Hex, sha224Hex, hmacMd5Hex, hmacSha224Hex, digestHex, hmacHex, countGraphemes, shannonEntropy, sanitizeText, normalizeText, HEX_LUT };
 })();
 
 /* =========================================================
@@ -2187,17 +2216,38 @@ const HashOutputFilter = (() => {
       && /^[0-9a-fA-F]+$/.test(value);
   }
 
-  function apply(id, canonicalHex) {
-    if (!isHashResult(id, canonicalHex) || AppState.hashOutputOrder.length === 0) return canonicalHex;
+  function bytesToHex(bytes) {
+    let hex = '';
+    for (let i = 0; i < bytes.length; i++) hex += Core.HEX_LUT[bytes[i]];
+    return hex;
+  }
+
+  function normalizeContext(context = null) {
+    return {
+      outputOrder: context?.outputOrder ? context.outputOrder.slice() : AppState.hashOutputOrder.slice(),
+      handoff: context?.handoff || AppState.hashOutputHandoff,
+      base85Variant: context?.base85Variant || AppState.base85Variant,
+      crc64Variant: context?.crc64Variant || AppState.crc64Variant,
+      copyMode: context?.copyMode || AppState.copyMode,
+      hexUpper: context?.hexUpper ?? AppState.hexUpper,
+      grouping: context?.grouping ?? AppState.grouping,
+      separator: context?.separator ?? AppState.separator
+    };
+  }
+
+  function apply(id, canonicalHex, context = null) {
+    const cfg = normalizeContext(context);
+    if (!isHashResult(id, canonicalHex) || cfg.outputOrder.length === 0) return canonicalHex;
     let bytes = Core.hexToBytes(canonicalHex);
     let output = canonicalHex;
 
-    for (let i = 0; i < AppState.hashOutputOrder.length; i++) {
-      const mode = AppState.hashOutputOrder[i];
-      if (mode === 'base64') output = BaseCodec.encodeBase64(bytes);
-      else if (mode === 'base85') output = BaseCodec.encodeBase85(bytes, AppState.base85Variant);
+    for (let i = 0; i < cfg.outputOrder.length; i++) {
+      const mode = cfg.outputOrder[i];
+      const inputBytes = cfg.handoff === 'hex' ? Core.utf8Encode(bytesToHex(bytes)) : bytes;
+      if (mode === 'base64') output = BaseCodec.encodeBase64(inputBytes);
+      else if (mode === 'base85') output = BaseCodec.encodeBase85(inputBytes, cfg.base85Variant);
       else continue;
-      if (i + 1 < AppState.hashOutputOrder.length) bytes = Core.utf8Encode(output);
+      bytes = Core.utf8Encode(output);
     }
 
     return output;
@@ -2215,57 +2265,108 @@ const HashOutputFilter = (() => {
     return describeOrder(AppState.hashOutputOrder, AppState.base85Variant, withVariant);
   }
 
-  function targetFromBytes(bytes, source = 'hex', crc64Variant = AppState.crc64Variant) {
+  function handoffLabel(mode = AppState.hashOutputHandoff) {
+    return mode === 'hex' ? '手渡し（Hex）' : '標準（Raw）';
+  }
+
+  function targetFromBytes(bytes, source = 'HEX', crc64Variant = AppState.crc64Variant) {
     const algId = DIGEST_BYTE_ALGORITHMS[bytes.length];
     if (!algId) return null;
-    let hex = '';
-    for (let i = 0; i < bytes.length; i++) hex += Core.HEX_LUT[bytes[i]];
     return {
       algId,
-      hex,
+      hex: bytesToHex(bytes),
       source,
       crc64Variant: algId === 'CRC64' ? crc64Variant : ''
     };
   }
 
-  async function resolveCompareTarget(value) {
-    const entered = String(value || '').trim();
+  async function resolveActualTarget(value, context) {
+    const cfg = normalizeContext(context);
+    const entered = String(value ?? '');
     if (!entered) return null;
 
-    const outputOrder = AppState.hashOutputOrder.slice();
-    const base85Variant = AppState.base85Variant;
-    const crc64Variant = AppState.crc64Variant;
-
-    const compactHex = entered.replace(/[\s:-]+/g, '').toLowerCase();
-    if (/^[0-9a-f]+$/.test(compactHex) && compactHex.length % 2 === 0) {
-      const direct = targetFromBytes(Core.hexToBytes(compactHex), 'hex', crc64Variant);
-      if (direct) return direct;
+    if (cfg.outputOrder.length === 0) {
+      if (!/^[0-9a-fA-F]+$/.test(entered) || entered.length % 2 !== 0) return null;
+      return targetFromBytes(Core.hexToBytes(entered.toLowerCase()), 'HEX', cfg.crc64Variant);
     }
 
-    if (outputOrder.length === 0) return null;
-
     let stageText = entered;
-    let decodedBytes = null;
+    let digestBytes = null;
     try {
-      for (let i = outputOrder.length - 1; i >= 0; i--) {
-        const mode = outputOrder[i];
+      for (let i = cfg.outputOrder.length - 1; i >= 0; i--) {
+        const mode = cfg.outputOrder[i];
         const decoded = mode === 'base64'
           ? await Base64Engine.decodeBytes(stageText, false)
-          : await Base85Engine.decodeBytes(stageText, base85Variant);
+          : await Base85Engine.decodeBytes(stageText, cfg.base85Variant);
 
         if (!decoded || decoded.type !== 'binary' || !decoded.bytes) return null;
-        decodedBytes = decoded.bytes;
-        if (i > 0) stageText = new TextDecoder('utf-8', { fatal: true }).decode(decodedBytes);
+        let previousBytes = decoded.bytes;
+
+        if (cfg.handoff === 'hex') {
+          const hexText = new TextDecoder('utf-8', { fatal: true }).decode(previousBytes);
+          if (!/^[0-9a-f]+$/.test(hexText) || hexText.length % 2 !== 0) return null;
+          previousBytes = Core.hexToBytes(hexText);
+        }
+
+        if (i > 0) stageText = new TextDecoder('utf-8', { fatal: true }).decode(previousBytes);
+        else digestBytes = previousBytes;
       }
     } catch (_) {
       return null;
     }
 
-    const source = describeOrder(outputOrder, base85Variant, true);
-    return decodedBytes ? targetFromBytes(decodedBytes, source, crc64Variant) : null;
+    const source = `${handoffLabel(cfg.handoff)} / ${describeOrder(cfg.outputOrder, cfg.base85Variant, true)}`;
+    return digestBytes ? targetFromBytes(digestBytes, source, cfg.crc64Variant) : null;
   }
 
-  return { ids, isHashResult, apply, describe, resolveCompareTarget };
+  async function resolveCompareTarget(value, context = null) {
+    const cfg = normalizeContext(context);
+    const entered = String(value ?? '');
+    if (!entered) return null;
+
+    let actualCandidate = entered;
+    if (cfg.copyMode === 'visual') {
+      actualCandidate = Core.removeGrouping(entered, cfg.grouping, cfg.separator);
+      if (actualCandidate === null) return null;
+    }
+
+    const target = await resolveActualTarget(actualCandidate, cfg);
+    if (!target) return null;
+
+    const actual = apply(target.algId, target.hex, cfg);
+    const visual = Core.formatForDisplay(actual, cfg.hexUpper, cfg.grouping, cfg.outputOrder.length > 0, cfg.separator);
+    const selected = cfg.copyMode === 'visual' ? visual : actual;
+    if (selected !== entered) return null;
+
+    target.source = `${cfg.copyMode === 'visual' ? '表示' : '実値'} / ${target.source}`;
+    return target;
+  }
+
+  return { ids, isHashResult, apply, describe, handoffLabel, resolveCompareTarget };
+})();
+
+/* =========================================================
+   RESULT SURFACE LAYER
+========================================================= */
+const ResultSurface = (() => {
+  function actual(el) {
+    if (!el) return '';
+    return el.dataset.output || el.dataset.raw || el.textContent || '';
+  }
+
+  function visual(el) {
+    return el?.textContent || '';
+  }
+
+  function selected(el) {
+    return AppState.copyMode === 'visual' ? visual(el) : actual(el);
+  }
+
+  function label(mode = AppState.copyMode) {
+    return mode === 'visual' ? '表示' : '実値';
+  }
+
+  return { actual, visual, selected, label };
 })();
 
 /* =========================================================
@@ -4070,6 +4171,7 @@ const UI = (() => {
     els.fsBtn = document.getElementById('fs');
     els.normBtn = document.getElementById('norm');
     els.sanitizeToggleBtn = document.getElementById('sanitizeToggle');
+    els.copyModeToggleBtn = document.getElementById('copyModeToggle');
     els.hexBtn = document.getElementById('hexcase');
     els.toastEl = document.getElementById('toast');
     els.testToggle = document.getElementById('testToggle');
@@ -4109,6 +4211,7 @@ const UI = (() => {
     els.base85VariantToggleBtn = document.getElementById('base85VariantToggle');
     els.hashOutputToggle = document.getElementById('hashOutputToggle');
     els.hashOutputOptionsContainer = document.getElementById('hashOutputOptionsContainer');
+    els.hashOutputHandoffToggleBtn = document.getElementById('hashOutputHandoffToggle');
     els.hashBase64ToggleBtn = document.getElementById('hashBase64Toggle');
     els.hashBase85ToggleBtn = document.getElementById('hashBase85Toggle');
     els.baseFileDetectToggleBtn = document.getElementById('baseFileDetectToggle');
@@ -4688,18 +4791,20 @@ function showToast(msg) {
     const encodingLabel = isFile ? '対象外（原データ）' : 'UTF-8';
     const groupLabel = AppState.grouping ? `${AppState.grouping}文字` : '区切りなし';
     const hexLabel = AppState.hexUpper ? 'UPPERCASE' : 'lowercase';
+    const copyLabel = ResultSurface.label();
+    const separatorLabel = JSON.stringify(AppState.separator);
     let activeOpts = [];
     if (AppState.salt) activeOpts.push('Salt適用');
     if (AppState.hmacKey) activeOpts.push('HMAC稼働');
     activeOpts.push(`CRC64: ${AppState.crc64Variant}`);
     if (AppState.Base64Decode) activeOpts.push(`Base64判定: ${AppState.base64Strict ? '厳格' : '寛容'}`);
     if (AppState.Base85Encode || AppState.Base85Decode) activeOpts.push(`Base85: ${AppState.base85Variant}`);
-    if (AppState.hashOutputOrder.length > 0) activeOpts.push(`HASH出力: ${HashOutputFilter.describe(true)}`);
+    if (AppState.hashOutputOrder.length > 0) activeOpts.push(`HASH出力: ${HashOutputFilter.handoffLabel()} / ${HashOutputFilter.describe(true)}`);
     const optLabel = activeOpts.length ? `｜${activeOpts.join('｜')}` : '';
     const iterLabel = iterations > 1 ? `｜反復: ${iterations}回（${AppState.iterMode === 'raw' ? '標準' : AppState.iterMode === 'hex' ? '手渡し' : 'XOR重畳'}）` : '';
     const sanitizeLabel = isFile ? '対象外' : (AppState.sanitizeText ? 'オン' : 'オフ');
     const entropyLabel = isFile ? '対象外' : (Number.isFinite(AppState.currentEntropy) ? `${AppState.currentEntropy.toFixed(6)} bit/byte` : '—');
-    els.metaEl.textContent = `${countLabel} ${count}${countUnit}｜エントロピー（Entropy）: ${entropyLabel}｜文字コード: ${encodingLabel}｜正規化: ${normLabel}｜不可視文字・改行整形: ${sanitizeLabel}｜HEX: ${hexLabel}｜区切り: ${groupLabel}${optLabel}${iterLabel}｜ステータス: ${statusText}`;
+    els.metaEl.textContent = `${countLabel} ${count}${countUnit}｜エントロピー（Entropy）: ${entropyLabel}｜文字コード: ${encodingLabel}｜正規化: ${normLabel}｜不可視文字・改行整形: ${sanitizeLabel}｜コピー: ${copyLabel}｜HEX: ${hexLabel}｜区切り: ${groupLabel}｜区切り文字: ${separatorLabel}${optLabel}${iterLabel}｜ステータス: ${statusText}`;
   }
 
   async function updateAll() {
@@ -4921,6 +5026,7 @@ function showToast(msg) {
       const first = AppState.hashOutputOrder[0] || '';
       const base64On = AppState.hashOutputOrder.includes('base64');
       const base85On = AppState.hashOutputOrder.includes('base85');
+      els.hashOutputHandoffToggleBtn.textContent = `出力: ${HashOutputFilter.handoffLabel()}`;
       els.hashBase64ToggleBtn.textContent = `${first === 'base64' ? '*' : ''}Base64: ${base64On ? 'オン' : 'オフ'}`;
       els.hashBase85ToggleBtn.textContent = `${first === 'base85' ? '*' : ''}Base85: ${base85On ? 'オン' : 'オフ'}`;
       els.hashOutputToggle.textContent = AppState.showHashOutput
@@ -5066,17 +5172,40 @@ els.iterIn.addEventListener('keydown', e => {
 });
 els.iterIn.addEventListener('change', commitIterationTarget);
 
+const captureCompareContext = () => ({
+  outputOrder: AppState.hashOutputOrder.slice(),
+  handoff: AppState.hashOutputHandoff,
+  base85Variant: AppState.base85Variant,
+  crc64Variant: AppState.crc64Variant,
+  copyMode: AppState.copyMode,
+  hexUpper: AppState.hexUpper,
+  grouping: AppState.grouping,
+  separator: AppState.separator
+});
+
+const compareContextKey = context => JSON.stringify([
+  context.outputOrder,
+  context.handoff,
+  context.base85Variant,
+  context.crc64Variant,
+  context.copyMode,
+  context.copyMode === 'visual' ? context.hexUpper : false,
+  context.copyMode === 'visual' ? context.grouping : 0,
+  context.copyMode === 'visual' && context.grouping > 0 ? context.separator : ''
+]);
+
 async function armContinuousCompare() {
   const revision = ++continuousCompareRevision;
-  const entered = els.compareIn.value.trim();
-  const compareContext = `${AppState.hashOutputOrder.join('>')}|${AppState.base85Variant}|${AppState.crc64Variant}`;
-  if (!entered) { showToast('一致判定値を入力してください'); return false; }
+  const entered = els.compareIn.value;
+  const compareContext = captureCompareContext();
+  const compareKey = compareContextKey(compareContext);
+  if (!entered.trim()) { showToast('一致判定値を入力してください'); return false; }
   if (!Engine.hasWorker) { showToast('連続一致判定: Web Worker未対応'); return false; }
   if (AppState.currentFile) { showToast('連続一致判定: テキスト反復時のみ利用できます'); return false; }
 
-  const target = await HashOutputFilter.resolveCompareTarget(entered);
-  const currentContext = `${AppState.hashOutputOrder.join('>')}|${AppState.base85Variant}|${AppState.crc64Variant}`;
-  if (revision !== continuousCompareRevision || els.compareIn.value.trim() !== entered || currentContext !== compareContext) return false;
+  const target = await HashOutputFilter.resolveCompareTarget(entered, compareContext);
+  const currentKey = compareContextKey(captureCompareContext());
+  if (revision !== continuousCompareRevision || els.compareIn.value !== entered || currentKey !== compareKey) return false;
   if (!target) {
     const mode = HashOutputFilter.describe(true);
     showToast(`連続一致判定: 対象形式を判定できません${mode !== 'オフ' ? ` / HASH出力: ${mode}` : ''}`);
@@ -5090,8 +5219,7 @@ async function armContinuousCompare() {
   Engine.setContinuousMatch(target);
 
   const variantLabel = target.algId === 'CRC64' ? ` / ${target.crc64Variant}` : '';
-  const sourceLabel = target.source === 'hex' ? 'HEX' : target.source;
-  showToast(`連続一致判定: 監視開始 / ${target.algId}${variantLabel} / ${sourceLabel}`);
+  showToast(`連続一致判定: 監視開始 / ${target.algId}${variantLabel} / ${target.source}`);
   return true;
 }
 
@@ -5131,10 +5259,10 @@ async function detectBase85Variants(input) {
     syncContinuousCompareControl();
 
     els.sepIn.addEventListener('input', () => {
+      if (AppState.copyMode === 'visual' && AppState.grouping > 0 && AppState.continuousCompareEnabled) disarmContinuousCompare(true);
       AppState.separator = els.sepIn.value;
-      if (AppState.grouping > 0) {
-        reformatAll();
-      }
+      if (AppState.grouping > 0) reformatAll();
+      refreshCurrentMeta();
     });
 
     document.body.addEventListener('click', async e => {
@@ -5179,11 +5307,20 @@ async function detectBase85Variants(input) {
                 scheduleUpdate();
                 break;
             }
+            case 'toggleCopyMode': {
+                if (AppState.continuousCompareEnabled) disarmContinuousCompare(true);
+                AppState.copyMode = AppState.copyMode === 'actual' ? 'visual' : 'actual';
+                els.copyModeToggleBtn.textContent = `コピー: ${ResultSurface.label()}`;
+                refreshCurrentMeta();
+                showToast(`コピー対象: ${ResultSurface.label()}`);
+                break;
+            }
             case 'toggleHex': {
+                if (AppState.copyMode === 'visual' && AppState.hashOutputOrder.length === 0 && AppState.continuousCompareEnabled) disarmContinuousCompare(true);
                 AppState.hexUpper = !AppState.hexUpper;
                 els.hexBtn.textContent = `HEX: ${AppState.hexUpper ? 'UPPERCASE' : 'lowercase'}`;
                 reformatAll();
-                els.metaEl.textContent = els.metaEl.textContent.replace(/HEX:\s*(UPPERCASE|lowercase)/, `HEX: ${AppState.hexUpper ? 'UPPERCASE' : 'lowercase'}`);
+                refreshCurrentMeta();
                 break;
             }
             case 'toggleSalt': {
@@ -5228,72 +5365,41 @@ async function detectBase85Variants(input) {
                 break;
             }
             case 'compareHash': {
-                const entered = els.compareIn.value.trim();
-                if (!entered) { showToast('一致判定値を入力してください'); break; }
+                const entered = els.compareIn.value;
+                if (!entered.trim()) { showToast('一致判定値を入力してください'); break; }
 
-                const hashTarget = entered.replace(/[\s:-]+/g, '').toLowerCase();
-                const hashCharCount = Core.countGraphemes(hashTarget);
                 const enteredCharCount = Core.countGraphemes(entered);
-                const hashBytes = (/^[0-9a-f]+$/.test(hashTarget) && hashTarget.length % 2 === 0)
-                    ? Core.hexToBytes(hashTarget)
-                    : null;
-                const hashEntropy = hashBytes ? Core.shannonEntropy(hashBytes) : null;
-                const baseEntropy = Core.shannonEntropy(Core.utf8Encode(entered));
-                const hashEntropySuffix = Number.isFinite(hashEntropy) ? ` / Entropy: ${hashEntropy.toFixed(3)} bit/byte` : '';
-                const baseEntropySuffix = Number.isFinite(baseEntropy) ? ` / Entropy: ${baseEntropy.toFixed(3)} bit/byte` : '';
-                const hashCountSuffix = ` / 文字数: ${hashCharCount}${hashEntropySuffix}`;
-                const baseCountSuffix = ` / 文字数: ${enteredCharCount}${baseEntropySuffix}`;
+                const enteredEntropy = Core.shannonEntropy(Core.utf8Encode(entered));
+                const entropySuffix = Number.isFinite(enteredEntropy) ? ` / Entropy: ${enteredEntropy.toFixed(3)} bit/byte` : '';
+                const countSuffix = ` / 文字数: ${enteredCharCount}${entropySuffix}`;
+                const targetIds = ['CRC32', 'CRC64', 'MD5', 'SHA-1', 'SHA-224', 'SHA-256', 'SHA-384', 'SHA-512', 'Base64-Enc', 'Base64-Dec', 'Base85-Enc', 'Base85-Dec'];
+                let matchedId = '';
 
-                if (/^[0-9a-f]{16}$/.test(hashTarget)) {
-                    const crc64Matches = Object.entries(AppState.crc64Results || {})
-                      .filter(([, value]) => String(value || '').toLowerCase() === hashTarget)
-                      .map(([variant]) => variant);
-                    if (crc64Matches.length === 1) { showToast(`一致判定正常 / CRC64一致 / 変種: ${crc64Matches[0]}${hashCountSuffix}`); break; }
-                    if (crc64Matches.length > 1) { showToast(`一致判定正常 / CRC64一致 / 変種候補: ${crc64Matches.join(' / ')}${hashCountSuffix}`); break; }
-                }
-
-                const hashAlgorithms = ['CRC32', 'CRC64', 'MD5', 'SHA-1', 'SHA-224', 'SHA-256', 'SHA-384', 'SHA-512'];
-                let matched = '';
-                let matchedOutput = false;
-                for (const alg of hashAlgorithms) {
-                    const el = document.getElementById(alg);
-                    const raw = (el?.dataset.raw || '').trim().toLowerCase();
-                    const output = (el?.dataset.output || '').trim();
-                    const formatted = (el?.textContent || '').trim();
-                    if (raw && raw === hashTarget) { matched = alg; break; }
-                    if ((output && output === entered) || (formatted && formatted === entered)) {
-                        matched = alg;
-                        matchedOutput = true;
+                for (const id of targetIds) {
+                    const el = document.getElementById(id);
+                    if (!el || el.dataset.empty === '1') continue;
+                    if (ResultSurface.selected(el) === entered) {
+                        matchedId = id;
                         break;
                     }
                 }
-                if (matched) { showToast(`一致判定正常 / ${matched}一致${matchedOutput ? baseCountSuffix : hashCountSuffix}`); break; }
 
-                const baseTargets = ['Base64-Enc', 'Base64-Dec', 'Base85-Enc', 'Base85-Dec'];
-                let baseMatchedId = '';
-                for (const id of baseTargets) {
-                    const el = document.getElementById(id);
-                    if ((el?.dataset.raw || '').trim() === entered) { baseMatchedId = id; break; }
-                }
-
-                if (baseMatchedId === 'Base64-Enc') { showToast(`一致判定正常 / Base64 Enc一致 / Standard Base64${baseCountSuffix}`); break; }
-                if (baseMatchedId === 'Base64-Dec') { showToast(`一致判定正常 / Base64 Dec一致${baseCountSuffix}`); break; }
-                if (baseMatchedId === 'Base85-Enc') {
-                    const variants = await detectBase85Variants(entered);
-                    if (variants.length === 1) showToast(`一致判定正常 / Base85 Enc一致 / 変種: ${variants[0]}${baseCountSuffix}`);
-                    else if (variants.length > 1) showToast(`一致判定正常 / Base85 Enc一致 / 変種候補: ${variants.join(' / ')}${baseCountSuffix}`);
-                    else showToast(`一致判定正常 / Base85 Enc一致 / 使用モード: ${AppState.base85Variant}${baseCountSuffix}`);
+                if (matchedId) {
+                    let detail = '';
+                    if (matchedId === 'CRC64') detail = ` / 変種: ${AppState.crc64Variant}`;
+                    else if (matchedId === 'Base64-Enc') detail = ' / Standard Base64';
+                    else if (matchedId === 'Base85-Enc' || matchedId === 'Base85-Dec') detail = ` / 使用モード: ${AppState.base85Variant}`;
+                    showToast(`一致判定正常 / ${matchedId}一致 / ${ResultSurface.label()}${detail}${countSuffix}`);
                     break;
                 }
-                if (baseMatchedId === 'Base85-Dec') { showToast(`一致判定正常 / Base85 Dec一致 / 使用モード: ${AppState.base85Variant}${baseCountSuffix}`); break; }
 
                 if (/[^0-9a-fA-F]/.test(entered)) {
                     const variants = await detectBase85Variants(entered);
-                    if (variants.length === 1) { showToast(`一致判定異常 / 一致なし / Base85推定: ${variants[0]}${baseCountSuffix}`); break; }
-                    if (variants.length > 1) { showToast(`一致判定異常 / 一致なし / Base85変種候補: ${variants.join(' / ')}${baseCountSuffix}`); break; }
+                    if (variants.length === 1) { showToast(`一致判定異常 / 一致なし / Base85推定: ${variants[0]}${countSuffix}`); break; }
+                    if (variants.length > 1) { showToast(`一致判定異常 / 一致なし / Base85変種候補: ${variants.join(' / ')}${countSuffix}`); break; }
                 }
 
-                showToast(`一致判定異常 / 一致なし${hashCountSuffix}`);
+                showToast(`一致判定異常 / 一致なし / ${ResultSurface.label()}${countSuffix}`);
                 break;
             }
 
@@ -5311,12 +5417,14 @@ async function detectBase85Variants(input) {
             }
 
             case 'setGrouping': {
-                AppState.grouping = parseInt(actionEl.dataset.grouping, 10) || 0;
+                const nextGrouping = parseInt(actionEl.dataset.grouping, 10) || 0;
+                if (AppState.copyMode === 'visual' && nextGrouping !== AppState.grouping && AppState.continuousCompareEnabled) disarmContinuousCompare(true);
+                AppState.grouping = nextGrouping;
                 AppState.showGrouping = false;
                 els.groupingOptionsContainer.classList.add('hidden');
                 els.groupingToggle.textContent = `区切り: ${AppState.grouping ? AppState.grouping + '文字' : '区切りなし'} [+]`;
                 reformatAll();
-                els.metaEl.textContent = els.metaEl.textContent.replace(/区切り:\s*(区切りなし|\d+文字)/, `区切り: ${AppState.grouping ? AppState.grouping + '文字' : '区切りなし'}`);
+                refreshCurrentMeta();
                 break;
             }
 
@@ -5390,7 +5498,17 @@ async function detectBase85Variants(input) {
                 syncHashOutputControls();
                 break;
             }
+            case 'toggleHashOutputHandoff': {
+                if (AppState.hashOutputOrder.length > 0 && AppState.continuousCompareEnabled) disarmContinuousCompare(true);
+                AppState.hashOutputHandoff = AppState.hashOutputHandoff === 'hex' ? 'raw' : 'hex';
+                syncHashOutputControls();
+                refreshHashOutput();
+                refreshCurrentMeta();
+                showToast(`HASH出力受渡し: ${HashOutputFilter.handoffLabel()}`);
+                break;
+            }
             case 'toggleHashBase64': {
+                if (AppState.continuousCompareEnabled) disarmContinuousCompare(true);
                 toggleHashOutputMode('base64');
                 syncHashOutputControls();
                 refreshHashOutput();
@@ -5399,6 +5517,7 @@ async function detectBase85Variants(input) {
                 break;
             }
             case 'toggleHashBase85': {
+                if (AppState.continuousCompareEnabled) disarmContinuousCompare(true);
                 toggleHashOutputMode('base85');
                 syncHashOutputControls();
                 refreshHashOutput();
@@ -5439,15 +5558,15 @@ async function detectBase85Variants(input) {
                 break;
             }
             case 'toggleIterMode': {
-                if (AppState.iterMode === 'raw') {
-                    AppState.iterMode = 'hex';
-                    els.iterModeToggleBtn.textContent = '反復: 手渡し（Hex）';
-                } else if (AppState.iterMode === 'hex') {
+                if (AppState.iterMode === 'hex') {
+                    AppState.iterMode = 'raw';
+                    els.iterModeToggleBtn.textContent = '反復: 標準（Raw）';
+                } else if (AppState.iterMode === 'raw') {
                     AppState.iterMode = 'xor';
                     els.iterModeToggleBtn.textContent = '反復: XOR重畳（XOR）';
                 } else {
-                    AppState.iterMode = 'raw';
-                    els.iterModeToggleBtn.textContent = '反復: 標準（Raw）';
+                    AppState.iterMode = 'hex';
+                    els.iterModeToggleBtn.textContent = '反復: 手渡し（Hex）';
                 }
                 scheduleUpdate();
                 break;
@@ -5489,8 +5608,8 @@ async function detectBase85Variants(input) {
                 els.advInputs.style.display = 'none';
 
                 els.iterIn.value = 1;
-                AppState.iterMode = 'raw';
-                els.iterModeToggleBtn.textContent = '反復: 標準（Raw）';
+                AppState.iterMode = 'hex';
+                els.iterModeToggleBtn.textContent = '反復: 手渡し（Hex）';
 
                 scheduleUpdate();
                 break;
@@ -5658,6 +5777,7 @@ async function detectBase85Variants(input) {
                     `| 文字コード | ${isFile ? '対象外（ファイルを原データのバイト列として処理）' : 'UTF-8'} |`,
                     `| 正規化 | ${normVal} |`,
                     `| 不可視文字・改行整形 | ${isFile ? '対象外（ファイル）' : (AppState.sanitizeText ? 'オン' : 'オフ')} |`,
+                    `| コピー対象 | ${ResultSurface.label()} |`,
                     `| HEX表記 | ${AppState.hexUpper ? '大文字（UPPERCASE）' : '小文字（lowercase）'} |`,
                     `| 区切り文字数 | ${AppState.grouping ? AppState.grouping + '文字' : '区切りなし'} |`,
                     `| カスタム区切り | \`${esc(AppState.separator)}\` |`,
@@ -5668,6 +5788,7 @@ async function detectBase85Variants(input) {
                     `| CRC64 モード | ${AppState.crc64Variant} |`,
                     `| Base64 判定 | ${AppState.base64Strict ? '厳格' : '寛容'} |`,
                     `| Base85 モード | ${AppState.base85Variant} |`,
+                    `| HASH出力受渡し | ${HashOutputFilter.handoffLabel()} |`,
                     `| HASH出力フィルタ | ${HashOutputFilter.describe(true)} |`,
                     `| Base自動判別 | ${AppState.baseFileDetect ? 'オン' : 'オフ'} |\n`,
                     
@@ -5844,7 +5965,7 @@ async function detectBase85Variants(input) {
                   showToast(`保存開始: ${ha.download}`);
                   return;
                 }
-                const elRaw = el.dataset.output || el.dataset.raw || el.textContent.trim();
+                const elRaw = ResultSurface.selected(el);
                 if (!elRaw || el.dataset.empty === '1') return;
                 try { 
                     if (navigator.clipboard && window.isSecureContext) {
@@ -5871,13 +5992,15 @@ async function detectBase85Variants(input) {
                     if (HashOutputFilter.ids.includes(el.id) && AppState.hashOutputOrder.length > 0) {
                         copyLabel += ` / ${HashOutputFilter.describe(true)}`;
                     }
-                    showToast(`コピー: ${copyLabel}`);
+                    showToast(`コピー: ${copyLabel} / ${ResultSurface.label()}`);
                 } catch(_) {
                     showToast(`コピー失敗: 権限不足`);
                 }
                 break;
             }
             case 'cycleBase85': {
+                const hashOutputAffected = AppState.hashOutputOrder.includes('base85');
+                if (hashOutputAffected && AppState.continuousCompareEnabled) disarmContinuousCompare(true);
                 const base85Variants = ['Standard ASCII85', 'Adobe ASCII85', 'ZeroMQ (Z85)', 'RFC 1924'];
                 const bIdx = base85Variants.indexOf(AppState.base85Variant);
                 AppState.base85Variant = base85Variants[(bIdx + 1) % base85Variants.length];
@@ -5960,6 +6083,8 @@ async function detectBase85Variants(input) {
     AppState.continuousCompareEnabled = false;
     AppState.continuousCompareTarget = null;
     AppState.continuousCompareHit = null;
+    AppState.copyMode = 'actual';
+    AppState.hashOutputHandoff = 'hex';
     isRendering = false;
     forceEmptyHashOnce = false;
 
