@@ -456,8 +456,6 @@
       <button id="apply" class="link" data-action="applyTest">適用</button>
       <button id="verify" class="link" data-action="verifyTest">検証</button>
       <span class="sep hint">|</span>
-      <button id="copyModeToggle" class="link" aria-label="コピー対象の切替" title="実値: 未整形の最終出力 / 表示: 大文字・小文字、区切りを含む画面表示" data-action="toggleCopyMode">コピー: 実値</button>
-      <span class="sep hint">/</span>
       <button id="hexcase" class="link" aria-label="HEX大文字・小文字の切替" data-action="toggleHex">HEX: lowercase</button>
       <span class="sep hint">/</span>
       <button id="groupingToggle" class="link" aria-label="区切り文字数の切替" data-action="toggleGrouping">区切り: 区切りなし [+]</button>
@@ -491,7 +489,9 @@
       <label for="sep-in" class="hint" style="margin-right: -4px;">区切り文字:</label>
       <input type="text" id="sep-in" class="text-input" value=" " style="width: 50px;" placeholder="空（なし）" autocomplete="off" spellcheck="false" title="任意の文字列を入力（例：空白、カンマ、AND など）">
       <span class="sep hint">|</span>
-      <button id="save" class="link" data-action="saveResults">保存</button>
+      <button id="copyModeToggle" class="link" aria-label="コピー対象の切替" title="実値: 未整形の最終出力 / 表示: 大文字・小文字、区切りを含む画面表示" data-action="toggleCopyMode">コピー: 実値</button>
+      <span class="sep hint">/</span>
+      <button id="save" class="link" aria-label="結果を保存" data-action="saveResults">セーブ</button>
       <span id="stop-all-wrap" style="display:none;"><span class="sep hint">|</span><button id="stop-all" class="link warn" data-action="stopAll">[全停止]</button><button id="abort-all" class="link warn" data-action="abortAll" style="display:none;">[全中止]</button></span>
       <span class="sep hint">|</span>
       <button id="geoToggle" class="link" aria-label="位置情報の照会" data-action="toggleGeo">位置: オフ</button>
