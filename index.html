@@ -129,7 +129,7 @@
   }
 
   /* =========================================================
-     VISUAL / BACKGROUND / CMD
+     VISUAL / BACKGROUND / COMMAND PROMPT
   ========================================================= */
   body[data-background="cmd"]{
     --app-bg:#000000;
@@ -158,7 +158,7 @@
   }
 
   /* =========================================================
-     VISUAL / BACKGROUND / PS
+     VISUAL / BACKGROUND / POWERSHELL
   ========================================================= */
   body[data-background="ps"]{
     --app-bg:#012456;
@@ -1063,8 +1063,8 @@ const VisualTheme = (() => {
     ]),
     background: Object.freeze([
       Object.freeze({ id: 'default', label: 'DEFAULT', kind: 'background', overrides: Object.freeze([]) }),
-      Object.freeze({ id: 'cmd', label: 'CMD', kind: 'background', overrides: Object.freeze(['font', 'fontSmoothing', 'mozFontSmoothing', 'textRendering', 'caretShape']) }),
-      Object.freeze({ id: 'ps', label: 'PS', kind: 'background', overrides: Object.freeze(['font']) })
+      Object.freeze({ id: 'cmd', label: 'Command Prompt', kind: 'background', overrides: Object.freeze(['font', 'fontSmoothing', 'mozFontSmoothing', 'textRendering', 'caretShape']) }),
+      Object.freeze({ id: 'ps', label: 'PowerShell', kind: 'background', overrides: Object.freeze(['font']) })
     ])
   });
 
