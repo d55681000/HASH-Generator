@@ -23,7 +23,7 @@
   }
 
   /* =========================================================
-     VISUAL / SYSTEM / MODERN
+     VISUAL / SYSTEM / NORMAL (modern)
   ========================================================= */
   body[data-system="modern"]{
     --sys-font-stack:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Cascadia Mono","Cascadia Code","Liberation Mono","DejaVu Sans Mono","Noto Sans Mono CJK JP","MS Gothic","ＭＳ ゴシック","Courier New",monospace;
@@ -37,7 +37,7 @@
   }
 
   /* =========================================================
-     VISUAL / SYSTEM / TERMINAL
+     VISUAL / SYSTEM / DEFAULT (terminal)
   ========================================================= */
   body[data-system="terminal"]{
     --sys-font-stack:Consolas,"Cascadia Mono","Cascadia Code",ui-monospace,SFMono-Regular,Menlo,Monaco,"Liberation Mono","DejaVu Sans Mono","Noto Sans Mono CJK JP","MS Gothic","ＭＳ ゴシック","Courier New",monospace;
@@ -51,7 +51,7 @@
   }
 
   /* =========================================================
-     VISUAL / DISPLAY / MODERN
+     VISUAL / DISPLAY / NORMAL (modern)
   ========================================================= */
   body[data-display="modern"]{
     --display-glow:none;
@@ -59,7 +59,7 @@
   }
 
   /* =========================================================
-     VISUAL / DISPLAY / CRT
+     VISUAL / DISPLAY / DEFAULT (crt)
   ========================================================= */
   body[data-display="crt"]{
     --display-glow:0 0 1px rgba(124,255,124,.25);
@@ -129,7 +129,7 @@
   }
 
   /* =========================================================
-     VISUAL / BACKGROUND / COMMAND PROMPT
+     VISUAL / BACKGROUND / COMMAND
   ========================================================= */
   body[data-background="cmd"]{
     --app-bg:#000000;
@@ -452,22 +452,22 @@
   }
 </style>
 </head>
-<body data-system="modern" data-display="crt" data-background="default">
+<body data-system="terminal" data-display="crt" data-background="default">
   <div id="display-fx" aria-hidden="true"></div>
   <div id="sec-warn">【制限モード】 この実行環境では Web Crypto API を利用できないため、SHA-384 / SHA-512 は無効化されています。</div>
   <header>
     <h1>SONY HASH</h1>
     <div class="header-actions">
-      <button id="fs" class="link" aria-label="全画面" data-action="toggleFullscreen">全画面</button>
       <button id="themeToggle" class="link" aria-label="テーマ設定の展開・折畳" data-action="toggleTheme">テーマ [+]</button>
       <span id="themeOptionsContainer" class="base-group-container hidden">
         <span class="sep hint">/</span>
-        <button id="systemThemeToggle" class="link" aria-label="システムテーマの切替" data-theme-kind="system" data-action="cycleVisualTheme">システム: NORMAL</button>
+        <button id="systemThemeToggle" class="link" aria-label="システムテーマの切替" data-theme-kind="system" data-action="cycleVisualTheme">システム: DEFAULT</button>
         <span class="sep hint">/</span>
         <button id="displayThemeToggle" class="link" aria-label="ディスプレイテーマの切替" data-theme-kind="display" data-action="cycleVisualTheme">ディスプレイ: DEFAULT</button>
         <span class="sep hint">/</span>
         <button id="backgroundThemeToggle" class="link" aria-label="背景テーマの切替" data-theme-kind="background" data-action="cycleVisualTheme">背景: DEFAULT</button>
       </span>
+      <button id="fs" class="link" aria-label="全画面" data-action="toggleFullscreen">全画面</button>
     </div>
   </header>
   <main class="container" role="main">
@@ -1068,7 +1068,7 @@ const VisualTheme = (() => {
     ])
   });
 
-  const defaults = Object.freeze({ system: 'modern', display: 'crt', background: 'default' });
+  const defaults = Object.freeze({ system: 'terminal', display: 'crt', background: 'default' });
   const fields = Object.freeze({ system: 'visualSystem', display: 'visualDisplay', background: 'visualBackground' });
   const storageKeys = Object.freeze({
     system: 'sonyHash.visual.system',
@@ -1076,7 +1076,7 @@ const VisualTheme = (() => {
     background: 'sonyHash.visual.background'
   });
   const legacyThemes = Object.freeze({
-    default: Object.freeze({ system: 'modern', display: 'crt', background: 'default' }),
+    default: Object.freeze({ system: 'terminal', display: 'crt', background: 'default' }),
     cmd: Object.freeze({ system: 'terminal', display: 'modern', background: 'cmd' }),
     ps: Object.freeze({ system: 'terminal', display: 'modern', background: 'ps' })
   });
@@ -5430,8 +5430,14 @@ function showToast(msg) {
       els.systemThemeToggleBtn.textContent = `システム: ${VisualTheme.label('system')}`;
       els.displayThemeToggleBtn.textContent = `ディスプレイ: ${VisualTheme.label('display')}`;
       els.backgroundThemeToggleBtn.textContent = `背景: ${VisualTheme.label('background')}`;
-      if (AppState.showTheme) els.themeOptionsContainer.classList.remove('hidden');
-      else els.themeOptionsContainer.classList.add('hidden');
+      const headerActions = els.themeBtn.parentElement;
+      if (AppState.showTheme) {
+        els.themeOptionsContainer.classList.remove('hidden');
+        headerActions.insertBefore(els.fsBtn, els.themeBtn);
+      } else {
+        els.themeOptionsContainer.classList.add('hidden');
+        headerActions.appendChild(els.fsBtn);
+      }
     };
 
     syncVisualThemeControls();
