@@ -458,7 +458,7 @@
   <header>
     <h1>SONY HASH</h1>
     <div class="header-actions">
-      <button id="themeToggle" class="link" aria-label="テーマ設定の展開・折畳" data-action="toggleTheme">テーマ: MODERN / CRT / DEFAULT [+]</button>
+      <button id="themeToggle" class="link" aria-label="テーマ設定の展開・折畳" data-action="toggleTheme">テーマ [+]</button>
       <span id="themeOptionsContainer" class="base-group-container hidden">
         <span class="sep hint">/</span>
         <button id="systemThemeToggle" class="link" aria-label="システムテーマの切替" data-theme-kind="system" data-action="cycleVisualTheme">システム: MODERN</button>
@@ -5426,7 +5426,7 @@ function showToast(msg) {
     const syncVisualThemeControls = () => {
       els.themeBtn.textContent = AppState.showTheme
         ? 'テーマ: 折畳 [-]'
-        : `テーマ: ${VisualTheme.summary()} [+]`;
+        : 'テーマ [+]';
       els.systemThemeToggleBtn.textContent = `システム: ${VisualTheme.label('system')}`;
       els.displayThemeToggleBtn.textContent = `ディスプレイ: ${VisualTheme.label('display')}`;
       els.backgroundThemeToggleBtn.textContent = `背景: ${VisualTheme.label('background')}`;
