@@ -16,118 +16,80 @@
 <meta name="referrer" content="no-referrer">
 <style>
   :root{
-    --bg:#0a2a45;
-    --fg:#7cff7c;
-    --fg-bright:#39ff14;
-    --muted:#9fb4c6;
     --alert:#ff4747;
-    --drag-bg:rgba(124,255,124,0.08);
-    --glow:0 0 1px rgba(124,255,124,.25);
-    --glow-bright:-1px 0 1px rgba(255,0,0,0.5), 1px 0 1px rgba(0,100,255,0.5), 0 0 2px rgba(57,255,20,0.6), 0 0 10px rgba(57,255,20,0.3);
-    --toast-bg:rgba(10,42,69,.9);
     --sys-offset:120px;
-    --scanline: 
-      linear-gradient(transparent 50%, rgba(0, 0, 0, 0.25) 50%), 
-      linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
-    --font-stack:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Noto Sans Mono CJK JP","Yu Gothic UI","Yu Gothic",Meiryo,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans CJK JP","Noto Sans JP","MS Gothic","ＭＳ ゴシック",monospace;
-    --sel-bg:rgba(124,255,124,0.3);
-    --sel-fg:#ffffff;
-    --sb-track:rgba(0,0,0,0.2);
-    --sb-thumb:rgba(124,255,124,0.3);
-    --sb-thumb-hover:rgba(124,255,124,0.6);
-  }
-  
-  @keyframes noise-jitter {
-    0% { background-position: 0 0; }
-    25% { background-position: 10% -15%; }
-    50% { background-position: -20% 5%; }
-    75% { background-position: 5% 25%; }
-    100% { background-position: -5% -5%; }
+    --data-font-stack:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Cascadia Mono","Cascadia Code","Liberation Mono","DejaVu Sans Mono","Noto Sans Mono CJK JP","MS Gothic","ＭＳ ゴシック","Courier New",monospace;
+    --data-font-stack-fallback:"Courier New","Liberation Mono","DejaVu Sans Mono","Noto Sans Mono CJK JP","MS Gothic","ＭＳ ゴシック",monospace;
   }
 
-  body[data-theme="cmd"]{
-    --bg:#000000;
-    --fg:#cccccc;
-    --fg-bright:#ffffff;
-    --muted:#888888;
-    --drag-bg:rgba(255,255,255,0.08);
-    --glow:none;
-    --glow-bright:none;
-    --toast-bg:rgba(0,0,0,1);
-    --scanline:none;
-    --font-stack:Consolas,"Yu Gothic UI","Yu Gothic",Meiryo,"MS Gothic","ＭＳ ゴシック","Noto Sans Mono CJK JP","Noto Sans CJK JP","Noto Sans JP",monospace;
-    --sel-bg:#ffffff;
-    --sel-fg:#000000;
-    --sb-track:#0c0c0c;
-    --sb-thumb:#888888;
-    --sb-thumb-hover:#cccccc;
-    -webkit-font-smoothing: none;
-    -moz-osx-font-smoothing: grayscale;
-    text-rendering: optimizeSpeed;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.035'/%3E%3C/svg%3E");
-    background-repeat: repeat;
-    animation: noise-jitter 0.2s step-end infinite;
+  /* =========================================================
+     VISUAL / SYSTEM / MODERN
+  ========================================================= */
+  body[data-system="modern"]{
+    --sys-font-stack:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Cascadia Mono","Cascadia Code","Liberation Mono","DejaVu Sans Mono","Noto Sans Mono CJK JP","MS Gothic","ＭＳ ゴシック","Courier New",monospace;
+    --sys-font-size:16px;
+    --sys-font-smoothing:antialiased;
+    --sys-moz-font-smoothing:auto;
+    --sys-text-rendering:auto;
+    --sys-caret-shape:auto;
+    --sys-font-variant-numeric:tabular-nums slashed-zero;
+    --sys-line-height:1.55;
   }
-  
-  body[data-theme="ps"]{
-    --bg:#012456;
-    --fg:#eeedf0;
-    --fg-bright:#ffe900;
-    --muted:#8b9bb4;
-    --drag-bg:rgba(255,233,0,0.08);
-    --glow:none;
-    --glow-bright:none;
-    --toast-bg:#01183b; 
-    --scanline:none;
-    --font-stack:Consolas,"Yu Gothic UI","Yu Gothic",Meiryo,"MS Gothic","ＭＳ ゴシック","Noto Sans Mono CJK JP","Noto Sans CJK JP","Noto Sans JP",monospace;
-    --sel-bg:#eeedf0;
-    --sel-fg:#012456;
-    --sb-track:#012456;
-    --sb-thumb:rgba(255,255,255,0.3);
-    --sb-thumb-hover:rgba(255,255,255,0.6);
-    background-image: radial-gradient(circle at 50% 10%, #013476 0%, #012456 80%);
-    background-attachment: fixed;
+
+  /* =========================================================
+     VISUAL / SYSTEM / TERMINAL
+  ========================================================= */
+  body[data-system="terminal"]{
+    --sys-font-stack:Consolas,"Cascadia Mono","Cascadia Code",ui-monospace,SFMono-Regular,Menlo,Monaco,"Liberation Mono","DejaVu Sans Mono","Noto Sans Mono CJK JP","MS Gothic","ＭＳ ゴシック","Courier New",monospace;
+    --sys-font-size:16px;
+    --sys-font-smoothing:antialiased;
+    --sys-moz-font-smoothing:auto;
+    --sys-text-rendering:auto;
+    --sys-caret-shape:auto;
+    --sys-font-variant-numeric:tabular-nums slashed-zero;
+    --sys-line-height:1.55;
   }
-  
-  *{box-sizing:border-box}
-  html,body{height:100%}
-  button,input,textarea{font-family:inherit}
-  body{
-    margin:0;background-color:var(--bg);color:var(--fg);
-    font-family:var(--font-stack);
-    font-variant-numeric: tabular-nums slashed-zero;
-    line-height:1.55; display:flex; flex-direction:column; min-height:100vh;
-    -webkit-font-smoothing:antialiased;
-    image-rendering:pixelated;
-    transition: background-color 0.4s ease, color 0.4s ease, text-shadow 0.4s ease;
+
+  /* =========================================================
+     VISUAL / DISPLAY / MODERN
+  ========================================================= */
+  body[data-display="modern"]{
+    --display-glow:none;
+    --display-glow-bright:none;
   }
-  
-  body[data-theme="default"] {
-    background-image: var(--scanline);
+
+  /* =========================================================
+     VISUAL / DISPLAY / CRT
+  ========================================================= */
+  body[data-display="crt"]{
+    --display-glow:0 0 1px rgba(124,255,124,.25);
+    --display-glow-bright:-1px 0 1px rgba(255,0,0,0.5), 1px 0 1px rgba(0,100,255,0.5), 0 0 2px rgba(57,255,20,0.6), 0 0 10px rgba(57,255,20,0.3);
+  }
+
+  body[data-display="crt"] #display-fx {
+    opacity: 1;
+    background:
+      linear-gradient(transparent 50%, rgba(0, 0, 0, 0.25) 50%),
+      linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
     background-size: 100% 2px, 3px 100%;
     animation: crt-scan 4s linear infinite, crt-flicker 0.15s infinite;
   }
-  
-  body::before {
-    content: ""; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-    background: 
-      radial-gradient(ellipse 80% 30% at 50% 0%, rgba(255,255,255,0.04) 0%, transparent 100%),
-      radial-gradient(circle at center, transparent 50%, rgba(0,0,0,0.5) 100%);
-    pointer-events: none; z-index: 999;
-    opacity: 0; transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-  body[data-theme="default"]::before { opacity: 1; }
 
-  body::after {
-    content: ""; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+  body[data-display="crt"] #display-fx::before {
+    background:
+      radial-gradient(ellipse 80% 30% at 50% 0%, rgba(255,255,255,0.04) 0%, transparent 100%),
+      radial-gradient(circle at center, transparent 50%, rgba(0,0,0,0.5) 100%),
+      url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.018'/%3E%3C/svg%3E");
+    background-size: auto, auto, 200px 200px;
+    background-repeat: no-repeat, no-repeat, repeat;
+  }
+
+  body[data-display="crt"] #display-fx::after {
     background: linear-gradient(to bottom, transparent 0%, rgba(255,255,255,0.03) 50%, transparent 100%);
     background-size: 100% 20vh;
     background-repeat: no-repeat;
-    pointer-events: none; z-index: 998;
     animation: v-sync-roll 6s linear infinite;
-    opacity: 0; transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1);
   }
-  body[data-theme="default"]::after { opacity: 1; }
 
   @keyframes crt-scan {
     from { background-position-y: 0; }
@@ -141,7 +103,139 @@
     0% { background-position: 0 -20vh; }
     100% { background-position: 0 120vh; }
   }
-  
+
+  /* =========================================================
+     VISUAL / BACKGROUND / DEFAULT
+  ========================================================= */
+  body[data-background="default"]{
+    --app-bg:#0a2a45;
+    --app-fg:#7cff7c;
+    --app-fg-bright:#39ff14;
+    --app-muted:#9fb4c6;
+    --app-drag-bg:rgba(124,255,124,0.08);
+    --app-toast-bg:rgba(10,42,69,.9);
+    --app-toast-border:none;
+    --app-toast-shadow:none;
+    --app-sel-bg:rgba(124,255,124,0.3);
+    --app-sel-fg:#ffffff;
+    --app-sb-track:rgba(0,0,0,0.2);
+    --app-sb-thumb:rgba(124,255,124,0.3);
+    --app-sb-thumb-hover:rgba(124,255,124,0.6);
+    --app-background-image:none;
+    --app-background-size:auto;
+    --app-background-repeat:repeat;
+    --app-background-attachment:scroll;
+    --app-background-animation:none;
+  }
+
+  /* =========================================================
+     VISUAL / BACKGROUND / CMD
+  ========================================================= */
+  body[data-background="cmd"]{
+    --app-bg:#000000;
+    --app-fg:#cccccc;
+    --app-fg-bright:#ffffff;
+    --app-muted:#888888;
+    --app-drag-bg:rgba(255,255,255,0.08);
+    --app-toast-bg:rgba(0,0,0,1);
+    --app-toast-border:1px solid var(--fg-bright);
+    --app-toast-shadow:none;
+    --app-sel-bg:#ffffff;
+    --app-sel-fg:#000000;
+    --app-sb-track:#0c0c0c;
+    --app-sb-thumb:#888888;
+    --app-sb-thumb-hover:#cccccc;
+    --app-background-image:none;
+    --app-background-size:auto;
+    --app-background-repeat:repeat;
+    --app-background-attachment:scroll;
+    --app-background-animation:none;
+    --app-font-stack:Consolas,"Cascadia Mono","Cascadia Code",ui-monospace,SFMono-Regular,Menlo,Monaco,"Liberation Mono","DejaVu Sans Mono","Noto Sans Mono CJK JP","MS Gothic","ＭＳ ゴシック","Courier New",monospace;
+    --app-font-smoothing:none;
+    --app-moz-font-smoothing:grayscale;
+    --app-text-rendering:optimizeSpeed;
+    --app-caret-shape:block;
+  }
+
+  /* =========================================================
+     VISUAL / BACKGROUND / PS
+  ========================================================= */
+  body[data-background="ps"]{
+    --app-bg:#012456;
+    --app-fg:#eeedf0;
+    --app-fg-bright:#ffe900;
+    --app-muted:#8b9bb4;
+    --app-drag-bg:rgba(255,233,0,0.08);
+    --app-toast-bg:#01183b;
+    --app-toast-border:1px solid var(--fg-bright);
+    --app-toast-shadow:4px 4px 0 rgba(0,0,0,0.5);
+    --app-sel-bg:#eeedf0;
+    --app-sel-fg:#012456;
+    --app-sb-track:#012456;
+    --app-sb-thumb:rgba(255,255,255,0.3);
+    --app-sb-thumb-hover:rgba(255,255,255,0.6);
+    --app-background-image:radial-gradient(circle at 50% 10%, #013476 0%, #012456 80%);
+    --app-background-size:auto;
+    --app-background-repeat:repeat;
+    --app-background-attachment:fixed;
+    --app-background-animation:none;
+    --app-font-stack:Consolas,"Cascadia Mono","Cascadia Code",ui-monospace,SFMono-Regular,Menlo,Monaco,"Liberation Mono","DejaVu Sans Mono","Noto Sans Mono CJK JP","MS Gothic","ＭＳ ゴシック","Courier New",monospace;
+  }
+
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  button,input,textarea{font-family:inherit}
+  body{
+    --bg:var(--app-bg,#0a2a45);
+    --fg:var(--app-fg,#7cff7c);
+    --fg-bright:var(--app-fg-bright,#39ff14);
+    --muted:var(--app-muted,#9fb4c6);
+    --drag-bg:var(--app-drag-bg,rgba(124,255,124,0.08));
+    --toast-bg:var(--app-toast-bg,rgba(10,42,69,.9));
+    --toast-border:var(--app-toast-border,none);
+    --toast-shadow:var(--app-toast-shadow,none);
+    --sel-bg:var(--app-sel-bg,rgba(124,255,124,0.3));
+    --sel-fg:var(--app-sel-fg,#ffffff);
+    --sb-track:var(--app-sb-track,rgba(0,0,0,0.2));
+    --sb-thumb:var(--app-sb-thumb,rgba(124,255,124,0.3));
+    --sb-thumb-hover:var(--app-sb-thumb-hover,rgba(124,255,124,0.6));
+    --font-stack:var(--app-font-stack,var(--sys-font-stack,monospace));
+    --font-size:var(--app-font-size,var(--sys-font-size,16px));
+    --font-smoothing:var(--app-font-smoothing,var(--sys-font-smoothing,antialiased));
+    --moz-font-smoothing:var(--app-moz-font-smoothing,var(--sys-moz-font-smoothing,auto));
+    --text-rendering:var(--app-text-rendering,var(--sys-text-rendering,auto));
+    --caret-shape:var(--app-caret-shape,var(--sys-caret-shape,auto));
+    --font-variant-numeric:var(--app-font-variant-numeric,var(--sys-font-variant-numeric,tabular-nums slashed-zero));
+    --line-height:var(--app-line-height,var(--sys-line-height,1.55));
+    --glow:var(--display-glow,none);
+    --glow-bright:var(--display-glow-bright,none);
+    margin:0;background-color:var(--bg);color:var(--fg);
+    background-image:var(--app-background-image,none);
+    background-size:var(--app-background-size,auto);
+    background-repeat:var(--app-background-repeat,repeat);
+    background-attachment:var(--app-background-attachment,scroll);
+    animation:var(--app-background-animation,none);
+    font-family:var(--font-stack);
+    font-size:var(--font-size);
+    font-variant-numeric:var(--font-variant-numeric);
+    line-height:var(--line-height); display:flex; flex-direction:column; min-height:100vh;
+    -webkit-font-smoothing:var(--font-smoothing);
+    -moz-osx-font-smoothing:var(--moz-font-smoothing);
+    text-rendering:var(--text-rendering);
+    image-rendering:pixelated;
+    transition: background-color 0.4s ease, color 0.4s ease, text-shadow 0.4s ease;
+  }
+
+  #display-fx {
+    position:fixed;inset:0;pointer-events:none;z-index:998;
+    opacity:0;background:none;animation:none;
+    transition:opacity .5s cubic-bezier(0.4,0,0.2,1);
+  }
+  #display-fx::before,#display-fx::after {
+    content:"";position:absolute;inset:0;pointer-events:none;
+    background:none;animation:none;
+  }
+
   @keyframes emergency-pulse {
     0%, 100% { box-shadow: inset 0 0 20px rgba(255,71,71,0.05); }
     50% { box-shadow: inset 0 0 80px rgba(255,71,71,0.15); }
@@ -169,15 +263,16 @@
   textarea::selection { background: var(--sel-bg); color: var(--sel-fg); text-shadow: none; }
   textarea::-moz-selection { background: var(--sel-bg); color: var(--sel-fg); text-shadow: none; }
 
-  header{display:flex;align-items:center;justify-content:space-between;padding:12px clamp(12px,3vw,24px);color:var(--fg)}
-  h1{margin:0;font-size:clamp(18px,4.5vw,28px);letter-spacing:.06em; transition: text-shadow 0.4s ease;}
+  header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:12px clamp(12px,3vw,24px);color:var(--fg)}
+  .header-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;max-width:100%}
+  .header-actions .sep{color:var(--muted);opacity:.5}
+  h1{margin:0;font-size:clamp(1.125em,4.5vw,1.75em);letter-spacing:.06em; transition: text-shadow 0.4s ease;}
   
-  body[data-theme="default"] h1,
-  body[data-theme="default"] .brandline { text-shadow: var(--glow-bright); }
+  h1, .brandline { text-shadow: var(--glow-bright); }
 
   .link{
     background:none;border:none;padding:0;margin-left:12px;color:var(--muted);
-    text-decoration:underline;cursor:pointer;font-size:clamp(12px,3.2vw,14px);
+    text-decoration:underline;cursor:pointer;font-size:clamp(.75em,3.2vw,.875em);
     transition: color 0.1s ease, text-shadow 0.1s ease, transform 0.1s ease;
   }
   .link:hover { color: var(--fg-bright); text-shadow: var(--glow); }
@@ -196,16 +291,16 @@
   
   textarea{
     width:100%;min-height:28vh;background:transparent;color:var(--fg);
-    border:none;outline:none;caret-color:var(--fg-bright);
-    font:inherit;font-size:clamp(14px,2.8vw,18px);line-height:1.65;resize:vertical;
+    border:none;outline:none;caret-color:var(--fg-bright);caret-shape:var(--caret-shape);
+    font:inherit;font-size:clamp(.875em,2.8vw,1.125em);line-height:1.65;resize:vertical;
     text-shadow:var(--glow);
     transition: color 0.4s ease, text-shadow 0.4s ease;
   }
-  body[data-theme="cmd"] textarea, body[data-theme="cmd"] input { caret-shape: block; caret-color: var(--fg-bright); }
+  input { caret-shape: var(--caret-shape); }
   
   .text-input{
     background:transparent; color:var(--fg-bright);
-    border:none; outline:none; font:inherit; font-size:clamp(12px,2.5vw,14px);
+    border:none; outline:none; font:inherit; font-size:clamp(.75em,2.5vw,.875em);
     padding:4px 6px; caret-color:var(--fg-bright); border-radius:0;
     transition: color 0.4s ease, box-shadow 0.2s ease;
   }
@@ -225,13 +320,13 @@
     justify-content: center; height: 100%; pointer-events: none;
   }
   .spinner-btn {
-    font-size: 8px; line-height: 1; color: var(--muted); cursor: pointer;
+    font-size: .5em; line-height: 1; color: var(--muted); cursor: pointer;
     pointer-events: auto; user-select: none; padding: 2px; transition: color 0.2s;
   }
   .spinner-btn:hover { color: var(--fg-bright); }
   .spinner-btn:active { transform: scale(0.9); }
 
-  .hint{color:var(--muted);font-size:clamp(11px,2.6vw,13px);margin-top:6px; transition: color 0.4s ease;}
+  .hint{color:var(--muted);font-size:clamp(.6875em,2.6vw,.8125em);margin-top:6px; transition: color 0.4s ease;}
   .toolbar{display:flex;align-items:center;gap:12px;padding:0 clamp(12px,3vw,18px);flex-wrap:wrap}
   .toolbar .sep{opacity:.5}
   
@@ -252,13 +347,13 @@
   
   .result-col{display:flex;flex-direction:column;flex:1;min-width:0;}
   .prog-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;height:14px;}
-  .prog-text{margin:0;font-size:10px;line-height:1;}
+  .prog-text{margin:0;font-size:.625em;line-height:1;}
   .progress-meta{display:flex;align-items:center;gap:10px;min-width:0;}
-  .history-text{margin:0;font-size:10px;line-height:1;color:var(--muted);transition:color 0.2s ease;}
+  .history-text{margin:0;font-size:.625em;line-height:1;color:var(--muted);transition:color 0.2s ease;}
   .history-text.full{color:var(--alert);}
   .task-actions{display:flex;align-items:center;gap:4px;}
   .task-actions .link{margin-left:0;}
-  .stop-btn,.abort-btn{margin:0;font-size:10px;line-height:1;display:none;padding:0 4px;}
+  .stop-btn,.abort-btn{margin:0;font-size:.625em;line-height:1;display:none;padding:0 4px;}
   
   @keyframes caret-blink {
     0%, 100% { opacity: 1; }
@@ -272,7 +367,25 @@
     padding-left: 10px;
     white-space: pre-wrap;
   }
-  body[data-theme="default"] .value:not([data-empty="1"]) { text-shadow: var(--glow-bright); }
+
+  .mono,#in,.text-input,.value{
+    font-family:var(--data-font-stack);
+    font-variant-ligatures:none;
+    font-kerning:none;
+    font-synthesis:none;
+    font-optical-sizing:none;
+    font-feature-settings:"liga" 0,"clig" 0,"calt" 0,"kern" 0;
+    letter-spacing:0;
+    word-spacing:0;
+  }
+
+  body.mono-fallback{
+    --data-font-stack:var(--data-font-stack-fallback);
+    --sys-font-stack:var(--data-font-stack-fallback);
+    --app-font-stack:var(--data-font-stack-fallback);
+  }
+
+  .value:not([data-empty="1"]) { text-shadow: var(--glow-bright); }
   
   .value:focus{outline:none; background:transparent;}
   .value:focus::before {
@@ -291,38 +404,31 @@
   .toast{
     position:fixed;left:50%;bottom:24px;transform:translateX(-50%);
     background:var(--toast-bg);color:var(--fg-bright);
-    padding:8px 12px;border-radius:0;font-size:12px;pointer-events:none;
+    padding:8px 12px;border:var(--toast-border);border-radius:0;font-size:.75em;pointer-events:none;
+    box-shadow:var(--toast-shadow);
     opacity:0;transition: opacity .15s, background-color 0.4s ease, box-shadow 0.4s ease;
     z-index: 1000;
     view-transition-name: toast-panel;
   }
   
-  body[data-theme="ps"] .toast {
-    border: 1px solid var(--fg-bright); box-shadow: 4px 4px 0 rgba(0,0,0,0.5);
-  }
-  
-  body[data-theme="cmd"] .toast {
-    border: 1px solid var(--fg-bright); box-shadow: none;
-  }
-
   .toast.show{opacity:1}
   
   .sys{
     position:fixed;right:10px;bottom:10px;width:max-content;max-width:calc(100vw - 20px);
-    color:var(--muted);font-size:12px;line-height:1.35;white-space:pre-wrap;text-align:right;
+    color:var(--muted);font-size:.75em;line-height:1.35;white-space:pre-wrap;text-align:right;
     pointer-events:auto; user-select:text; transition: color 0.4s ease;
     view-transition-name: sys-panel;
   }
   .unofficial{
     position:fixed;left:10px;bottom:10px;
-    color:var(--muted);font-size:8px;line-height:1.35;white-space:nowrap;
+    color:var(--muted);font-size:.5em;line-height:1.35;white-space:nowrap;
     pointer-events:auto; user-select:text; transition: color 0.4s ease;
   }
   .brandline{color:var(--fg-bright);font-weight:600; transition: color 0.4s ease, text-shadow 0.4s ease;}
   #f-hidden{display:none}
   
   #sec-warn {
-    display: none; background: var(--alert); color: #fff; padding: 6px 12px; font-size: 12px; font-weight: bold; text-align: center; letter-spacing: 1px;
+    display: none; background: var(--alert); color: #fff; padding: 6px 12px; font-size: .75em; font-weight: bold; text-align: center; letter-spacing: 1px;
   }
 
   ::view-transition-old(root),
@@ -346,12 +452,21 @@
   }
 </style>
 </head>
-<body>
+<body data-system="modern" data-display="crt" data-background="default">
+  <div id="display-fx" aria-hidden="true"></div>
   <div id="sec-warn">【制限モード】 この実行環境では Web Crypto API を利用できないため、SHA-384 / SHA-512 は無効化されています。</div>
   <header>
     <h1>SONY HASH</h1>
-    <div>
-      <button id="themeToggle" class="link" aria-label="テーマ切替" data-action="toggleTheme">テーマ: DEFAULT</button>
+    <div class="header-actions">
+      <button id="themeToggle" class="link" aria-label="テーマ設定の展開・折畳" data-action="toggleTheme">テーマ: MODERN / CRT / DEFAULT [+]</button>
+      <span id="themeOptionsContainer" class="base-group-container hidden">
+        <span class="sep hint">/</span>
+        <button id="systemThemeToggle" class="link" aria-label="システムテーマの切替" data-theme-kind="system" data-action="cycleVisualTheme">システム: MODERN</button>
+        <span class="sep hint">/</span>
+        <button id="displayThemeToggle" class="link" aria-label="ディスプレイテーマの切替" data-theme-kind="display" data-action="cycleVisualTheme">ディスプレイ: CRT</button>
+        <span class="sep hint">/</span>
+        <button id="backgroundThemeToggle" class="link" aria-label="背景テーマの切替" data-theme-kind="background" data-action="cycleVisualTheme">背景: DEFAULT</button>
+      </span>
       <button id="fs" class="link" aria-label="全画面" data-action="toggleFullscreen">全画面</button>
     </div>
   </header>
@@ -852,8 +967,302 @@ const EventBus = (() => {
   };
 })();
 
+/* =========================================================
+   MONOSPACE GUARD
+========================================================= */
+const MonospaceGuard = (() => {
+  const SAMPLES = Object.freeze(['iiiiiiii','WWWWWWWW','00000000','AAAAAAAA','........','        ']);
+  const EPSILON = 0.125;
+  let generation = 0;
+  let rafId = 0;
+
+  const nextFrame = () => new Promise(resolve => requestAnimationFrame(resolve));
+
+  function measure() {
+    const target = document.getElementById('in');
+    if (!target || !document.body) return true;
+
+    const style = getComputedStyle(target);
+    const probe = document.createElement('span');
+    probe.setAttribute('aria-hidden', 'true');
+    probe.style.cssText = 'position:fixed;left:-10000px;top:-10000px;visibility:hidden;white-space:pre;pointer-events:none;';
+    probe.style.fontFamily = style.fontFamily;
+    probe.style.fontSize = style.fontSize;
+    probe.style.fontWeight = style.fontWeight;
+    probe.style.fontStyle = style.fontStyle;
+    probe.style.fontVariantLigatures = 'none';
+    probe.style.fontKerning = 'none';
+    probe.style.letterSpacing = '0';
+    probe.style.wordSpacing = '0';
+    document.body.appendChild(probe);
+
+    try {
+      const widths = SAMPLES.map(sample => {
+        probe.textContent = sample;
+        return probe.getBoundingClientRect().width;
+      });
+      return Math.max(...widths) - Math.min(...widths) <= EPSILON;
+    } finally {
+      probe.remove();
+    }
+  }
+
+  async function verify() {
+    const current = ++generation;
+    if (document.fonts?.ready) {
+      try { await document.fonts.ready; } catch (_) {}
+    }
+    if (current !== generation || !document.body) return;
+
+    document.body.classList.remove('mono-fallback');
+    await nextFrame();
+    if (current !== generation) return;
+
+    if (measure()) {
+      document.body.dataset.monoGuard = 'native';
+      return;
+    }
+
+    document.body.classList.add('mono-fallback');
+    await nextFrame();
+    if (current !== generation) return;
+
+    if (measure()) {
+      document.body.dataset.monoGuard = 'fallback';
+      return;
+    }
+
+    document.body.dataset.monoGuard = 'failed';
+    console.warn('[MONOSPACE] 等幅フォント検証失敗: フォールバック後も字幅不一致');
+  }
+
+  function schedule() {
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(() => {
+      rafId = 0;
+      verify();
+    });
+  }
+
+  EventBus.on('visual:applied', schedule);
+  return { verify, schedule };
+})();
+
+/* =========================================================
+   VISUAL THEME LAYER
+========================================================= */
+const VisualTheme = (() => {
+  const REGISTRY = Object.freeze({
+    system: Object.freeze([
+      Object.freeze({ id: 'modern', label: 'MODERN', kind: 'system' }),
+      Object.freeze({ id: 'terminal', label: 'TERMINAL', kind: 'system' })
+    ]),
+    display: Object.freeze([
+      Object.freeze({ id: 'modern', label: 'MODERN', kind: 'display' }),
+      Object.freeze({ id: 'crt', label: 'CRT', kind: 'display' })
+    ]),
+    background: Object.freeze([
+      Object.freeze({ id: 'default', label: 'DEFAULT', kind: 'background', overrides: Object.freeze([]) }),
+      Object.freeze({ id: 'cmd', label: 'CMD', kind: 'background', overrides: Object.freeze(['font', 'fontSmoothing', 'mozFontSmoothing', 'textRendering', 'caretShape']) }),
+      Object.freeze({ id: 'ps', label: 'PS', kind: 'background', overrides: Object.freeze(['font']) })
+    ])
+  });
+
+  const defaults = Object.freeze({ system: 'modern', display: 'crt', background: 'default' });
+  const fields = Object.freeze({ system: 'visualSystem', display: 'visualDisplay', background: 'visualBackground' });
+  const storageKeys = Object.freeze({
+    system: 'sonyHash.visual.system',
+    display: 'sonyHash.visual.display',
+    background: 'sonyHash.visual.background'
+  });
+  const legacyThemes = Object.freeze({
+    default: Object.freeze({ system: 'modern', display: 'crt', background: 'default' }),
+    cmd: Object.freeze({ system: 'terminal', display: 'modern', background: 'cmd' }),
+    ps: Object.freeze({ system: 'terminal', display: 'modern', background: 'ps' })
+  });
+  const systemVars = Object.freeze([
+    '--sys-font-stack', '--sys-font-size', '--sys-font-smoothing', '--sys-moz-font-smoothing',
+    '--sys-text-rendering', '--sys-caret-shape', '--sys-font-variant-numeric', '--sys-line-height'
+  ]);
+  const displayVars = Object.freeze(['--display-glow', '--display-glow-bright']);
+  const backgroundVars = Object.freeze([
+    '--app-bg', '--app-fg', '--app-fg-bright', '--app-muted', '--app-drag-bg', '--app-toast-bg',
+    '--app-toast-border', '--app-toast-shadow', '--app-sel-bg', '--app-sel-fg', '--app-sb-track',
+    '--app-sb-thumb', '--app-sb-thumb-hover', '--app-background-image', '--app-background-size',
+    '--app-background-repeat', '--app-background-attachment', '--app-background-animation'
+  ]);
+  const overrideVars = Object.freeze({
+    font: '--app-font-stack',
+    fontSize: '--app-font-size',
+    fontSmoothing: '--app-font-smoothing',
+    mozFontSmoothing: '--app-moz-font-smoothing',
+    textRendering: '--app-text-rendering',
+    caretShape: '--app-caret-shape',
+    fontVariantNumeric: '--app-font-variant-numeric',
+    lineHeight: '--app-line-height'
+  });
+
+  const getStored = key => { try { return localStorage.getItem(key); } catch (_) { return null; } };
+  const setStored = (key, value) => { try { localStorage.setItem(key, value); } catch (_) {} };
+  const removeStored = key => { try { localStorage.removeItem(key); } catch (_) {} };
+  const hasKind = kind => !!REGISTRY[kind];
+  const has = (kind, id) => !!REGISTRY[kind]?.some(item => item.id === id);
+  const item = (kind, id) => REGISTRY[kind]?.find(entry => entry.id === id) || REGISTRY[kind]?.[0] || null;
+
+  function load() {
+    const legacyId = getStored('sonyHash.theme');
+    const legacy = legacyThemes[legacyId] || defaults;
+    for (const kind of Object.keys(REGISTRY)) {
+      const stored = getStored(storageKeys[kind]);
+      const id = has(kind, stored) ? stored : legacy[kind];
+      AppState[fields[kind]] = has(kind, id) ? id : defaults[kind];
+      setStored(storageKeys[kind], AppState[fields[kind]]);
+    }
+    if (legacyId !== null) removeStored('sonyHash.theme');
+  }
+
+  function apply() {
+    document.body.dataset.system = AppState.visualSystem;
+    document.body.dataset.display = AppState.visualDisplay;
+    document.body.dataset.background = AppState.visualBackground;
+    document.body.removeAttribute('data-theme');
+    EventBus.emit('visual:applied');
+  }
+
+  function cycle(kind) {
+    const entries = REGISTRY[kind];
+    const field = fields[kind];
+    if (!entries || !field) return false;
+    const idx = entries.findIndex(entry => entry.id === AppState[field]);
+    AppState[field] = entries[(idx + 1 + entries.length) % entries.length].id;
+    setStored(storageKeys[kind], AppState[field]);
+    apply();
+    return true;
+  }
+
+  function label(kind) {
+    return item(kind, AppState[fields[kind]])?.label || '';
+  }
+
+  function summary() {
+    return `${label('system')} / ${label('display')} / ${label('background')}`;
+  }
+
+  function collectRules(ruleList, out = []) {
+    for (const rule of Array.from(ruleList || [])) {
+      if (rule.selectorText && rule.style) out.push(rule);
+      if (rule.cssRules) collectRules(rule.cssRules, out);
+    }
+    return out;
+  }
+
+  function validate() {
+    const issues = [];
+    const kinds = Object.keys(REGISTRY);
+    const rules = [];
+    try {
+      for (const sheet of Array.from(document.styleSheets || [])) collectRules(sheet.cssRules, rules);
+    } catch (_) {
+      issues.push('CSSルールを検証できません');
+      return issues;
+    }
+
+    const findRule = selector => rules.find(rule => rule.selectorText === selector) || null;
+    const styleProps = rule => Array.from({ length: rule?.style?.length || 0 }, (_, i) => rule.style[i]);
+
+    for (const kind of kinds) {
+      const ids = new Set();
+      for (const entry of REGISTRY[kind]) {
+        if (entry.kind !== kind) issues.push(`${kind}:${entry.id} kind不一致`);
+        if (!/^[a-z0-9-]+$/.test(entry.id)) issues.push(`${kind}:${entry.id} ID形式不正`);
+        if (ids.has(entry.id)) issues.push(`${kind}:${entry.id} ID重複`);
+        ids.add(entry.id);
+      }
+      if (!has(kind, defaults[kind])) issues.push(`${kind} 既定テーマ不在`);
+    }
+
+    for (const rule of rules) {
+      const selectors = String(rule.selectorText || '').split(',').map(x => x.trim()).filter(Boolean);
+      for (const selector of selectors) {
+        const usedKinds = [
+          selector.includes('[data-system=') ? 'system' : '',
+          selector.includes('[data-display=') ? 'display' : '',
+          selector.includes('[data-background=') ? 'background' : ''
+        ].filter(Boolean);
+        if (usedKinds.length > 1) issues.push(`交差セレクタ禁止: ${selector}`);
+        if (usedKinds[0] === 'system') {
+          const match = selector.match(/^body\[data-system="([a-z0-9-]+)"\]$/);
+          if (!match) issues.push(`SYSTEM範囲不正: ${selector}`);
+          else if (!has('system', match[1])) issues.push(`SYSTEM未登録: ${match[1]}`);
+          if (styleProps(rule).some(prop => !prop.startsWith('--sys-'))) issues.push(`SYSTEM宣言不正: ${selector}`);
+        }
+        if (usedKinds[0] === 'background') {
+          const match = selector.match(/^body\[data-background="([a-z0-9-]+)"\]$/);
+          if (!match) issues.push(`BACKGROUND範囲不正: ${selector}`);
+          else if (!has('background', match[1])) issues.push(`BACKGROUND未登録: ${match[1]}`);
+          if (styleProps(rule).some(prop => !prop.startsWith('--app-'))) issues.push(`BACKGROUND宣言不正: ${selector}`);
+        }
+        if (usedKinds[0] === 'display') {
+          const bodyMatch = selector.match(/^body\[data-display="([a-z0-9-]+)"\]$/);
+          const fxMatch = selector.match(/^body\[data-display="([a-z0-9-]+)"\] #display-fx(?:::(before|after))?$/);
+          if (!bodyMatch && !fxMatch) issues.push(`DISPLAY範囲不正: ${selector}`);
+          else {
+            const id = (bodyMatch || fxMatch)[1];
+            if (!has('display', id)) issues.push(`DISPLAY未登録: ${id}`);
+          }
+          if (bodyMatch && styleProps(rule).some(prop => !prop.startsWith('--display-'))) issues.push(`DISPLAY宣言不正: ${selector}`);
+          if (fxMatch && styleProps(rule).some(prop => prop.startsWith('--sys-') || prop.startsWith('--app-'))) issues.push(`DISPLAY越境宣言: ${selector}`);
+        }
+      }
+    }
+
+    for (const entry of REGISTRY.system) {
+      const selector = `body[data-system="${entry.id}"]`;
+      const matches = rules.filter(rule => rule.selectorText === selector);
+      if (matches.length !== 1) { issues.push(`SYSTEM CSS数不正: ${entry.id} ${matches.length}`); continue; }
+      for (const name of systemVars) if (!matches[0].style.getPropertyValue(name)) issues.push(`SYSTEM未定義: ${entry.id} ${name}`);
+    }
+
+    for (const entry of REGISTRY.display) {
+      const selector = `body[data-display="${entry.id}"]`;
+      const matches = rules.filter(rule => rule.selectorText === selector);
+      if (matches.length !== 1) { issues.push(`DISPLAY CSS数不正: ${entry.id} ${matches.length}`); continue; }
+      for (const name of displayVars) if (!matches[0].style.getPropertyValue(name)) issues.push(`DISPLAY未定義: ${entry.id} ${name}`);
+    }
+
+    for (const entry of REGISTRY.background) {
+      const selector = `body[data-background="${entry.id}"]`;
+      const matches = rules.filter(rule => rule.selectorText === selector);
+      if (matches.length !== 1) { issues.push(`BACKGROUND CSS数不正: ${entry.id} ${matches.length}`); continue; }
+      const rule = matches[0];
+      for (const name of backgroundVars) if (!rule.style.getPropertyValue(name)) issues.push(`BACKGROUND未定義: ${entry.id} ${name}`);
+      const declared = new Set(entry.overrides || []);
+      for (const name of declared) if (!overrideVars[name]) issues.push(`BACKGROUND override不明: ${entry.id} ${name}`);
+      for (const [name, cssVar] of Object.entries(overrideVars)) {
+        const present = !!rule.style.getPropertyValue(cssVar);
+        if (present !== declared.has(name)) issues.push(`BACKGROUND override不一致: ${entry.id} ${name}`);
+      }
+    }
+
+    if (rules.some(rule => String(rule.selectorText || '').includes('[data-theme='))) issues.push('旧data-theme CSS残存');
+    return Array.from(new Set(issues));
+  }
+
+  function init() {
+    const issues = validate();
+    if (issues.length) console.error(`[VISUAL THEME] ${issues.join('\n[VISUAL THEME] ')}`);
+    load();
+    apply();
+  }
+
+  return { defaults, init, cycle, label, summary, validate, hasKind };
+})();
+
 const AppState = {
-  theme: 'default',
+  showTheme: false,
+  visualSystem: VisualTheme.defaults.system,
+  visualDisplay: VisualTheme.defaults.display,
+  visualBackground: VisualTheme.defaults.background,
   normalization: 'none',
   sanitizeText: false,
   hexUpper: false,
@@ -4168,6 +4577,10 @@ const UI = (() => {
     els.inputEl = document.getElementById('in');
     els.metaEl = document.getElementById('meta');
     els.themeBtn = document.getElementById('themeToggle');
+    els.themeOptionsContainer = document.getElementById('themeOptionsContainer');
+    els.systemThemeToggleBtn = document.getElementById('systemThemeToggle');
+    els.displayThemeToggleBtn = document.getElementById('displayThemeToggle');
+    els.backgroundThemeToggleBtn = document.getElementById('backgroundThemeToggle');
     els.fsBtn = document.getElementById('fs');
     els.normBtn = document.getElementById('norm');
     els.sanitizeToggleBtn = document.getElementById('sanitizeToggle');
@@ -4997,7 +5410,7 @@ function showToast(msg) {
     
     let statusText = `種別: ${analysis.type}`;
     if (analysis.isPolyglot) {
-      statusText += ` ⚠️ マルチフォーマットの埋め込み（Polyglot）を検出`;
+      statusText += `  Polyglot 構造の可能性`;
     }
     
     els.inputEl.value = `[File: ${f.name} (${f.size} bytes)]\n[${statusText}]\n※このテキストを編集するとファイル状態が解除されます`;
@@ -5008,19 +5421,20 @@ function showToast(msg) {
   }
 
   function attachEvents() {
-    const THEMES = [
-      { id: 'default', label: 'DEFAULT' },
-      { id: 'cmd', label: 'Command Prompt' },
-      { id: 'ps', label: 'PowerShell' }
-    ];
     const CRC64_VARIANTS = ['XZ (ECMA, Reflected)', 'WE (ECMA, Non-Reflected)', 'ISO (HDLC, Non-Reflected)', 'GO-ISO (ISO, Reflected)', 'Redis (Jones, Reflected)'];
-    function applyTheme() {
-      document.body.setAttribute('data-theme', AppState.theme);
-      const t = THEMES.find(x => x.id === AppState.theme) || THEMES[0];
-      els.themeBtn.textContent = `テーマ: ${t.label}`;
-    }
-    AppState.theme = localStorage.getItem('sonyHash.theme') || 'default';
-    applyTheme();
+
+    const syncVisualThemeControls = () => {
+      els.themeBtn.textContent = AppState.showTheme
+        ? 'テーマ: 折畳 [-]'
+        : `テーマ: ${VisualTheme.summary()} [+]`;
+      els.systemThemeToggleBtn.textContent = `システム: ${VisualTheme.label('system')}`;
+      els.displayThemeToggleBtn.textContent = `ディスプレイ: ${VisualTheme.label('display')}`;
+      els.backgroundThemeToggleBtn.textContent = `背景: ${VisualTheme.label('background')}`;
+      if (AppState.showTheme) els.themeOptionsContainer.classList.remove('hidden');
+      else els.themeOptionsContainer.classList.add('hidden');
+    };
+
+    syncVisualThemeControls();
 
     const syncHashOutputControls = () => {
       const first = AppState.hashOutputOrder[0] || '';
@@ -5272,13 +5686,17 @@ async function detectBase85Variants(input) {
 
         switch(action) {
             case 'toggleTheme': {
+                AppState.showTheme = !AppState.showTheme;
+                syncVisualThemeControls();
+                break;
+            }
+            case 'cycleVisualTheme': {
+                const kind = actionEl.dataset.themeKind;
+                if (!VisualTheme.hasKind(kind)) break;
                 const switchTheme = () => {
-                    const idx = THEMES.findIndex(x => x.id === AppState.theme);
-                    AppState.theme = THEMES[(idx + 1) % THEMES.length].id;
-                    localStorage.setItem('sonyHash.theme', AppState.theme);
-                    applyTheme();
+                    VisualTheme.cycle(kind);
+                    syncVisualThemeControls();
                 };
-
                 if (document.startViewTransition) {
                     document.startViewTransition(() => switchTheme());
                 } else {
@@ -6138,6 +6556,7 @@ const PresetLoader = (() => {
 (async function initApp() {
   Security.init();
   if (!PanicSystem.init()) return;
+  VisualTheme.init();
   Engine.init();
   UI.init();
   PresetLoader.init();
