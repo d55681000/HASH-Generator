@@ -454,7 +454,7 @@
 </head>
 <body data-system="terminal" data-display="crt" data-background="default">
   <div id="display-fx" aria-hidden="true"></div>
-  <div id="sec-warn">【制限モード】 この実行環境では Web Crypto API を利用できないため、SHA-384 / SHA-512 は無効化されています。</div>
+  <div id="sec-warn">【制限モード】 Web Crypto は無効です。</div>
   <header>
     <h1>SONY HASH</h1>
     <div class="header-actions">
@@ -3305,12 +3305,268 @@ const Engine = (() => {
         h[4]=(h[4]+e)|0; h[5]=(h[5]+f)|0; h[6]=(h[6]+g)|0; h[7]=(h[7]+_h)|0;
       }
 
+      const SHA512_K = new Uint32Array([
+        0x428a2f98,0xd728ae22,0x71374491,0x23ef65cd,0xb5c0fbcf,0xec4d3b2f,0xe9b5dba5,0x8189dbbc,
+        0x3956c25b,0xf348b538,0x59f111f1,0xb605d019,0x923f82a4,0xaf194f9b,0xab1c5ed5,0xda6d8118,
+        0xd807aa98,0xa3030242,0x12835b01,0x45706fbe,0x243185be,0x4ee4b28c,0x550c7dc3,0xd5ffb4e2,
+        0x72be5d74,0xf27b896f,0x80deb1fe,0x3b1696b1,0x9bdc06a7,0x25c71235,0xc19bf174,0xcf692694,
+        0xe49b69c1,0x9ef14ad2,0xefbe4786,0x384f25e3,0x0fc19dc6,0x8b8cd5b5,0x240ca1cc,0x77ac9c65,
+        0x2de92c6f,0x592b0275,0x4a7484aa,0x6ea6e483,0x5cb0a9dc,0xbd41fbd4,0x76f988da,0x831153b5,
+        0x983e5152,0xee66dfab,0xa831c66d,0x2db43210,0xb00327c8,0x98fb213f,0xbf597fc7,0xbeef0ee4,
+        0xc6e00bf3,0x3da88fc2,0xd5a79147,0x930aa725,0x06ca6351,0xe003826f,0x14292967,0x0a0e6e70,
+        0x27b70a85,0x46d22ffc,0x2e1b2138,0x5c26c926,0x4d2c6dfc,0x5ac42aed,0x53380d13,0x9d95b3df,
+        0x650a7354,0x8baf63de,0x766a0abb,0x3c77b2a8,0x81c2c92e,0x47edaee6,0x92722c85,0x1482353b,
+        0xa2bfe8a1,0x4cf10364,0xa81a664b,0xbc423001,0xc24b8b70,0xd0f89791,0xc76c51a3,0x0654be30,
+        0xd192e819,0xd6ef5218,0xd6990624,0x5565a910,0xf40e3585,0x5771202a,0x106aa070,0x32bbd1b8,
+        0x19a4c116,0xb8d2d0c8,0x1e376c08,0x5141ab53,0x2748774c,0xdf8eeb99,0x34b0bcb5,0xe19b48a8,
+        0x391c0cb3,0xc5c95a63,0x4ed8aa4a,0xe3418acb,0x5b9cca4f,0x7763e373,0x682e6ff3,0xd6b2b8a3,
+        0x748f82ee,0x5defb2fc,0x78a5636f,0x43172f60,0x84c87814,0xa1f0ab72,0x8cc70208,0x1a6439ec,
+        0x90befffa,0x23631e28,0xa4506ceb,0xde82bde9,0xbef9a3f7,0xb2c67915,0xc67178f2,0xe372532b,
+        0xca273ece,0xea26619c,0xd186b8c7,0x21c0c207,0xeada7dd6,0xcde0eb1e,0xf57d4f7f,0xee6ed178,
+        0x06f067aa,0x72176fba,0x0a637dc5,0xa2c898a6,0x113f9804,0xbef90dae,0x1b710b35,0x131c471b,
+        0x28db77f5,0x23047d84,0x32caab7b,0x40c72493,0x3c9ebe0a,0x15c9bebc,0x431d67c4,0x9c100d4c,
+        0x4cc5d4be,0xcb3e42b6,0x597f299c,0xfc657e2a,0x5fcb6fab,0x3ad6faec,0x6c44198c,0x4a475817
+      ]);
+      const SHA384_IV = new Uint32Array([
+        0xcbbb9d5d,0xc1059ed8,0x629a292a,0x367cd507,0x9159015a,0x3070dd17,0x152fecd8,0xf70e5939,
+        0x67332667,0xffc00b31,0x8eb44a87,0x68581511,0xdb0c2e0d,0x64f98fa7,0x47b5481d,0xbefa4fa4
+      ]);
+      const SHA512_IV = new Uint32Array([
+        0x6a09e667,0xf3bcc908,0xbb67ae85,0x84caa73b,0x3c6ef372,0xfe94f82b,0xa54ff53a,0x5f1d36f1,
+        0x510e527f,0xade682d1,0x9b05688c,0x2b3e6c1f,0x1f83d9ab,0xfb41bd6b,0x5be0cd19,0x137e2179
+      ]);
+
+      function sha512Schedule(arr, off, wh, wl) {
+        for(let i=0; i<16; i++) {
+          const p = off + i*8;
+          wh[i] = ((arr[p]<<24) | (arr[p+1]<<16) | (arr[p+2]<<8) | arr[p+3]) >>> 0;
+          wl[i] = ((arr[p+4]<<24) | (arr[p+5]<<16) | (arr[p+6]<<8) | arr[p+7]) >>> 0;
+        }
+        for(let i=16; i<80; i++) {
+          const aH=wh[i-15], aL=wl[i-15], bH=wh[i-2], bL=wl[i-2];
+          const s0H = (((aH>>>1)|(aL<<31)) ^ ((aH>>>8)|(aL<<24)) ^ (aH>>>7)) >>> 0;
+          const s0L = (((aL>>>1)|(aH<<31)) ^ ((aL>>>8)|(aH<<24)) ^ ((aL>>>7)|(aH<<25))) >>> 0;
+          const s1H = (((bH>>>19)|(bL<<13)) ^ ((bL>>>29)|(bH<<3)) ^ (bH>>>6)) >>> 0;
+          const s1L = (((bL>>>19)|(bH<<13)) ^ ((bH>>>29)|(bL<<3)) ^ ((bL>>>6)|(bH<<26))) >>> 0;
+          const lo = wl[i-16] + s0L + wl[i-7] + s1L;
+          wh[i] = (wh[i-16] + s0H + wh[i-7] + s1H + Math.floor(lo / 0x100000000)) >>> 0;
+          wl[i] = lo >>> 0;
+        }
+      }
+
+      function sha512Compress(h, wh, wl) {
+        let aH=h[0], aL=h[1], bH=h[2], bL=h[3], cH=h[4], cL=h[5], dH=h[6], dL=h[7];
+        let eH=h[8], eL=h[9], fH=h[10], fL=h[11], gH=h[12], gL=h[13], hhH=h[14], hhL=h[15];
+        for(let i=0; i<80; i++) {
+          const S1H = (((eH>>>14)|(eL<<18)) ^ ((eH>>>18)|(eL<<14)) ^ ((eL>>>9)|(eH<<23))) >>> 0;
+          const S1L = (((eL>>>14)|(eH<<18)) ^ ((eL>>>18)|(eH<<14)) ^ ((eH>>>9)|(eL<<23))) >>> 0;
+          const chH = ((eH&fH) ^ ((~eH)&gH)) >>> 0;
+          const chL = ((eL&fL) ^ ((~eL)&gL)) >>> 0;
+          const kH=SHA512_K[i*2], kL=SHA512_K[i*2+1];
+          const t1Lo = hhL + S1L + chL + kL + wl[i];
+          const t1H = (hhH + S1H + chH + kH + wh[i] + Math.floor(t1Lo / 0x100000000)) >>> 0;
+          const t1L = t1Lo >>> 0;
+          const S0H = (((aH>>>28)|(aL<<4)) ^ ((aL>>>2)|(aH<<30)) ^ ((aL>>>7)|(aH<<25))) >>> 0;
+          const S0L = (((aL>>>28)|(aH<<4)) ^ ((aH>>>2)|(aL<<30)) ^ ((aH>>>7)|(aL<<25))) >>> 0;
+          const majH = ((aH&bH) ^ (aH&cH) ^ (bH&cH)) >>> 0;
+          const majL = ((aL&bL) ^ (aL&cL) ^ (bL&cL)) >>> 0;
+          const t2Lo = S0L + majL;
+          const t2H = (S0H + majH + Math.floor(t2Lo / 0x100000000)) >>> 0;
+          const t2L = t2Lo >>> 0;
+
+          hhH=gH; hhL=gL; gH=fH; gL=fL; fH=eH; fL=eL;
+          const eLo = dL + t1L;
+          eH = (dH + t1H + Math.floor(eLo / 0x100000000)) >>> 0;
+          eL = eLo >>> 0;
+          dH=cH; dL=cL; cH=bH; cL=bL; bH=aH; bL=aL;
+          const aLo = t1L + t2L;
+          aH = (t1H + t2H + Math.floor(aLo / 0x100000000)) >>> 0;
+          aL = aLo >>> 0;
+        }
+
+        let lo = h[1] + aL; h[0] = (h[0] + aH + Math.floor(lo / 0x100000000)) >>> 0; h[1] = lo >>> 0;
+        lo = h[3] + bL; h[2] = (h[2] + bH + Math.floor(lo / 0x100000000)) >>> 0; h[3] = lo >>> 0;
+        lo = h[5] + cL; h[4] = (h[4] + cH + Math.floor(lo / 0x100000000)) >>> 0; h[5] = lo >>> 0;
+        lo = h[7] + dL; h[6] = (h[6] + dH + Math.floor(lo / 0x100000000)) >>> 0; h[7] = lo >>> 0;
+        lo = h[9] + eL; h[8] = (h[8] + eH + Math.floor(lo / 0x100000000)) >>> 0; h[9] = lo >>> 0;
+        lo = h[11] + fL; h[10] = (h[10] + fH + Math.floor(lo / 0x100000000)) >>> 0; h[11] = lo >>> 0;
+        lo = h[13] + gL; h[12] = (h[12] + gH + Math.floor(lo / 0x100000000)) >>> 0; h[13] = lo >>> 0;
+        lo = h[15] + hhL; h[14] = (h[14] + hhH + Math.floor(lo / 0x100000000)) >>> 0; h[15] = lo >>> 0;
+      }
+
+      function sha512StateHex(h, words) {
+        let res = '';
+        for(let i=0; i<words*2; i++) {
+          const x = h[i];
+          res += HEX_LUT[(x>>>24)&255] + HEX_LUT[(x>>>16)&255] + HEX_LUT[(x>>>8)&255] + HEX_LUT[x&255];
+        }
+        return res;
+      }
+
+      class Sha512FamilyEngine {
+        constructor(mode = 'both') {
+          this.sha384_h = mode === 'SHA-512' ? null : new Uint32Array(SHA384_IV);
+          this.sha512_h = mode === 'SHA-384' ? null : new Uint32Array(SHA512_IV);
+          this.buffer = new Uint8Array(128);
+          this.bufLen = 0;
+          this.wHi = new Uint32Array(80);
+          this.wLo = new Uint32Array(80);
+          this.bitLen0 = 0; this.bitLen1 = 0; this.bitLen2 = 0; this.bitLen3 = 0;
+          this.isHmac = false;
+          this._saveBaseState();
+        }
+
+        _saveBaseState() {
+          this.base_sha384_h = this.sha384_h ? new Uint32Array(this.sha384_h) : null;
+          this.base_sha512_h = this.sha512_h ? new Uint32Array(this.sha512_h) : null;
+          this.base_bitLen0 = this.bitLen0; this.base_bitLen1 = this.bitLen1;
+          this.base_bitLen2 = this.bitLen2; this.base_bitLen3 = this.bitLen3;
+        }
+
+        reset() {
+          if(this.sha384_h) this.sha384_h.set(this.base_sha384_h);
+          if(this.sha512_h) this.sha512_h.set(this.base_sha512_h);
+          this.bitLen0 = this.base_bitLen0; this.bitLen1 = this.base_bitLen1;
+          this.bitLen2 = this.base_bitLen2; this.bitLen3 = this.base_bitLen3;
+          this.bufLen = 0;
+        }
+
+        _addLength(n) {
+          const low = (n * 8) >>> 0;
+          const high = Math.floor(n / 0x20000000) >>> 0;
+          let sum = this.bitLen0 + low;
+          this.bitLen0 = sum >>> 0;
+          let carry = sum >= 0x100000000 ? 1 : 0;
+          sum = this.bitLen1 + high + carry;
+          this.bitLen1 = sum >>> 0;
+          carry = sum >= 0x100000000 ? 1 : 0;
+          sum = this.bitLen2 + carry;
+          this.bitLen2 = sum >>> 0;
+          carry = sum >= 0x100000000 ? 1 : 0;
+          this.bitLen3 = (this.bitLen3 + carry) >>> 0;
+        }
+
+        _process(arr, off) {
+          sha512Schedule(arr, off, this.wHi, this.wLo);
+          if(this.sha384_h) sha512Compress(this.sha384_h, this.wHi, this.wLo);
+          if(this.sha512_h) sha512Compress(this.sha512_h, this.wHi, this.wLo);
+        }
+
+        update(bytes) {
+          let offset = 0;
+          const len = bytes.length;
+          this._addLength(len);
+          if(this.bufLen > 0) {
+            const take = Math.min(128 - this.bufLen, len);
+            this.buffer.set(bytes.subarray(0, take), this.bufLen);
+            this.bufLen += take; offset += take;
+            if(this.bufLen === 128) { this._process(this.buffer, 0); this.bufLen = 0; }
+          }
+          while(offset + 128 <= len) { this._process(bytes, offset); offset += 128; }
+          if(offset < len) { this.buffer.set(bytes.subarray(offset), 0); this.bufLen = len - offset; }
+        }
+
+        initHmac(key) {
+          this.isHmac = true;
+          let K384 = key, K512 = key;
+          if(key.length > 128) {
+            const mode = this.sha384_h && this.sha512_h ? 'both' : (this.sha384_h ? 'SHA-384' : 'SHA-512');
+            const kh = new Sha512FamilyEngine(mode); kh.update(key);
+            const kr = kh._finalize();
+            if(this.sha384_h) K384 = hexToBytes(kr.sha384);
+            if(this.sha512_h) K512 = hexToBytes(kr.sha512);
+          }
+
+          const ipad = new Uint8Array(128);
+          const opad = new Uint8Array(128);
+          this.hmacOuterBlock = new Uint8Array(128);
+          if(this.sha384_h) {
+            for(let i=0; i<128; i++) {
+              const b = i < K384.length ? K384[i] : 0;
+              ipad[i] = b ^ 0x36; opad[i] = b ^ 0x5c;
+            }
+            sha512Schedule(ipad, 0, this.wHi, this.wLo);
+            sha512Compress(this.sha384_h, this.wHi, this.wLo);
+            this.opad384_h = new Uint32Array(SHA384_IV);
+            sha512Schedule(opad, 0, this.wHi, this.wLo);
+            sha512Compress(this.opad384_h, this.wHi, this.wLo);
+            this.outer384_h = new Uint32Array(16);
+          }
+          if(this.sha512_h) {
+            for(let i=0; i<128; i++) {
+              const b = i < K512.length ? K512[i] : 0;
+              ipad[i] = b ^ 0x36; opad[i] = b ^ 0x5c;
+            }
+            sha512Schedule(ipad, 0, this.wHi, this.wLo);
+            sha512Compress(this.sha512_h, this.wHi, this.wLo);
+            this.opad512_h = new Uint32Array(SHA512_IV);
+            sha512Schedule(opad, 0, this.wHi, this.wLo);
+            sha512Compress(this.opad512_h, this.wHi, this.wLo);
+            this.outer512_h = new Uint32Array(16);
+          }
+          this.bitLen0 = 1024; this.bitLen1 = 0; this.bitLen2 = 0; this.bitLen3 = 0;
+          this.bufLen = 0;
+          this._saveBaseState();
+        }
+
+        _finalize() {
+          const padLen = this.bufLen < 112 ? 128 - this.bufLen : 256 - this.bufLen;
+          const pad = new Uint8Array(padLen); pad[0] = 0x80;
+          const view = new DataView(pad.buffer);
+          view.setUint32(padLen - 16, this.bitLen3, false);
+          view.setUint32(padLen - 12, this.bitLen2, false);
+          view.setUint32(padLen - 8, this.bitLen1, false);
+          view.setUint32(padLen - 4, this.bitLen0, false);
+
+          const full = new Uint8Array(this.bufLen + padLen);
+          full.set(this.buffer.subarray(0, this.bufLen));
+          full.set(pad, this.bufLen);
+          const h384 = this.sha384_h ? new Uint32Array(this.sha384_h) : null;
+          const h512 = this.sha512_h ? new Uint32Array(this.sha512_h) : null;
+          const wh = this.wHi, wl = this.wLo;
+          for(let offset=0; offset<full.length; offset+=128) {
+            sha512Schedule(full, offset, wh, wl);
+            if(h384) sha512Compress(h384, wh, wl);
+            if(h512) sha512Compress(h512, wh, wl);
+          }
+          return {
+            sha384:h384 ? sha512StateHex(h384, 6) : null,
+            sha512:h512 ? sha512StateHex(h512, 8) : null
+          };
+        }
+
+        _finalizeHmacOuter(baseH, workH, digestHex, words) {
+          const digest = hexToBytes(digestHex);
+          const block = this.hmacOuterBlock;
+          block.fill(0);
+          block.set(digest, 0);
+          block[digest.length] = 0x80;
+          const bitLen = 1024 + digest.length * 8;
+          block[124] = (bitLen >>> 24) & 0xff; block[125] = (bitLen >>> 16) & 0xff;
+          block[126] = (bitLen >>> 8) & 0xff; block[127] = bitLen & 0xff;
+          workH.set(baseH);
+          sha512Schedule(block, 0, this.wHi, this.wLo);
+          sha512Compress(workH, this.wHi, this.wLo);
+          return sha512StateHex(workH, words);
+        }
+
+        finalizeHmacOrNormal() {
+          const r = this._finalize();
+          if(!this.isHmac) return r;
+          return {
+            sha384:this.sha384_h ? this._finalizeHmacOuter(this.opad384_h, this.outer384_h, r.sha384, 6) : null,
+            sha512:this.sha512_h ? this._finalizeHmacOuter(this.opad512_h, this.outer512_h, r.sha512, 8) : null
+          };
+        }
+      }
+
       class IncrementalHasher {
-        constructor(crc64Variant) {
+        constructor(crc64Variant, includeSha512 = true) {
           this.md5_h = new Uint32Array([0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476]);
           this.sha1_h = new Uint32Array([0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0]);
           this.sha224_h = new Uint32Array([0xc1059ed8, 0x367cd507, 0x3070dd17, 0xf70e5939, 0xffc00b31, 0x68581511, 0x64f98fa7, 0xbefa4fa4]);
           this.sha256_h = new Uint32Array([0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]);
+          this.sha512Family = includeSha512 ? new Sha512FamilyEngine() : null;
           this.crc = 0xFFFFFFFF;
           
           this.crc64Variant = crc64Variant || CRC64_VARIANTS[0];
@@ -3346,6 +3602,7 @@ const Engine = (() => {
           this.sha1_h.set(this.base_sha1_h);
           this.sha224_h.set(this.base_sha224_h);
           this.sha256_h.set(this.base_sha256_h);
+          if (this.sha512Family) this.sha512Family.reset();
           this.crc = this.base_crc;
           for (const [name, engine] of Object.entries(this.crc64Engines)) {
             engine.hi = this.base_crc64[name].hi;
@@ -3357,9 +3614,10 @@ const Engine = (() => {
 
         initHmac(key) {
           this.isHmac = true;
+          if (this.sha512Family) this.sha512Family.initHmac(key);
           let K_md5 = key, K_sha1 = key, K_sha224 = key, K_sha256 = key;
           if (key.length > 64) {
-            let kh = new IncrementalHasher('XZ (ECMA, Reflected)'); kh.update(key); let res = kh._finalize();
+            let kh = new IncrementalHasher('XZ (ECMA, Reflected)', false); kh.update(key); let res = kh._finalize();
             K_md5 = hexToBytes(res.md5); K_sha1 = hexToBytes(res.sha1);
             K_sha224 = hexToBytes(res.sha224); K_sha256 = hexToBytes(res.sha256);
           }
@@ -3380,6 +3638,7 @@ const Engine = (() => {
           this._saveBaseState();
         }
         update(bytes) {
+          if (this.sha512Family) this.sha512Family.update(bytes);
           let crc = this.crc;
           for(let i=0; i<bytes.length; i++) {
             crc = CRC32_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
@@ -3436,22 +3695,25 @@ const Engine = (() => {
           const sha1Final = this._finalizeSHA(this.sha1_h, sha1Process, 20);
           const sha224Final = this._finalizeSHA(this.sha224_h, sha256Process, 28);
           const sha256Final = this._finalizeSHA(this.sha256_h, sha256Process, 32);
+          const sha512FamilyFinal = this.sha512Family ? this.sha512Family._finalize() : { sha384:null, sha512:null };
           const crcHex = ((this.crc ^ 0xFFFFFFFF) >>> 0).toString(16).padStart(8, '0');
           const crc64All = {};
           for (const [name, engine] of Object.entries(this.crc64Engines)) crc64All[name] = engine.finalize();
           const crc64Hex = crc64All[this.crc64Variant] || crc64All[CRC64_VARIANTS[0]];
-          return { md5: md5Final, sha1: sha1Final, sha224: sha224Final, sha256: sha256Final, crc: crcHex, crc64: crc64Hex, crc64All };
+          return { md5: md5Final, sha1: sha1Final, sha224: sha224Final, sha256: sha256Final, sha384: sha512FamilyFinal.sha384, sha512: sha512FamilyFinal.sha512, crc: crcHex, crc64: crc64Hex, crc64All };
         }
         finalizeHmacOrNormal() {
           let r = this._finalize();
           if(!this.isHmac) return r;
-          let ohMD5 = new IncrementalHasher('XZ (ECMA, Reflected)'); ohMD5.update(this.opad_md5); ohMD5.update(hexToBytes(r.md5));
-          let ohSHA1 = new IncrementalHasher('XZ (ECMA, Reflected)'); ohSHA1.update(this.opad_sha1); ohSHA1.update(hexToBytes(r.sha1));
-          let ohSHA224 = new IncrementalHasher('XZ (ECMA, Reflected)'); ohSHA224.update(this.opad_sha224); ohSHA224.update(hexToBytes(r.sha224));
-          let ohSHA256 = new IncrementalHasher('XZ (ECMA, Reflected)'); ohSHA256.update(this.opad_sha256); ohSHA256.update(hexToBytes(r.sha256));
+          let ohMD5 = new IncrementalHasher('XZ (ECMA, Reflected)', false); ohMD5.update(this.opad_md5); ohMD5.update(hexToBytes(r.md5));
+          let ohSHA1 = new IncrementalHasher('XZ (ECMA, Reflected)', false); ohSHA1.update(this.opad_sha1); ohSHA1.update(hexToBytes(r.sha1));
+          let ohSHA224 = new IncrementalHasher('XZ (ECMA, Reflected)', false); ohSHA224.update(this.opad_sha224); ohSHA224.update(hexToBytes(r.sha224));
+          let ohSHA256 = new IncrementalHasher('XZ (ECMA, Reflected)', false); ohSHA256.update(this.opad_sha256); ohSHA256.update(hexToBytes(r.sha256));
+          const sha512FamilyHmac = this.sha512Family ? this.sha512Family.finalizeHmacOrNormal() : { sha384:null, sha512:null };
           return {
             md5: ohMD5._finalize().md5, sha1: ohSHA1._finalize().sha1,
             sha224: ohSHA224._finalize().sha224, sha256: ohSHA256._finalize().sha256,
+            sha384: sha512FamilyHmac.sha384, sha512: sha512FamilyHmac.sha512,
             crc: r.crc, crc64: r.crc64, crc64All: r.crc64All
           };
         }
@@ -3529,8 +3791,10 @@ const Engine = (() => {
         const u8 = new Uint8Array(hash);
         let s=''; for(let i=0;i<u8.length;i++) s+=HEX_LUT[u8[i]]; return s;
       }
-      async function hmacHexSubtle(alg, keyBytes, dataBytes) {
-        const cryptoKey = await self.crypto.subtle.importKey("raw", keyBytes, {name:"HMAC", hash:alg}, false, ["sign"]);
+      async function importHmacKeySubtle(alg, keyBytes) {
+        return self.crypto.subtle.importKey("raw", keyBytes, {name:"HMAC", hash:alg}, false, ["sign"]);
+      }
+      async function hmacHexSubtleKey(cryptoKey, dataBytes) {
         const hash = await self.crypto.subtle.sign("HMAC", cryptoKey, dataBytes);
         const u8 = new Uint8Array(hash);
         let s=''; for(let i=0;i<u8.length;i++) s+=HEX_LUT[u8[i]]; return s;
@@ -3928,17 +4192,23 @@ const Engine = (() => {
 
         if (action === 'init') {
           hasher = new IncrementalHasher(crc64Variant);
-          if(key && key.length) hasher.initHmac(key);
+          if(key) hasher.initHmac(key);
         } else if (action === 'update') {
           if(hasher) hasher.update(bytes);
         } else if (action === 'finalize') {
-          if(hasher) postMessage(hasher.finalizeHmacOrNormal());
+          if(hasher) postMessage(Object.assign({ action: 'stream_hash_result' }, hasher.finalizeHmacOrNormal()));
           hasher = null;
         } else if (action === 'hashAll') {
-          const temp = new IncrementalHasher(crc64Variant);
-          if(key && key.length) temp.initHmac(key);
+          const temp = new IncrementalHasher(crc64Variant, !(self.crypto && self.crypto.subtle));
+          if(key) temp.initHmac(key);
           temp.update(bytes);
-          postMessage(temp.finalizeHmacOrNormal());
+          postMessage(Object.assign({ action: 'hash_all_result' }, temp.finalizeHmacOrNormal()));
+        } else if (action === 'hashSha512Fallback') {
+          const temp = new Sha512FamilyEngine(algId);
+          if(key) temp.initHmac(key);
+          temp.update(bytes);
+          const result = temp.finalizeHmacOrNormal();
+          postMessage({ action: 'sha512_fallback_result', reqId, algId, hex: algId === 'SHA-384' ? result.sha384 : result.sha512 });
         } else if (action === 'verifyTest') {
           const temp = new IncrementalHasher(crc64Variant);
           temp.update(bytes);
@@ -3948,7 +4218,7 @@ const Engine = (() => {
             const mode = e.data.mode;
             if (mode === 'hash' || mode === 'hmac') {
               const temp = new IncrementalHasher(crc64Variant || CRC64_VARIANTS[0]);
-              if (mode === 'hmac' && key && key.length) temp.initHmac(key);
+              if (mode === 'hmac' && key) temp.initHmac(key);
               temp.update(bytes || new Uint8Array(0));
               postMessage({ action: 'self_test_result', reqId, status: 'ok', results: temp.finalizeHmacOrNormal() });
             } else if (mode === 'utf8') {
@@ -3990,6 +4260,24 @@ const Engine = (() => {
               try { IterationRuntime.setState(alg, 'running'); } catch (e) { invalidState = true; }
               check(invalidState, 'Runtime State Guard');
 
+              const sha512Stream = new Sha512FamilyEngine();
+              const sha512Bytes = new Uint8Array(129); sha512Bytes.fill(0x61);
+              sha512Stream.update(sha512Bytes.subarray(0, 1));
+              sha512Stream.update(sha512Bytes.subarray(1, 112));
+              sha512Stream.update(sha512Bytes.subarray(112, 128));
+              sha512Stream.update(sha512Bytes.subarray(128));
+              const sha512StreamResult = sha512Stream._finalize();
+              check(sha512StreamResult.sha384 === '39b6f5a7b0e781dbc419f72e49b30eaac10f2c98c4403bc610da31067fd1b48f324138c8615d2b496d08d73d5e865326', 'SHA-384 Stream Boundary');
+              check(sha512StreamResult.sha512 === '4f681e0bd53cda4b5a2041cc8a06f2eabde44fb16c951fbd5b87702f07aeab611565b19c47fde30587177ebb852e3971bbd8d3fd30da18d71037dfbd98420429', 'SHA-512 Stream Boundary');
+
+              const lengthEngine = new Sha512FamilyEngine('SHA-512');
+              lengthEngine._addLength(0x20000000);
+              check(lengthEngine.bitLen0 === 0 && lengthEngine.bitLen1 === 1, 'SHA-512 Length Carry');
+              lengthEngine.bitLen0 = 0xffffffff; lengthEngine.bitLen1 = 0xffffffff;
+              lengthEngine.bitLen2 = 0xffffffff; lengthEngine.bitLen3 = 0;
+              lengthEngine._addLength(1);
+              check(lengthEngine.bitLen0 === 7 && lengthEngine.bitLen1 === 0 && lengthEngine.bitLen2 === 0 && lengthEngine.bitLen3 === 1, 'SHA-512 Length Cascade Carry');
+
               postMessage({ action: 'self_test_result', reqId, status: failed.length ? 'error' : 'ok', failed });
             } else {
               throw new Error('Unknown Self Test Mode');
@@ -4019,8 +4307,9 @@ const Engine = (() => {
                     let lastDoneTarget = -1;
                     let appliedRevision = Math.max(0, Number(targetRevision) || 0);
 
-                    const isSubtle = alg === 'SHA-384' || alg === 'SHA-512';
+                    const prefersSubtle = alg === 'SHA-384' || alg === 'SHA-512';
                     const hasSubtle = !!(self.crypto && self.crypto.subtle);
+                    let useSubtle = prefersSubtle && hasSubtle;
 
                     if (alg === 'CRC64') {
                         const variantCount = CRC64_VARIANTS.length;
@@ -4195,10 +4484,15 @@ const Engine = (() => {
                     }
 
                     let temp;
-                    if (!isSubtle) {
-                        temp = new IncrementalHasher(crc64Variant);
-                        if (key && key.length) temp.initHmac(key);
-                    }
+                    let subtleHmacKey = null;
+                    const ensureManual = () => {
+                        if (!temp) {
+                            temp = prefersSubtle ? new Sha512FamilyEngine(alg) : new IncrementalHasher(crc64Variant, false);
+                            if (key) temp.initHmac(key);
+                        }
+                        return temp;
+                    };
+                    if (!useSubtle) ensureManual();
 
                     const digestBytes = DIGEST_BYTES[alg];
                     const snapshotWidth = digestBytes * (iterMode === 'xor' ? 2 : 1);
@@ -4297,18 +4591,18 @@ const Engine = (() => {
                         }
 
                         let rawHex;
-                        if (isSubtle) {
-                            if (!hasSubtle) {
-                                failTask(alg, '未対応/エラー', myGen);
-                                return;
-                            }
+                        if (useSubtle) {
                             try {
-                                rawHex = (key && key.length) 
-                                    ? await hmacHexSubtle(alg, key, payload) 
-                                    : await digestHexSubtle(alg, payload);
+                                if (key) {
+                                    if (!subtleHmacKey) subtleHmacKey = await importHmacKeySubtle(alg, key);
+                                    rawHex = await hmacHexSubtleKey(subtleHmacKey, payload);
+                                } else {
+                                    rawHex = await digestHexSubtle(alg, payload);
+                                }
                             } catch(e) {
-                                failTask(alg, 'エラー', myGen);
-                                return;
+                                useSubtle = false;
+                                subtleHmacKey = null;
+                                ensureManual();
                             }
                             if (currentTaskGen[alg] !== myGen) {
                                 const latestTask = IterationRuntime.get(alg);
@@ -4317,16 +4611,20 @@ const Engine = (() => {
                             }
                             const postAwaitTask = IterationRuntime.get(alg);
                             if (pausedTasks[alg] || (postAwaitTask && postAwaitTask.targetRevision !== appliedRevision)) continue;
-                        } else {
-                            temp.reset();
-                            temp.update(payload);
-                            const res = temp.finalizeHmacOrNormal();
+                        }
+                        if (!useSubtle) {
+                            const manual = ensureManual();
+                            manual.reset();
+                            manual.update(payload);
+                            const res = manual.finalizeHmacOrNormal();
 
                             if (alg === 'CRC32') rawHex = res.crc;
                             else if (alg === 'MD5') rawHex = res.md5;
                             else if (alg === 'SHA-1') rawHex = res.sha1;
                             else if (alg === 'SHA-224') rawHex = res.sha224;
                             else if (alg === 'SHA-256') rawHex = res.sha256;
+                            else if (alg === 'SHA-384') rawHex = res.sha384;
+                            else if (alg === 'SHA-512') rawHex = res.sha512;
                         }
 
                         const currentHashBytes = hexToBytes(rawHex);
@@ -4459,7 +4757,7 @@ const Engine = (() => {
                   AppState.crc64Results = data.crc64All;
               }
 
-              EventBus.emit('hash:results', {
+              const results = {
                   'CRC32': data.crc,
                   'CRC64':
                       (
@@ -4472,7 +4770,10 @@ const Engine = (() => {
                   'SHA-1': data.sha1,
                   'SHA-224': data.sha224,
                   'SHA-256': data.sha256
-              });
+              };
+              if (data.sha384) results['SHA-384'] = data.sha384;
+              if (data.sha512) results['SHA-512'] = data.sha512;
+              EventBus.emit('hash:results', results);
           } else if (data.crc64 && !data.md5) {
               if (data.crc64All) {
                   AppState.crc64Results = data.crc64All;
@@ -4526,6 +4827,34 @@ const Engine = (() => {
         testWorker.addEventListener('message', handler);
         testWorker.addEventListener('error', errorHandler);
         try { testWorker.postMessage({ action: 'verifyTest', bytes, crc64Variant, reqId }); }
+        catch (e) { finish(null); }
+    });
+  }
+
+  function hashSha512Manual(alg, bytes, key) {
+    return new Promise((resolve) => {
+        ensureWorker();
+        if (!hasWorker || !worker) return resolve(null);
+        const fallbackWorker = worker;
+        const reqId = Date.now() + Math.random();
+        let settled = false;
+        const finish = result => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            fallbackWorker.removeEventListener('message', handler);
+            fallbackWorker.removeEventListener('error', errorHandler);
+            resolve(result);
+        };
+        const handler = (ev) => {
+            const data = ev.data;
+            if (data.action === 'sha512_fallback_result' && data.reqId === reqId && data.algId === alg) finish(data.hex || null);
+        };
+        const errorHandler = () => finish(null);
+        const timer = setTimeout(() => finish(null), 30000);
+        fallbackWorker.addEventListener('message', handler);
+        fallbackWorker.addEventListener('error', errorHandler);
+        try { fallbackWorker.postMessage({ action: 'hashSha512Fallback', algId: alg, bytes, key, reqId }); }
         catch (e) { finish(null); }
     });
   }
@@ -4598,12 +4927,23 @@ const Engine = (() => {
                 worker.postMessage({action: 'hashAll', bytes: bytes, key: hmacKeyBytes, crc64Variant: AppState.crc64Variant});
             }
 
-            const tasks = [['SHA-1','SHA-1'], ['SHA-256','SHA-256'], ['SHA-384','SHA-384'], ['SHA-512','SHA-512']].map(async ([id, alg]) => {
+            const nativeAlgorithms = window.crypto?.subtle
+                ? [['SHA-1','SHA-1'], ['SHA-256','SHA-256'], ['SHA-384','SHA-384'], ['SHA-512','SHA-512']]
+                : [];
+            const tasks = nativeAlgorithms.map(async ([id, alg]) => {
                 try {
                     if (signal.aborted) return;
                     const hex = hmacKeyBytes ? await Core.hmacHex(alg, hmacKeyBytes, bytes) : await Core.digestHex(alg, bytes);
                     if (!signal.aborted) EventBus.emit('hash:results', {[id]: hex});
-                } catch { if (!signal.aborted) EventBus.emit('hash:results', {[id]: '未対応/エラー'}); }
+                } catch {
+                    if (signal.aborted) return;
+                    if ((id === 'SHA-384' || id === 'SHA-512') && hasWorker) {
+                        const hex = await hashSha512Manual(id, bytes, hmacKeyBytes);
+                        if (!signal.aborted) EventBus.emit('hash:results', {[id]: hex || '未対応/エラー'});
+                    } else if (!hasWorker) {
+                        EventBus.emit('hash:results', {[id]: '未対応/エラー'});
+                    }
+                }
             });
             await Promise.allSettled(tasks);
             resolve();
@@ -4615,7 +4955,7 @@ const Engine = (() => {
         }
       } else {
         if (!hasWorker || !file.stream) {
-          const errRes = {'CRC32':'サイズ超過', 'CRC64':'サイズ超過', 'MD5':'サイズ超過', 'SHA-1':'サイズ超過', 'SHA-224':'サイズ超過', 'SHA-256':'サイズ超過'};
+          const errRes = {'CRC32':'サイズ超過', 'CRC64':'サイズ超過', 'MD5':'サイズ超過', 'SHA-1':'サイズ超過', 'SHA-224':'サイズ超過', 'SHA-256':'サイズ超過', 'SHA-384':'サイズ超過', 'SHA-512':'サイズ超過'};
           if (AppState.Base64Encode) errRes['Base64-Enc'] = 'サイズ超過';
           if (AppState.Base85Encode) errRes['Base85-Enc'] = 'サイズ超過';
           EventBus.emit('hash:results', errRes); resolve(); return;
@@ -4734,7 +5074,7 @@ const Engine = (() => {
           }
 
         } catch (e) {
-          const errRes = {'CRC32':'読込エラー', 'CRC64':'読込エラー', 'MD5':'読込エラー', 'SHA-1':'読込エラー', 'SHA-224':'読込エラー', 'SHA-256':'読込エラー'};
+          const errRes = {'CRC32':'読込エラー', 'CRC64':'読込エラー', 'MD5':'読込エラー', 'SHA-1':'読込エラー', 'SHA-224':'読込エラー', 'SHA-256':'読込エラー', 'SHA-384':'読込エラー', 'SHA-512':'読込エラー'};
           EventBus.emit('hash:results', errRes);
           terminateWorker(); ensureWorker();
         } finally {
@@ -4908,6 +5248,15 @@ const SelfTest = (() => {
     }}
   ]);
 
+  const SHA512_FAMILY_VECTORS = Object.freeze([
+    { length:111, sha384:'3c37955051cb5c3026f94d551d5b5e2ac38d572ae4e07172085fed81f8466b8f90dc23a8ffcdea0b8d8e58e8fdacc80a', sha512:'fa9121c7b32b9e01733d034cfc78cbf67f926c7ed83e82200ef86818196921760b4beff48404df811b953828274461673c68d04e297b0eb7b2b4d60fc6b566a2' },
+    { length:112, sha384:'187d4e07cb306103c69967bf544d0dfbe9042577599c73c330abc0cb64c61236d5ed565ee19119d8c31779a38f791fcd', sha512:'c01d080efd492776a1c43bd23dd99d0a2e626d481e16782e75d54c2503b5dc32bd05f0f1ba33e568b88fd2d970929b719ecbb152f58f130a407c8830604b70ca' },
+    { length:113, sha384:'1d6bed01626682961b50da078a6b1da707c1da0c8a0a3226f159235bd45ed724a0622fa6f39fd70007a6c72a5cda43ae', sha512:'55ddd8ac210a6e18ba1ee055af84c966e0dbff091c43580ae1be703bdb85da31acf6948cf5bd90c55a20e5450f22fb89bd8d0085e39f85a86cc46abbca75e24d' },
+    { length:127, sha384:'9bd06b1763c2cf7aef40e795dc65bc96d59c41b537f3ad72ebdefd485476b5717c1aeb37c327fe9c1831b12b9efd08ae', sha512:'828613968b501dc00a97e08c73b118aa8876c26b8aac93df128502ab360f91bab50a51e088769a5c1eff4782ace147dce3642554199876374291f5d921629502' },
+    { length:128, sha384:'edb12730a366098b3b2beac75a3bef1b0969b15c48e2163c23d96994f8d1bef760c7e27f3c464d3829f56c0d53808b0b', sha512:'b73d1929aa615934e61a871596b3f3b33359f42b8175602e89f7e06e5f658a243667807ed300314b95cacdd579f3e33abdfbe351909519a846d465c59582f321' },
+    { length:129, sha384:'39b6f5a7b0e781dbc419f72e49b30eaac10f2c98c4403bc610da31067fd1b48f324138c8615d2b496d08d73d5e865326', sha512:'4f681e0bd53cda4b5a2041cc8a06f2eabde44fb16c951fbd5b87702f07aeab611565b19c47fde30587177ebb852e3971bbd8d3fd30da18d71037dfbd98420429' }
+  ]);
+
   const HMAC_VECTORS = Object.freeze([
     {
       name:'Short Key',
@@ -4920,6 +5269,15 @@ const SelfTest = (() => {
         'SHA-256':'5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843',
         'SHA-384':'af45d2e376484031617f78d2b58a6b1b9c7ef464f5a01b47e42ec3736322445e8e2240ca5e69e2c78b3239ecfab21649',
         'SHA-512':'164b7a7bfcf819e2e395fbe73b56e0a387bd64222e831fd610270cd7ea2505549758bf75c05a994a6d034f65f8f0e6fdcaeab1a34d4a6b4b636e070a38bce737'
+      }
+    },
+    {
+      name:'Block Key 128',
+      keyHex:'aa'.repeat(128),
+      dataHex:'4869205468657265',
+      expect:{
+        'SHA-384':'5617c36d768eff4cdb4b48c3a320023adfa5deed39a88d75a739918c36338d6afe214107be6e51595c2f29d647bde45f',
+        'SHA-512':'17eb09b3d3c0f3ac497c608347e1d5b5df5e4b062bfd56c191c8499f24a3a9d1c3dfb449d01f4c9ca316b6b8d6a6299bad883d0bffe11c88c60d7daed6feeb48'
       }
     },
     {
@@ -4943,6 +5301,18 @@ const SelfTest = (() => {
       }
     }
   ]);
+
+  const EMPTY_HMAC_VECTOR = Object.freeze({
+    dataHex:'616263',
+    expect:{
+      'MD5':'dd2701993d29fdd0b032c233cec63403',
+      'SHA-1':'9b4a918f398d74d3e367970aba3cbe54e4d2b5d9',
+      'SHA-224':'d473c456fa6aad72bbec9c6ad63ca92d8675caa0b7f451fa4b692081',
+      'SHA-256':'fd7adb152c05ef80dccf50a1fa4c05d5a3ec6da95575fc312ae7c5d091836351',
+      'SHA-384':'948f7c5caa500c31d7d4a0f52f3e3da7e33c8a9fe6ef528b8a9ac3e4adc4e24d908e6f40b737510e82354759dc5e9f06',
+      'SHA-512':'29689f6b79a8dd686068c2eeae97fd8769ad3ba65cb5381f838358a8045a358ee3ba1739c689c7805e31734fb6072f87261d1256995370d55725cba00d10bdd0'
+    }
+  });
 
   const UTF8_CASES = Object.freeze([
     '',
@@ -5053,6 +5423,8 @@ const SelfTest = (() => {
         add(report, 'HASH', `Worker SHA-1 / ${name}`, workerResult.results.sha1, vector.expect['SHA-1']);
         add(report, 'HASH', `Worker SHA-224 / ${name}`, workerResult.results.sha224, vector.expect['SHA-224']);
         add(report, 'HASH', `Worker SHA-256 / ${name}`, workerResult.results.sha256, vector.expect['SHA-256']);
+        add(report, 'HASH', `Worker SHA-384 / ${name}`, workerResult.results.sha384, vector.expect['SHA-384']);
+        add(report, 'HASH', `Worker SHA-512 / ${name}`, workerResult.results.sha512, vector.expect['SHA-512']);
       }
 
       if (window.crypto?.subtle) {
@@ -5066,6 +5438,20 @@ const SelfTest = (() => {
         }
       } else {
         addSkip(report, 'HASH', `WebCrypto / ${name}`, 'Web Crypto API未対応');
+      }
+    }
+
+
+    for (const vector of SHA512_FAMILY_VECTORS) {
+      await step(control, 'SHA-512 FAMILY', `${vector.length} Bytes`);
+      const bytes = new Uint8Array(vector.length);
+      bytes.fill(0x61);
+      const workerResult = await Engine.runWorkerSelfTest('hash', { bytes, crc64Variant:CRC64_VARIANTS[0] });
+      if (!workerResult || workerResult.status !== 'ok' || !workerResult.results) {
+        addFailure(report, 'SHA-512 FAMILY', `Worker / ${vector.length} Bytes`, workerResult?.error || 'Worker Error');
+      } else {
+        add(report, 'SHA-512 FAMILY', `Worker SHA-384 / ${vector.length} Bytes`, workerResult.results.sha384, vector.sha384);
+        add(report, 'SHA-512 FAMILY', `Worker SHA-512 / ${vector.length} Bytes`, workerResult.results.sha512, vector.sha512);
       }
     }
 
@@ -5101,6 +5487,8 @@ const SelfTest = (() => {
         if (vector.expect['SHA-1']) add(report, 'HMAC', `Worker SHA-1 / ${vector.name}`, workerResult.results.sha1, vector.expect['SHA-1']);
         if (vector.expect['SHA-224']) add(report, 'HMAC', `Worker SHA-224 / ${vector.name}`, workerResult.results.sha224, vector.expect['SHA-224']);
         if (vector.expect['SHA-256']) add(report, 'HMAC', `Worker SHA-256 / ${vector.name}`, workerResult.results.sha256, vector.expect['SHA-256']);
+        if (vector.expect['SHA-384']) add(report, 'HMAC', `Worker SHA-384 / ${vector.name}`, workerResult.results.sha384, vector.expect['SHA-384']);
+        if (vector.expect['SHA-512']) add(report, 'HMAC', `Worker SHA-512 / ${vector.name}`, workerResult.results.sha512, vector.expect['SHA-512']);
       }
 
       if (vector.expect['MD5']) add(report, 'HMAC', `Core MD5 / ${vector.name}`, Core.hmacMd5Hex(key, data), vector.expect['MD5']);
@@ -5119,6 +5507,25 @@ const SelfTest = (() => {
         addSkip(report, 'HMAC', `WebCrypto / ${vector.name}`, 'Web Crypto API未対応');
       }
     }
+
+    await step(control, 'HMAC', 'Empty Key');
+    const emptyKey = new Uint8Array(0);
+    const emptyData = Core.hexToBytes(EMPTY_HMAC_VECTOR.dataHex);
+    const emptyResult = await Engine.runWorkerSelfTest('hmac', { key:emptyKey, bytes:emptyData, crc64Variant:CRC64_VARIANTS[0] });
+    if (!emptyResult) {
+      addSkip(report, 'HMAC', 'Worker / Empty Key', 'Worker未対応');
+    } else if (emptyResult.status !== 'ok' || !emptyResult.results) {
+      addFailure(report, 'HMAC', 'Worker / Empty Key', emptyResult.error || 'Worker Error');
+    } else {
+      add(report, 'HMAC', 'Worker MD5 / Empty Key', emptyResult.results.md5, EMPTY_HMAC_VECTOR.expect['MD5']);
+      add(report, 'HMAC', 'Worker SHA-1 / Empty Key', emptyResult.results.sha1, EMPTY_HMAC_VECTOR.expect['SHA-1']);
+      add(report, 'HMAC', 'Worker SHA-224 / Empty Key', emptyResult.results.sha224, EMPTY_HMAC_VECTOR.expect['SHA-224']);
+      add(report, 'HMAC', 'Worker SHA-256 / Empty Key', emptyResult.results.sha256, EMPTY_HMAC_VECTOR.expect['SHA-256']);
+      add(report, 'HMAC', 'Worker SHA-384 / Empty Key', emptyResult.results.sha384, EMPTY_HMAC_VECTOR.expect['SHA-384']);
+      add(report, 'HMAC', 'Worker SHA-512 / Empty Key', emptyResult.results.sha512, EMPTY_HMAC_VECTOR.expect['SHA-512']);
+    }
+    add(report, 'HMAC', 'Core MD5 / Empty Key', Core.hmacMd5Hex(emptyKey, emptyData), EMPTY_HMAC_VECTOR.expect['MD5']);
+    add(report, 'HMAC', 'Core SHA-224 / Empty Key', Core.hmacSha224Hex(emptyKey, emptyData), EMPTY_HMAC_VECTOR.expect['SHA-224']);
   }
 
   async function runUtf8Tests(report, control) {
@@ -6212,17 +6619,6 @@ const UI = (() => {
     if (!window.crypto || !window.crypto.subtle) {
         const warnEl = document.getElementById('sec-warn');
         if(warnEl) warnEl.style.display = 'block';
-        
-        const row384 = document.getElementById('label-SHA-384');
-        const row512 = document.getElementById('label-SHA-512');
-        if(row384 && row384.parentElement) {
-            row384.parentElement.style.opacity = '0.4';
-            row384.parentElement.style.pointerEvents = 'none';
-        }
-        if(row512 && row512.parentElement) {
-            row512.parentElement.style.opacity = '0.4';
-            row512.parentElement.style.pointerEvents = 'none';
-        }
     }
   }
 
@@ -6552,7 +6948,7 @@ function showToast(msg, duration = TOAST_DURATION) {
         `日付: ${dateStr}`
       ];
       
-      if (!window.crypto?.subtle) parts.unshift('【 警告: Web Crypto API 利用不可 - SHA-384 / SHA-512 無効 】');
+      if (!window.crypto?.subtle) parts.unshift('【 Web Crypto は無効です 】');
       if (window.__ZESS_MODE__) {
         const zessStorage = Security.getStorageIsolationStatus();
         if (zessStorage.complete) {
@@ -6818,7 +7214,7 @@ function showToast(msg, duration = TOAST_DURATION) {
     const separatorLabel = JSON.stringify(AppState.separator);
     let activeOpts = [];
     if (AppState.salt) activeOpts.push('Salt適用');
-    if (AppState.hmacKey) activeOpts.push('HMAC稼働');
+    if (AppState.showHmac) activeOpts.push('HMAC稼働');
     activeOpts.push(`CRC64: ${AppState.crc64Variant}`);
     if (AppState.Base64Decode) activeOpts.push(`Base64判定: ${AppState.base64Strict ? '厳格' : '寛容'}`);
     if (AppState.Base85Encode || AppState.Base85Decode) activeOpts.push(`Base85: ${AppState.base85Variant}`);
@@ -6836,7 +7232,7 @@ function showToast(msg, duration = TOAST_DURATION) {
     AppState.currentEntropy = null;
     AppState.salt = els.saltIn.value;
     AppState.hmacKey = els.hmacIn.value;
-    const isHmac = !!AppState.hmacKey;
+    const isHmac = AppState.showHmac;
     document.getElementById('label-MD5').textContent = isHmac ? 'HMAC-MD5' : 'MD5';
     document.getElementById('label-SHA-1').textContent = isHmac ? 'HMAC-SHA1' : 'SHA-1';
     document.getElementById('label-SHA-224').textContent = isHmac ? 'HMAC-SHA224' : 'SHA-224';
@@ -6845,7 +7241,7 @@ function showToast(msg, duration = TOAST_DURATION) {
     document.getElementById('label-SHA-512').textContent = isHmac ? 'HMAC-SHA512' : 'SHA-512';
 
     const saltBytes = AppState.salt ? Core.utf8Encode(AppState.salt) : null;
-    const hmacKeyBytes = AppState.hmacKey ? Core.utf8Encode(AppState.hmacKey) : null;
+    const hmacKeyBytes = AppState.showHmac ? Core.utf8Encode(AppState.hmacKey) : null;
 
     let bytesToHash;
     let isFile = false;
@@ -6875,7 +7271,7 @@ function showToast(msg, duration = TOAST_DURATION) {
       }
       const v = Core.normalizeText(cleaned, AppState.normalization);
       if (!v) {
-        if (AppState.salt || AppState.hmacKey || forceEmptyHashOnce) {
+        if (AppState.salt || AppState.showHmac || forceEmptyHashOnce) {
           isEmptyInput = true;
           bytesToHash = new Uint8Array(0);
           displayCount = 0;
@@ -6957,14 +7353,7 @@ function showToast(msg, duration = TOAST_DURATION) {
 
     if (isFile) {
       const isSmallFile = AppState.currentFile.size <= 10 * 1024 * 1024;
-      const idsToClear = ['CRC32', 'CRC64', 'MD5', 'SHA-1', 'SHA-224', 'SHA-256'];
-      if (!isSmallFile) {
-          queueRender('SHA-384', 'サイズ超過（10MB以下のみ）', 1, 1, true);
-          queueRender('SHA-512', 'サイズ超過（10MB以下のみ）', 1, 1, true);
-          idsToClear.push('Base64-Enc', 'Base85-Enc');
-      } else {
-          idsToClear.push('SHA-384', 'SHA-512', 'Base64-Enc', 'Base85-Enc');
-      }
+      const idsToClear = ['CRC32', 'CRC64', 'MD5', 'SHA-1', 'SHA-224', 'SHA-256', 'SHA-384', 'SHA-512', 'Base64-Enc', 'Base85-Enc'];
       if (AppState.Base64Decode) queueRender('Base64-Dec', 'ファイル非対応', 1, 1, true);
       if (AppState.Base85Decode) queueRender('Base85-Dec', 'ファイル非対応', 1, 1, true);
       
@@ -7315,7 +7704,7 @@ async function detectBase85Variants(input) {
       els.saltIn.value = AppState.salt;
       els.hmacIn.value = AppState.hmacKey;
       AppState.showSalt = !!AppState.salt;
-      AppState.showHmac = !!AppState.hmacKey;
+      AppState.showHmac = cfg.hmac !== undefined && cfg.hmac !== null;
       els.saltToggleBtn.textContent = `Salt: ${AppState.showSalt ? 'オン' : 'オフ'}`;
       els.hmacToggleBtn.textContent = `HMAC: ${AppState.showHmac ? 'オン' : 'オフ'}`;
       els.saltIn.style.display = AppState.showSalt ? 'inline-block' : 'none';
@@ -7385,7 +7774,6 @@ async function detectBase85Variants(input) {
         let skipped = 0;
         const failed = [];
         for (const [id, expectedValue] of Object.entries(test.surfaceExpect)) {
-          if ((id === 'SHA-384' || id === 'SHA-512') && !window.crypto?.subtle) { skipped++; continue; }
           total++;
           const el = document.getElementById(id);
           const actualValue = el ? ResultSurface.actual(el) : '';
@@ -7428,10 +7816,14 @@ async function detectBase85Variants(input) {
         'MD5': resultsRaw.md5,
         'SHA-1': resultsRaw.sha1,
         'SHA-224': resultsRaw.sha224,
-        'SHA-256': resultsRaw.sha256
+        'SHA-256': resultsRaw.sha256,
+        'SHA-384': resultsRaw.sha384,
+        'SHA-512': resultsRaw.sha512
       };
-      results['SHA-384'] = await Core.safeAsync(() => Core.digestHex('SHA-384', bytes), '未対応/エラー');
-      results['SHA-512'] = await Core.safeAsync(() => Core.digestHex('SHA-512', bytes), '未対応/エラー');
+      if (window.crypto?.subtle) {
+        results['SHA-384'] = await Core.safeAsync(() => Core.digestHex('SHA-384', bytes), resultsRaw.sha384);
+        results['SHA-512'] = await Core.safeAsync(() => Core.digestHex('SHA-512', bytes), resultsRaw.sha512);
+      }
 
       let ok = 0;
       let total = 0;
@@ -7442,7 +7834,6 @@ async function detectBase85Variants(input) {
         if (k === 'CRC64') expectedValue = expected.CRC64?.[AppState.crc64Variant];
         else expectedValue = expected[k];
         if (expectedValue === undefined) continue;
-        if ((k === 'SHA-384' || k === 'SHA-512') && !window.crypto?.subtle) { skipped++; continue; }
         total++;
         const actualValue = String(results[k] || '').toLowerCase();
         const wantedValue = String(expectedValue).toLowerCase();
@@ -7647,7 +8038,8 @@ async function detectBase85Variants(input) {
                 els.hmacToggleBtn.textContent = `HMAC: ${AppState.showHmac ? 'オン' : 'オフ'}`;
                 els.hmacIn.style.display = AppState.showHmac ? 'block' : 'none';
                 els.advInputs.style.display = (AppState.showSalt || AppState.showHmac) ? 'flex' : 'none';
-                if (!AppState.showHmac) { els.hmacIn.value = ''; AppState.hmacKey = ''; scheduleUpdate(); }
+                if (!AppState.showHmac) { els.hmacIn.value = ''; AppState.hmacKey = ''; }
+                scheduleUpdate();
                 break;
             }
 
@@ -7941,7 +8333,7 @@ async function detectBase85Variants(input) {
                     '- **製造:** ソニーグループ株式会社 / インターナショナル・ビジネス・マシーンズ・コーポレーション（IBM） 2026',
                     window.__ZESS_MODE__ ? '- **ZESS:** ZERO-EGRESS STATELESS SANDBOX 隔離環境にて稼働中' : '',
                     window.__ZESS_MODE__ && zessStorage && !zessStorage.complete ? `- **【警告】** ZESS Storage 隔離不完全 — ${zessStorageDetail}` : '',
-                    !window.crypto?.subtle ? '- **【警告】** Web Crypto API 利用不可 — SHA-384 / SHA-512 無効' : '',
+                    !window.crypto?.subtle ? '- **Web Crypto:** 無効' : '',
                     
                     '\n## 1. システム／環境情報\n```text',
                     await SysUtils.deviceInfo(),
@@ -7963,7 +8355,7 @@ async function detectBase85Variants(input) {
                     `| 反復回数（目標） | ${els.iterIn.value} 回 |`,
                     `| 反復モード | ${iterModeStr} |`,
                     `| Salt | \`${AppState.salt || '（未設定）'}\` |`,
-                    `| HMAC Key | ${AppState.hmacKey ? '設定済み（値は監査レポートに記録しません）' : '（未設定）'} |`,
+                    `| HMAC Key | ${AppState.showHmac ? '設定済み（値は監査レポートに記録しません）' : '（未設定）'} |`,
                     `| CRC64 モード | ${AppState.crc64Variant} |`,
                     `| Base64 判定 | ${AppState.base64Strict ? '厳格' : '寛容'} |`,
                     `| Base85 モード | ${AppState.base85Variant} |`,
@@ -8026,7 +8418,7 @@ async function detectBase85Variants(input) {
                         fmt = `\`${esc(el.textContent)}\``;
                     }
                     
-                    const prefix = (AppState.hmacKey && !id.includes('Base') && !id.includes('CRC')) ? `HMAC-${id}` : id;
+                    const prefix = (AppState.showHmac && !id.includes('Base') && !id.includes('CRC')) ? `HMAC-${id}` : id;
                     
                     tableFmt.push(`| **${prefix}** | ${progressText} | ${fmt} |`);
                     tableRaw.push(`| **${prefix}** | ${progressText} | ${raw} |`);
