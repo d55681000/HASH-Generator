@@ -7,7 +7,7 @@
 <script>
   const zessParam = new URLSearchParams(location.search).get('U-571');
   if(zessParam === '1' || location.hash === '#U-571') {
-    document.write('<meta http-equiv="Content-Security-Policy" content="default-src \'self\'; script-src \'self\' \'unsafe-inline\' blob:; style-src \'self\' \'unsafe-inline\'; worker-src \'self\' blob:; connect-src \'none\'; object-src \'none\'; base-uri \'none\'; frame-ancestors \'none\';">');
+    document.write('<meta http-equiv="Content-Security-Policy" content="default-src \'self\'; script-src \'self\' \'unsafe-inline\' blob:; style-src \'self\' \'unsafe-inline\'; worker-src \'self\' blob:; img-src \'self\' data:; connect-src \'none\'; object-src \'none\'; base-uri \'none\'; frame-ancestors \'none\';">');
     window.__ZESS_MODE__ = true;
   } else {
     document.write('<meta http-equiv="Content-Security-Policy" content="default-src \'self\'; script-src \'self\' \'unsafe-inline\' blob:; style-src \'self\' \'unsafe-inline\'; worker-src \'self\' blob:; img-src \'self\' data:; connect-src \'self\' https://api.ipify.org https://worldtimeapi.org https://ipapi.co https://ipinfo.io https://ip-api.com https://ipwho.is https://www.cloudflare.com; object-src \'none\'; base-uri \'none\'; frame-ancestors \'none\';">');
@@ -917,9 +917,9 @@ const Security = (() => {
         storageIsolation.sessionStorage = false;
       }
 
-      if (navigator.serviceWorker) navigator.serviceWorker.getRegistrations().then(r => r.forEach(x => x.unregister()));
-      if (window.caches) { try { caches.keys().then(k => k.forEach(name => caches.delete(name))); } catch(e){} }
-      if (window.indexedDB && window.indexedDB.databases) { try { indexedDB.databases().then(dbs => dbs.forEach(db => indexedDB.deleteDatabase(db.name))); } catch(e){} }
+      if (navigator.serviceWorker) { try { navigator.serviceWorker.getRegistrations().then(r => r.forEach(x => x.unregister().catch(() => {}))).catch(() => {}); } catch(e){} }
+      if (window.caches) { try { caches.keys().then(k => k.forEach(name => caches.delete(name).catch(() => {}))).catch(() => {}); } catch(e){} }
+      if (location.origin !== 'null' && window.indexedDB && window.indexedDB.databases) { try { indexedDB.databases().then(dbs => dbs.forEach(db => indexedDB.deleteDatabase(db.name))).catch(() => {}); } catch(e){} }
     }
     initDomGuard();
   }
@@ -1493,14 +1493,24 @@ const Core = (() => {
       if (c < 0x80) {
         if (c >= 0x00 && c <= 0x1F && c !== 0x09 && c !== 0x0A && c !== 0x0D) throw new Error('binary');
         str += String.fromCharCode(c);
-      } else if ((c >> 5) === 0x06) {
+      } else if (c >= 0xC2 && c <= 0xDF) {
+        if (i >= bytes.length) throw new Error('binary');
         let c2 = bytes[i++];
+        if ((c2 & 0xC0) !== 0x80) throw new Error('binary');
         str += String.fromCharCode(((c & 0x1F) << 6) | (c2 & 0x3F));
-      } else if ((c >> 4) === 0x0E) {
+      } else if (c >= 0xE0 && c <= 0xEF) {
+        if (i + 1 >= bytes.length) throw new Error('binary');
         let c2 = bytes[i++], c3 = bytes[i++];
+        if ((c2 & 0xC0) !== 0x80 || (c3 & 0xC0) !== 0x80) throw new Error('binary');
+        if (c === 0xE0 && c2 < 0xA0) throw new Error('binary');
+        if (c === 0xED && c2 >= 0xA0) throw new Error('binary');
         str += String.fromCharCode(((c & 0x0F) << 12) | ((c2 & 0x3F) << 6) | (c3 & 0x3F));
-      } else if ((c >> 3) === 0x1E) {
+      } else if (c >= 0xF0 && c <= 0xF4) {
+        if (i + 2 >= bytes.length) throw new Error('binary');
         let c2 = bytes[i++], c3 = bytes[i++], c4 = bytes[i++];
+        if ((c2 & 0xC0) !== 0x80 || (c3 & 0xC0) !== 0x80 || (c4 & 0xC0) !== 0x80) throw new Error('binary');
+        if (c === 0xF0 && c2 < 0x90) throw new Error('binary');
+        if (c === 0xF4 && c2 >= 0x90) throw new Error('binary');
         let cp = ((c & 0x07) << 18) | ((c2 & 0x3F) << 12) | ((c3 & 0x3F) << 6) | (c4 & 0x3F);
         cp -= 0x10000;
         str += String.fromCharCode(0xD800 | (cp >> 10), 0xDC00 | (cp & 0x3FF));
@@ -2188,8 +2198,10 @@ const SysUtils = (() => {
       { url:'https://ip-api.com/json/?fields=status,countryCode,region,regionName,city,zip,isp,org,as', pick:j=>({cc:j.countryCode, region:j.regionName, code:j.region, city:j.city, postal:j.zip, isp:j.isp||j.org||j.as}) }
     ];
     for(const p of providers){
+      if(!AppState.geoEnabled) return '照会オフ';
       try{
         const raw = await fetchJson(p.url, timeoutMs);
+        if(!AppState.geoEnabled) return '照会オフ';
         const d = p.pick(raw);
         const cc = String(d.cc||'').toUpperCase();
         if(cc==='JP'){
@@ -2213,6 +2225,7 @@ const SysUtils = (() => {
         }
       }catch(_){}
     }
+    if(!AppState.geoEnabled) return '照会オフ';
     AppState.geoLabel = '不明';
     AppState.geoTs = now;
     return AppState.geoLabel;
@@ -2346,21 +2359,37 @@ const Base64Engine = (() => {
       for (let i = 0; i < 64; i++) Base64_MAP[Base64_CHARS.charCodeAt(i)] = i;
 
       function _manualUtf8Decode(bytes) {
-        let str = ''; let i = 0;
+        let str = '';
+        let i = 0;
         while (i < bytes.length) {
           let c = bytes[i++];
           if (c < 0x80) {
             if (c >= 0x00 && c <= 0x1F && c !== 0x09 && c !== 0x0A && c !== 0x0D) throw new Error('binary');
             str += String.fromCharCode(c);
-          } else if ((c >> 5) === 0x06) {
-            let c2 = bytes[i++]; str += String.fromCharCode(((c & 0x1F) << 6) | (c2 & 0x3F));
-          } else if ((c >> 4) === 0x0E) {
-            let c2 = bytes[i++], c3 = bytes[i++]; str += String.fromCharCode(((c & 0x0F) << 12) | ((c2 & 0x3F) << 6) | (c3 & 0x3F));
-          } else if ((c >> 3) === 0x1E) {
+          } else if (c >= 0xC2 && c <= 0xDF) {
+            if (i >= bytes.length) throw new Error('binary');
+            let c2 = bytes[i++];
+            if ((c2 & 0xC0) !== 0x80) throw new Error('binary');
+            str += String.fromCharCode(((c & 0x1F) << 6) | (c2 & 0x3F));
+          } else if (c >= 0xE0 && c <= 0xEF) {
+            if (i + 1 >= bytes.length) throw new Error('binary');
+            let c2 = bytes[i++], c3 = bytes[i++];
+            if ((c2 & 0xC0) !== 0x80 || (c3 & 0xC0) !== 0x80) throw new Error('binary');
+            if (c === 0xE0 && c2 < 0xA0) throw new Error('binary');
+            if (c === 0xED && c2 >= 0xA0) throw new Error('binary');
+            str += String.fromCharCode(((c & 0x0F) << 12) | ((c2 & 0x3F) << 6) | (c3 & 0x3F));
+          } else if (c >= 0xF0 && c <= 0xF4) {
+            if (i + 2 >= bytes.length) throw new Error('binary');
             let c2 = bytes[i++], c3 = bytes[i++], c4 = bytes[i++];
-            let cp = ((c & 0x07) << 18) | ((c2 & 0x3F) << 12) | ((c3 & 0x3F) << 6) | (c4 & 0x3F); cp -= 0x10000;
+            if ((c2 & 0xC0) !== 0x80 || (c3 & 0xC0) !== 0x80 || (c4 & 0xC0) !== 0x80) throw new Error('binary');
+            if (c === 0xF0 && c2 < 0x90) throw new Error('binary');
+            if (c === 0xF4 && c2 >= 0x90) throw new Error('binary');
+            let cp = ((c & 0x07) << 18) | ((c2 & 0x3F) << 12) | ((c3 & 0x3F) << 6) | (c4 & 0x3F);
+            cp -= 0x10000;
             str += String.fromCharCode(0xD800 | (cp >> 10), 0xDC00 | (cp & 0x3FF));
-          } else { throw new Error('binary'); }
+          } else {
+            throw new Error('binary');
+          }
         }
         return str;
       }
@@ -2482,22 +2511,41 @@ const Base64Engine = (() => {
 
   function run(action, payload, detectFile = false, strict = false) {
     return new Promise((resolve) => {
-      init();
+      try { init(); }
+      catch (e) { resolve({ type: 'error', message: e?.message || 'Base64 Worker Error' }); return; }
+
+      const targetWorker = worker;
       const reqId = Date.now() + Math.random();
+      let settled = false;
+      const finish = result => {
+        if (settled) return;
+        settled = true;
+        targetWorker.removeEventListener('message', handler);
+        targetWorker.removeEventListener('error', errorHandler);
+        resolve(result);
+      };
       const handler = (e) => {
         if(e.data.reqId === reqId) {
-          worker.removeEventListener('message', handler);
-          if(e.data.status === 'ok') resolve(e.data.result);
-          else resolve({ type: 'error', message: e.data.error });
+          if(e.data.status === 'ok') finish(e.data.result);
+          else finish({ type: 'error', message: e.data.error });
         }
       };
-      worker.addEventListener('message', handler);
-      
-      if(action === 'encode' || action === 'encode_stream') {
-        const copy = new Uint8Array(payload).buffer;
-        worker.postMessage({ action, payload: new Uint8Array(copy), reqId }, [copy]);
-      } else {
-        worker.postMessage({ action, payload, detectFile, strict, reqId });
+      const errorHandler = () => {
+        if (worker === targetWorker) { targetWorker.terminate(); worker = null; }
+        finish({ type: 'error', message: 'Base64 Worker Error' });
+      };
+      targetWorker.addEventListener('message', handler);
+      targetWorker.addEventListener('error', errorHandler);
+
+      try {
+        if(action === 'encode' || action === 'encode_stream') {
+          const copy = new Uint8Array(payload).buffer;
+          targetWorker.postMessage({ action, payload: new Uint8Array(copy), reqId }, [copy]);
+        } else {
+          targetWorker.postMessage({ action, payload, detectFile, strict, reqId });
+        }
+      } catch (e) {
+        finish({ type: 'error', message: e?.message || 'Base64 Worker Error' });
       }
     });
   }
@@ -2554,8 +2602,19 @@ const Base85Engine = (() => {
 
         clean = clean.replace(/\\s+/g, '');
         if (isAscii85) {
-            clean = clean.replace(/z/g, '!!!!!');
-            clean = clean.replace(/y/g, '+<VdL');
+            let expanded = '';
+            let groupPos = 0;
+            for (let i = 0; i < clean.length; i++) {
+              const ch = clean[i];
+              if (ch === 'z' || ch === 'y') {
+                if (groupPos !== 0) throw new Error('Invalid Base85 Shorthand Position');
+                expanded += ch === 'z' ? '!!!!!' : '+<VdL';
+              } else {
+                expanded += ch;
+                groupPos = (groupPos + 1) % 5;
+              }
+            }
+            clean = expanded;
         }
         
         if (!clean) return new Uint8Array(0);
@@ -2613,14 +2672,24 @@ const Base85Engine = (() => {
           if (c < 0x80) {
             if (c >= 0x00 && c <= 0x1F && c !== 0x09 && c !== 0x0A && c !== 0x0D) throw new Error('binary');
             str += String.fromCharCode(c);
-          } else if ((c >> 5) === 0x06) {
+          } else if (c >= 0xC2 && c <= 0xDF) {
+            if (i >= bytes.length) throw new Error('binary');
             let c2 = bytes[i++];
+            if ((c2 & 0xC0) !== 0x80) throw new Error('binary');
             str += String.fromCharCode(((c & 0x1F) << 6) | (c2 & 0x3F));
-          } else if ((c >> 4) === 0x0E) {
+          } else if (c >= 0xE0 && c <= 0xEF) {
+            if (i + 1 >= bytes.length) throw new Error('binary');
             let c2 = bytes[i++], c3 = bytes[i++];
+            if ((c2 & 0xC0) !== 0x80 || (c3 & 0xC0) !== 0x80) throw new Error('binary');
+            if (c === 0xE0 && c2 < 0xA0) throw new Error('binary');
+            if (c === 0xED && c2 >= 0xA0) throw new Error('binary');
             str += String.fromCharCode(((c & 0x0F) << 12) | ((c2 & 0x3F) << 6) | (c3 & 0x3F));
-          } else if ((c >> 3) === 0x1E) {
+          } else if (c >= 0xF0 && c <= 0xF4) {
+            if (i + 2 >= bytes.length) throw new Error('binary');
             let c2 = bytes[i++], c3 = bytes[i++], c4 = bytes[i++];
+            if ((c2 & 0xC0) !== 0x80 || (c3 & 0xC0) !== 0x80 || (c4 & 0xC0) !== 0x80) throw new Error('binary');
+            if (c === 0xF0 && c2 < 0x90) throw new Error('binary');
+            if (c === 0xF4 && c2 >= 0x90) throw new Error('binary');
             let cp = ((c & 0x07) << 18) | ((c2 & 0x3F) << 12) | ((c3 & 0x3F) << 6) | (c4 & 0x3F);
             cp -= 0x10000;
             str += String.fromCharCode(0xD800 | (cp >> 10), 0xDC00 | (cp & 0x3FF));
@@ -2689,21 +2758,41 @@ const Base85Engine = (() => {
 
   function run(action, payload, variant, detectFile = false) {
     return new Promise((resolve) => {
-      init();
+      try { init(); }
+      catch (e) { resolve({ type: 'error', message: e?.message || 'Base85 Worker Error' }); return; }
+
+      const targetWorker = worker;
       const reqId = Date.now() + Math.random();
+      let settled = false;
+      const finish = result => {
+        if (settled) return;
+        settled = true;
+        targetWorker.removeEventListener('message', handler);
+        targetWorker.removeEventListener('error', errorHandler);
+        resolve(result);
+      };
       const handler = (e) => {
         if(e.data.reqId === reqId) {
-          worker.removeEventListener('message', handler);
-          if(e.data.status === 'ok') resolve(e.data.result);
-          else resolve({ type: 'error', message: e.data.error });
+          if(e.data.status === 'ok') finish(e.data.result);
+          else finish({ type: 'error', message: e.data.error });
         }
       };
-      worker.addEventListener('message', handler);
-      if(action === 'encode' || action === 'encode_stream') {
-        const copy = new Uint8Array(payload).buffer;
-        worker.postMessage({ action, payload: new Uint8Array(copy), variant, reqId }, [copy]);
-      } else {
-        worker.postMessage({ action, payload, variant, detectFile, reqId });
+      const errorHandler = () => {
+        if (worker === targetWorker) { targetWorker.terminate(); worker = null; }
+        finish({ type: 'error', message: 'Base85 Worker Error' });
+      };
+      targetWorker.addEventListener('message', handler);
+      targetWorker.addEventListener('error', errorHandler);
+
+      try {
+        if(action === 'encode' || action === 'encode_stream') {
+          const copy = new Uint8Array(payload).buffer;
+          targetWorker.postMessage({ action, payload: new Uint8Array(copy), variant, reqId }, [copy]);
+        } else {
+          targetWorker.postMessage({ action, payload, variant, detectFile, reqId });
+        }
+      } catch (e) {
+        finish({ type: 'error', message: e?.message || 'Base85 Worker Error' });
       }
     });
   }
@@ -2731,6 +2820,7 @@ const BaseRenderGate = (() => {
     'Base85-Enc': 0,
     'Base85-Dec': 0
   };
+  let pending = 0;
 
   function issue(id) {
     if (!Object.prototype.hasOwnProperty.call(revisions, id)) return 0;
@@ -2747,7 +2837,14 @@ const BaseRenderGate = (() => {
     for (const id of Object.keys(revisions)) revisions[id]++;
   }
 
-  return { issue, isCurrent, invalidateAll };
+  function track(promise) {
+    pending++;
+    return Promise.resolve(promise).finally(() => { pending = Math.max(0, pending - 1); });
+  }
+
+  function hasPending() { return pending > 0; }
+
+  return { issue, isCurrent, invalidateAll, track, hasPending };
 })();
 
 /* =========================================================
@@ -4409,16 +4506,27 @@ const Engine = (() => {
   
   function verifyTestBytes(bytes, crc64Variant) {
     return new Promise((resolve) => {
-        if (!hasWorker) return resolve(null);
+        if (!hasWorker || !worker) return resolve(null);
+        const testWorker = worker;
         const reqId = Date.now() + Math.random();
-        const handler = (ev) => {
-            if (ev.data.action === 'verify_result' && ev.data.reqId === reqId) {
-                worker.removeEventListener('message', handler);
-                resolve(ev.data.results);
-            }
+        let settled = false;
+        const finish = result => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            testWorker.removeEventListener('message', handler);
+            testWorker.removeEventListener('error', errorHandler);
+            resolve(result);
         };
-        worker.addEventListener('message', handler);
-        worker.postMessage({ action: 'verifyTest', bytes, crc64Variant, reqId });
+        const handler = (ev) => {
+            if (ev.data.action === 'verify_result' && ev.data.reqId === reqId) finish(ev.data.results);
+        };
+        const errorHandler = () => finish(null);
+        const timer = setTimeout(() => finish(null), 10000);
+        testWorker.addEventListener('message', handler);
+        testWorker.addEventListener('error', errorHandler);
+        try { testWorker.postMessage({ action: 'verifyTest', bytes, crc64Variant, reqId }); }
+        catch (e) { finish(null); }
     });
   }
 
@@ -4459,7 +4567,7 @@ const Engine = (() => {
             
             if (AppState.Base64Encode) {
                 const revision = BaseRenderGate.issue('Base64-Enc');
-                Base64Engine.encode(bytes).then(res => {
+                BaseRenderGate.track(Base64Engine.encode(bytes)).then(res => {
                     if (!signal.aborted && BaseRenderGate.isCurrent('Base64-Enc', revision)) {
                         EventBus.emit('hash:results', {'Base64-Enc': res.type==='error'?'エラー':res.value});
                     }
@@ -4467,7 +4575,7 @@ const Engine = (() => {
             }
             if (AppState.Base85Encode) {
                 const revision = BaseRenderGate.issue('Base85-Enc');
-                Base85Engine.encode(bytes, AppState.base85Variant).then(res => {
+                BaseRenderGate.track(Base85Engine.encode(bytes, AppState.base85Variant)).then(res => {
                     if (!signal.aborted && BaseRenderGate.isCurrent('Base85-Enc', revision)) {
                         EventBus.emit('hash:results', {'Base85-Enc': res.type==='error'?'エラー':res.value});
                     }
@@ -4648,7 +4756,7 @@ const Engine = (() => {
             EventBus.emit('hash:render', {algId: 'Base64-Enc', hex: 'サイズ超過 (テキスト上限)', iter: 1, total: 1, isDone: true});
         } else {
             const revision = BaseRenderGate.issue('Base64-Enc');
-            Base64Engine.encode(bytesToHash).then(res => {
+            BaseRenderGate.track(Base64Engine.encode(bytesToHash)).then(res => {
                 if (!signal.aborted && BaseRenderGate.isCurrent('Base64-Enc', revision)) {
                     if (res.type === 'error') EventBus.emit('hash:render', {algId: 'Base64-Enc', hex: 'エラー', iter: 1, total: 1, isDone: true});
                     else EventBus.emit('hash:render', {algId: 'Base64-Enc', hex: res.value, iter: 1, total: 1, isDone: true});
@@ -4664,7 +4772,7 @@ const Engine = (() => {
             EventBus.emit('hash:render', {algId: 'Base85-Enc', hex: 'サイズ超過 (テキスト上限)', iter: 1, total: 1, isDone: true});
         } else {
             const revision = BaseRenderGate.issue('Base85-Enc');
-            Base85Engine.encode(bytesToHash, AppState.base85Variant).then(res => {
+            BaseRenderGate.track(Base85Engine.encode(bytesToHash, AppState.base85Variant)).then(res => {
                 if (!signal.aborted && BaseRenderGate.isCurrent('Base85-Enc', revision)) {
                     if (res.type === 'error') EventBus.emit('hash:render', {algId: 'Base85-Enc', hex: 'エラー', iter: 1, total: 1, isDone: true});
                     else EventBus.emit('hash:render', {algId: 'Base85-Enc', hex: res.value, iter: 1, total: 1, isDone: true});
@@ -4852,6 +4960,16 @@ const SelfTest = (() => {
     '\ud800\udc00'
   ]);
 
+
+  const INVALID_UTF8_CASES = Object.freeze([
+    { name:'Overlong 2-byte', bytes:[0xC0,0x80] },
+    { name:'Bad Continuation', bytes:[0xE2,0x28,0xA1] },
+    { name:'Surrogate Range', bytes:[0xED,0xA0,0x80] },
+    { name:'Above U+10FFFF', bytes:[0xF4,0x90,0x80,0x80] },
+    { name:'Truncated 4-byte', bytes:[0xF0,0x9F,0x92] },
+    { name:'Lone Continuation', bytes:[0x80] }
+  ]);
+
   const CRC64_VARIANTS = Object.freeze([
     'XZ (ECMA, Reflected)',
     'WE (ECMA, Non-Reflected)',
@@ -5021,6 +5139,14 @@ const SelfTest = (() => {
       }
     }
 
+    await step(control, 'UTF-8', 'Decode Validity');
+    add(report, 'UTF-8', 'Decode Supplementary', Core.utf8Decode(encoder.encode('𠮷')), '𠮷');
+    for (const item of INVALID_UTF8_CASES) {
+      let rejected = false;
+      try { Core.utf8Decode(new Uint8Array(item.bytes)); } catch (e) { rejected = true; }
+      add(report, 'UTF-8', `Reject ${item.name}`, rejected, true);
+    }
+
     await step(control, 'UTF-8', 'Normalization');
     add(report, 'UTF-8', 'Normalize None', Core.normalizeText('か\u3099', 'none'), 'か\u3099');
     add(report, 'UTF-8', 'Normalize NFC', Core.normalizeText('か\u3099', 'NFC'), 'が');
@@ -5063,6 +5189,15 @@ const SelfTest = (() => {
     }
     for (const value of ['TQ',' TQ== ','-_8=','TR==','TWF=']) {
       await decodeBase64Case(report, `Strict Reject ${value}`, value, true, null);
+    }
+
+    await step(control, 'BASE64', 'Auto File Detect');
+    const validText = await Base64Engine.decode(BaseCodec.encodeBase64(Core.utf8Encode('𠮷')), true, true);
+    add(report, 'BASE64', 'Auto Detect Valid UTF-8', validText?.type, 'text');
+    for (const item of INVALID_UTF8_CASES) {
+      const encoded = BaseCodec.encodeBase64(new Uint8Array(item.bytes));
+      const detected = await Base64Engine.decode(encoded, true, true);
+      add(report, 'BASE64', `Auto Detect ${item.name}`, detected?.type, 'binary');
     }
 
     for (const length of [0,1,2,3,4,5,7,31,32,33,63,64,65]) {
@@ -5123,9 +5258,20 @@ const SelfTest = (() => {
 
     await decodeBase85Case(report, 'Standard Reject Length 1', '!', 'Standard ASCII85', null);
     await decodeBase85Case(report, 'Standard Reject Overflow', 'uuuuu', 'Standard ASCII85', null);
+    await decodeBase85Case(report, 'Standard Reject Mid-group z', '!z!!!', 'Standard ASCII85', null);
+    await decodeBase85Case(report, 'Adobe Reject Mid-group y', '<~!y!!!~>', 'Adobe ASCII85', null);
     await decodeBase85Case(report, 'ZeroMQ Reject Length', 'abcd', 'ZeroMQ (Z85)', null);
     await decodeBase85Case(report, 'ZeroMQ Reject Character', '~~~~~', 'ZeroMQ (Z85)', null);
     await decodeBase85Case(report, 'RFC 1924 Alphabet Reject Length', '0000', 'RFC 1924 Alphabet', null);
+
+    await step(control, 'BASE85', 'Auto File Detect');
+    const validText = await Base85Engine.decode(BaseCodec.encodeBase85(Core.utf8Encode('𠮷'), 'Standard ASCII85'), 'Standard ASCII85', true);
+    add(report, 'BASE85', 'Auto Detect Valid UTF-8', validText?.type, 'text');
+    for (const item of INVALID_UTF8_CASES) {
+      const encoded = BaseCodec.encodeBase85(new Uint8Array(item.bytes), 'Standard ASCII85');
+      const detected = await Base85Engine.decode(encoded, 'Standard ASCII85', true);
+      add(report, 'BASE85', `Auto Detect ${item.name}`, detected?.type, 'binary');
+    }
 
     for (const variant of ['Standard ASCII85','Adobe ASCII85']) {
       for (const length of [0,1,2,3,4,5,7,8,9,31,32,33]) {
@@ -5244,6 +5390,8 @@ const UI = (() => {
   const els = {};
   let scheduled = false;
   let continuousCompareRevision = 0;
+  let fileLoadRevision = 0;
+  let sysPanelUpdating = false;
 
   const renderState = {};
   let isRendering = false;
@@ -6390,31 +6538,37 @@ function showToast(msg, duration = TOAST_DURATION) {
   }
 
   async function updateSysPanel() {
-    const now = new Date(Date.now() + AppState.netTimeOffset);
-    const dateStr = SysUtils.fmtJapaneseDate(now);
-    const parts = [
-      '製造: ソニーグループ株式会社 / インターナショナル・ビジネス・マシーンズ・コーポレーション（IBM） 2026',
-      '外部検証リファレンス: GCHQ Cyber​​Chef',
-      await SysUtils.deviceInfo(),
-      await SysUtils.networkDetail(),
-      `位置: ${await SysUtils.detectGeo()}`,
-      `日付: ${dateStr}`
-    ];
-    
-    if (!window.crypto?.subtle) parts.unshift('【 警告: Web Crypto API 利用不可 - SHA-384 / SHA-512 無効 】');
-    if (window.__ZESS_MODE__) {
-      const zessStorage = Security.getStorageIsolationStatus();
-      if (zessStorage.complete) {
-        parts.unshift('【 ZESS (ZERO-EGRESS STATELESS SANDBOX) 稼働中 / Storage隔離: 正常 】');
-      } else {
-        const localState = zessStorage.localStorage ? '正常' : '失敗';
-        const sessionState = zessStorage.sessionStorage ? '正常' : '失敗';
-        parts.unshift(`【 警告: ZESS 部分隔離 - localStorage: ${localState} / sessionStorage: ${sessionState} 】`);
+    if (sysPanelUpdating) return;
+    sysPanelUpdating = true;
+    try {
+      const now = new Date(Date.now() + AppState.netTimeOffset);
+      const dateStr = SysUtils.fmtJapaneseDate(now);
+      const parts = [
+        '製造: ソニーグループ株式会社 / インターナショナル・ビジネス・マシーンズ・コーポレーション（IBM） 2026',
+        '外部検証リファレンス: GCHQ Cyber​​Chef',
+        await SysUtils.deviceInfo(),
+        await SysUtils.networkDetail(),
+        `位置: ${await SysUtils.detectGeo()}`,
+        `日付: ${dateStr}`
+      ];
+      
+      if (!window.crypto?.subtle) parts.unshift('【 警告: Web Crypto API 利用不可 - SHA-384 / SHA-512 無効 】');
+      if (window.__ZESS_MODE__) {
+        const zessStorage = Security.getStorageIsolationStatus();
+        if (zessStorage.complete) {
+          parts.unshift('【 ZESS (ZERO-EGRESS STATELESS SANDBOX) 稼働中 / Storage隔離: 正常 】');
+        } else {
+          const localState = zessStorage.localStorage ? '正常' : '失敗';
+          const sessionState = zessStorage.sessionStorage ? '正常' : '失敗';
+          parts.unshift(`【 警告: ZESS 部分隔離 - localStorage: ${localState} / sessionStorage: ${sessionState} 】`);
+        }
       }
-    }
 
-    els.sysEl.textContent = parts.join('\n');
-    setSysOffset();
+      els.sysEl.textContent = parts.join('\n');
+      setSysOffset();
+    } finally {
+      sysPanelUpdating = false;
+    }
   }
 
   function renderHashOutputValue(id, canonicalHex, isPreview = false) {
@@ -6777,7 +6931,7 @@ function showToast(msg, duration = TOAST_DURATION) {
       if(!raw.trim()) {
         queueRender('Base64-Dec', '', 1, 1, true);
       } else {
-        Base64Engine.decode(raw, AppState.baseFileDetect, AppState.base64Strict).then(res => {
+        BaseRenderGate.track(Base64Engine.decode(raw, AppState.baseFileDetect, AppState.base64Strict)).then(res => {
           if (!updateSignal.aborted && BaseRenderGate.isCurrent('Base64-Dec', revision)) {
             if (res.type === 'error') queueRender('Base64-Dec', 'デコード不可', 1, 1, true);
             else if (res.type === 'binary') queueRender('Base64-Dec', res, 1, 1, true);
@@ -6791,7 +6945,7 @@ function showToast(msg, duration = TOAST_DURATION) {
       if(!raw.trim()) {
         queueRender('Base85-Dec', '', 1, 1, true);
       } else {
-        Base85Engine.decode(raw, AppState.base85Variant, AppState.baseFileDetect).then(res => {
+        BaseRenderGate.track(Base85Engine.decode(raw, AppState.base85Variant, AppState.baseFileDetect)).then(res => {
           if (!updateSignal.aborted && BaseRenderGate.isCurrent('Base85-Dec', revision)) {
             if (res.type === 'error') queueRender('Base85-Dec', 'デコード不可', 1, 1, true);
             else if (res.type === 'binary') queueRender('Base85-Dec', res, 1, 1, true);
@@ -6834,6 +6988,7 @@ function showToast(msg, duration = TOAST_DURATION) {
 
   async function handleFiles(files) {
     if (!files.length) return;
+    const revision = ++fileLoadRevision;
     const f = files[0];
     AppState.currentFile = null;
 
@@ -6863,6 +7018,7 @@ function showToast(msg, duration = TOAST_DURATION) {
     els.fTrigger.style.display = 'inline-block';
     
     const analysis = await Core.analyzeFileStructure(f);
+    if (revision !== fileLoadRevision) return;
     
     let statusText = `種別: ${analysis.type}`;
     if (analysis.isPolyglot) {
@@ -6939,7 +7095,7 @@ function showToast(msg, duration = TOAST_DURATION) {
           if (!v) queueRender('Base64-Enc', '', 1, 1, true);
           else {
             queueRender('Base64-Enc', '計算中...', 0, 1, false);
-            Base64Engine.encode(Core.utf8Encode(v)).then(res => {
+            BaseRenderGate.track(Base64Engine.encode(Core.utf8Encode(v))).then(res => {
               if (!signal.aborted && BaseRenderGate.isCurrent('Base64-Enc', revision)) {
                 queueRender('Base64-Enc', res.type === 'error' ? 'エラー' : res.value, 1, 1, true);
               }
@@ -6953,7 +7109,7 @@ function showToast(msg, duration = TOAST_DURATION) {
           if(!raw.trim()) queueRender('Base64-Dec', '', 1, 1, true);
           else {
             queueRender('Base64-Dec', '計算中...', 0, 1, false);
-            Base64Engine.decode(raw, AppState.baseFileDetect, AppState.base64Strict).then(res => {
+            BaseRenderGate.track(Base64Engine.decode(raw, AppState.baseFileDetect, AppState.base64Strict)).then(res => {
               if (!signal.aborted && BaseRenderGate.isCurrent('Base64-Dec', revision)) {
                 if (res.type === 'error') queueRender('Base64-Dec', 'デコード不可', 1, 1, true);
                 else if (res.type === 'binary') queueRender('Base64-Dec', res, 1, 1, true);
@@ -6969,7 +7125,7 @@ function showToast(msg, duration = TOAST_DURATION) {
           if (!v) queueRender('Base85-Enc', '', 1, 1, true);
           else {
             queueRender('Base85-Enc', '計算中...', 0, 1, false);
-            Base85Engine.encode(Core.utf8Encode(v), AppState.base85Variant).then(res => {
+            BaseRenderGate.track(Base85Engine.encode(Core.utf8Encode(v), AppState.base85Variant)).then(res => {
               if (!signal.aborted && BaseRenderGate.isCurrent('Base85-Enc', revision)) {
                 queueRender('Base85-Enc', res.type === 'error' ? 'エラー' : res.value, 1, 1, true);
               }
@@ -6983,7 +7139,7 @@ function showToast(msg, duration = TOAST_DURATION) {
           if(!raw.trim()) queueRender('Base85-Dec', '', 1, 1, true);
           else {
             queueRender('Base85-Dec', '計算中...', 0, 1, false);
-            Base85Engine.decode(raw, AppState.base85Variant, AppState.baseFileDetect).then(res => {
+            BaseRenderGate.track(Base85Engine.decode(raw, AppState.base85Variant, AppState.baseFileDetect)).then(res => {
               if (!signal.aborted && BaseRenderGate.isCurrent('Base85-Dec', revision)) {
                 if (res.type === 'error') queueRender('Base85-Dec', 'デコード不可', 1, 1, true);
                 else if (res.type === 'binary') queueRender('Base85-Dec', res, 1, 1, true);
@@ -7005,6 +7161,7 @@ function showToast(msg, duration = TOAST_DURATION) {
     });
 
     els.inputEl.addEventListener('paste', e => {
+      fileLoadRevision++;
       if (AppState.currentFile) AppState.currentFile = null;
       if (!AppState.sanitizeText) return;
 
@@ -7017,6 +7174,7 @@ function showToast(msg, duration = TOAST_DURATION) {
       scheduleUpdate();
     });
     els.inputEl.addEventListener('input', () => {
+      fileLoadRevision++;
       if (AppState.currentFile) AppState.currentFile = null;
       scheduleUpdate();
     });
@@ -7141,7 +7299,7 @@ async function detectBase85Variants(input) {
       refreshCurrentMeta();
     });
 
-    const AUTO_TEST_SPEED = 2.25;
+    const AUTO_TEST_SPEED = 100;
     const testDelay = ms => new Promise(resolve => setTimeout(resolve, Math.max(0, Math.round(ms / AUTO_TEST_SPEED))));
 
     const syncTestOptionControls = setup => {
@@ -7204,6 +7362,7 @@ async function detectBase85Variants(input) {
       const test = TEST_VECTORS[key];
       if (!test) return null;
 
+      fileLoadRevision++;
       AppState.testVector = key;
       AppState.showTest = false;
       els.testOptionsContainer.classList.add('hidden');
@@ -7308,7 +7467,8 @@ async function detectBase85Variants(input) {
         await AutoTestSession.checkpoint();
         const tasks = IterationSession.values();
         const busyTask = tasks.some(task => task.state === 'running' || task.state === 'paused');
-        if (!scheduled && !isRendering && !busyTask) stable++;
+        const busyBase = BaseRenderGate.hasPending();
+        if (!scheduled && !isRendering && !busyTask && !busyBase) stable++;
         else stable = 0;
         if (stable >= 3) return true;
         await testDelay(50);
@@ -7364,6 +7524,15 @@ async function detectBase85Variants(input) {
           }
         });
 
+        AutoTestSession.setProgress('internal', hiddenStep, 0, '復位');
+        syncPauseControls();
+        showToast('全検証完了｜初期状態へ復位します');
+        await AutoTestSession.checkpoint();
+        applySelectedTest('empty');
+        await waitForTestIdle();
+        const resetResult = await verifySelectedTest('empty');
+        await waitForTestIdle();
+
         const visibleFailed = visible.filter(x => !x.ok);
         const hiddenFailed = hidden.filter(x => !x.ok && !x.skip);
         const hiddenPassed = hidden.filter(x => x.ok).length;
@@ -7371,25 +7540,28 @@ async function detectBase85Variants(input) {
         const visiblePassed = visible.length - visibleFailed.length;
         const visibleSkipped = visible.reduce((sum, x) => sum + (Number(x.skipped) || 0), 0);
         const skipped = visibleSkipped + hiddenSkipped;
+        const resetFailed = !resetResult.ok;
 
         AutoTestSession.end();
         syncPauseControls();
-        if (visibleFailed.length === 0 && hiddenFailed.length === 0) {
+        if (visibleFailed.length === 0 && hiddenFailed.length === 0 && !resetFailed) {
           setMetaStatus(skipped ? '自動検証完了（未対応あり）' : '自動検証完了');
-          showToast(`全検証成功｜入力 ${visiblePassed}/${visible.length}｜内部 ${hiddenPassed}/${hiddenPassed + hiddenFailed.length}${skipped ? `｜未対応 ${skipped}` : ''}`, 6000);
+          showToast(`全検証成功｜入力 ${visiblePassed}/${visible.length}｜内部 ${hiddenPassed}/${hiddenPassed + hiddenFailed.length}｜復位 OK${skipped ? `｜未対応 ${skipped}` : ''}`, 6000);
         } else {
           setMetaStatus('自動検証失敗');
           const groups = Array.from(new Set(hiddenFailed.map(x => x.group))).join(', ');
-          showToast(`全検証失敗｜入力 ${visiblePassed}/${visible.length}｜内部 ${hiddenPassed}/${hiddenPassed + hiddenFailed.length}${groups ? `［${groups}］` : ''}${skipped ? `｜未対応 ${skipped}` : ''}`, 6000);
+          showToast(`全検証失敗｜入力 ${visiblePassed}/${visible.length}｜内部 ${hiddenPassed}/${hiddenPassed + hiddenFailed.length}${groups ? `［${groups}］` : ''}${resetFailed ? '｜復位 FAIL' : '｜復位 OK'}${skipped ? `｜未対応 ${skipped}` : ''}`, 6000);
           if (visibleFailed.length) console.warn('Visible self-test failures:', visibleFailed);
           if (hiddenFailed.length) console.warn('Self-test failures:', hiddenFailed);
+          if (resetFailed) console.warn('Reset self-test failure:', resetResult.failed);
         }
       } catch (e) {
         const aborted = !!e?.autoTestAbort || AutoTestSession.aborted;
         AutoTestSession.end();
         syncPauseControls();
-        if (aborted) showToast(`自動検証中止｜入力 ${completed}/${keys.length}`, 4500);
+        if (aborted) { setMetaStatus('自動検証中止'); showToast(`自動検証中止｜入力 ${completed}/${keys.length}`, 4500); }
         else {
+          setMetaStatus('自動検証エラー');
           showToast(`自動検証エラー｜${String(e?.message || e)}`, 4500);
           console.warn('Self-test error:', e);
         }
@@ -7504,6 +7676,7 @@ async function detectBase85Variants(input) {
                 break;
             }
             case 'compareHash': {
+                const compareRevision = continuousCompareRevision;
                 const entered = els.compareIn.value;
                 if (!entered.trim()) { showToast('一致判定値を入力してください'); break; }
 
@@ -7534,6 +7707,7 @@ async function detectBase85Variants(input) {
 
                 if (/[^0-9a-fA-F]/.test(entered)) {
                     const variants = await detectBase85Variants(entered);
+                    if (compareRevision !== continuousCompareRevision || els.compareIn.value !== entered) break;
                     if (variants.length === 1) { showToast(`一致判定異常 / 一致なし / Base85推定: ${variants[0]}${countSuffix}`); break; }
                     if (variants.length > 1) { showToast(`一致判定異常 / 一致なし / Base85変種候補: ${variants.join(' / ')}${countSuffix}`); break; }
                 }
@@ -7789,7 +7963,7 @@ async function detectBase85Variants(input) {
                     `| 反復回数（目標） | ${els.iterIn.value} 回 |`,
                     `| 反復モード | ${iterModeStr} |`,
                     `| Salt | \`${AppState.salt || '（未設定）'}\` |`,
-                    `| HMAC Key | \`${AppState.hmacKey || '（未設定）'}\` |`,
+                    `| HMAC Key | ${AppState.hmacKey ? '設定済み（値は監査レポートに記録しません）' : '（未設定）'} |`,
                     `| CRC64 モード | ${AppState.crc64Variant} |`,
                     `| Base64 判定 | ${AppState.base64Strict ? '厳格' : '寛容'} |`,
                     `| Base85 モード | ${AppState.base85Variant} |`,
@@ -7804,9 +7978,9 @@ async function detectBase85Variants(input) {
                     reportLines.push(
                         '| 項目 | 詳細 |\n| :--- | :--- |',
                         `| 種別 | ファイル（File） |`,
-                        `| ファイル名 | \`${AppState.currentFile.name}\` |`,
+                        `| ファイル名 | \`${esc(AppState.currentFile.name)}\` |`,
                         `| サイズ | ${AppState.currentFile.size.toLocaleString()} bytes |`,
-                        `| MIMEタイプ | ${AppState.currentFile.type || '不明'} |\n`
+                        `| MIMEタイプ | ${esc(AppState.currentFile.type || '不明')} |\n`
                     );
                 } else {
                     const rawIn = els.inputEl.value || '';
@@ -7818,10 +7992,13 @@ async function detectBase85Variants(input) {
                         displayIn = rawIn.substring(0, MAX_TEXT_LEN) + `\n\n… ［警告：入力テキストが長すぎるため省略されました（全 ${graphemeCount} 文字）］ …`;
                     }
 
+                    const maxTicks = (displayIn.match(/`+/g) || []).reduce((max, value) => Math.max(max, value.length), 0);
+                    const contentFence = '`'.repeat(Math.max(3, maxTicks + 1));
+
                     reportLines.push(
                         `- **種別:** テキスト（Text）`,
                         `- **文字数:** ${graphemeCount}\n`,
-                        `**--- CONTENT START ---**\n\`\`\`text\n${displayIn}\n\`\`\`\n**--- CONTENT END ---**\n`
+                        `**--- CONTENT START ---**\n${contentFence}text\n${displayIn}\n${contentFence}\n**--- CONTENT END ---**\n`
                     );
                 }
 
@@ -7867,7 +8044,7 @@ async function detectBase85Variants(input) {
                     document.body.appendChild(a);
                     a.click();
                     a.remove();
-                    URL.revokeObjectURL(url);
+                    setTimeout(() => URL.revokeObjectURL(url), 0);
                     showToast('Markdownレポートを保存しました');
                 };
 
@@ -7899,7 +8076,7 @@ async function detectBase85Variants(input) {
             case 'toggleGeo': {
                 if (window.__ZESS_MODE__) break;
                 AppState.geoEnabled = !AppState.geoEnabled;
-                localStorage.setItem('sonyHash.geo', AppState.geoEnabled ? 'on' : 'off');
+                try { localStorage.setItem('sonyHash.geo', AppState.geoEnabled ? 'on' : 'off'); } catch (_) {}
                 AppState.geoLabel = AppState.geoEnabled ? '照会中…' : '照会オフ';
                 AppState.geoTs = 0;
                 els.geoBtn.textContent = `位置: ${AppState.geoEnabled ? 'オン' : 'オフ'}`;
@@ -8077,7 +8254,8 @@ async function detectBase85Variants(input) {
       els.zessBtn.classList.add('warn');
       els.geoBtn.style.display = 'none';
     } else {
-      AppState.geoEnabled = (localStorage.getItem('sonyHash.geo') || 'off') === 'on';
+      try { AppState.geoEnabled = (localStorage.getItem('sonyHash.geo') || 'off') === 'on'; }
+      catch (_) { AppState.geoEnabled = false; }
       els.geoBtn.textContent = `位置: ${AppState.geoEnabled ? 'オン' : 'オフ'}`;
 
       if ('getBattery' in navigator) {
