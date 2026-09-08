@@ -530,7 +530,7 @@
         <button id="hashOutputToggle" class="link" aria-label="HASH出力フィルタの切替" data-action="toggleHashOutputGroup">HASH出力: オフ [+]</button>
         <span id="hashOutputOptionsContainer" class="base-group-container hidden">
           <span class="sep hint">/</span>
-          <button id="hashOutputHandoffToggle" class="link" aria-label="HASH出力受渡しモードの切替" title="多段エンコードの各段で、前段のバイト列をHEX文字列として渡すか、そのままRawバイト列で渡すかを切り替えます" data-action="toggleHashOutputHandoff">出力: 手渡し（Hex）</button>
+          <button id="hashOutputHandoffToggle" class="link" aria-label="HASH出力受け渡しモードの切替" title="多段エンコードの各段で、前段のバイト列をHEX文字列として渡すか、そのままRawバイト列で渡すかを切り替えます" data-action="toggleHashOutputHandoff">出力: 手渡し（Hex）</button>
           <span class="sep hint">/</span>
           <button id="hashBase64Toggle" class="link" aria-label="HASH結果Base64出力の切替" title="有効化した順に多段エンコードします。* は先行エンコードを示します" data-action="toggleHashBase64">Base64: オフ</button>
           <span class="sep hint">/</span>
@@ -583,7 +583,7 @@
         <span class="sep hint">/</span>
         <button class="link" data-action="setTest" data-test="japanese">日本語</button>
         <span class="sep hint">/</span>
-        <button class="link" data-action="setTest" data-test="japaneseFull">日本文字</button>
+        <button class="link" data-action="setTest" data-test="japaneseFull">日本語</button>
         <span class="sep hint">/</span>
         <button class="link" data-action="setTest" data-test="japaneseNfc">NFC: が</button>
         <span class="sep hint">/</span>
@@ -687,7 +687,7 @@
         <span class="sep hint">/</span>
         <button class="link" data-action="setTest" data-test="iterRaw">反復: 標準（Raw）</button>
         <span class="sep hint">/</span>
-        <button class="link" data-action="setTest" data-test="iterXor">反復: XOR重畳（XOR）</button>
+        <button class="link" data-action="setTest" data-test="iterXor">反復: XOR累積（XOR）</button>
         <span class="sep hint">|</span>
         <span class="sep hint">/</span>
         <button class="link" data-action="setTest" data-test="hashBase64Raw">HASH→Base64 Raw</button>
@@ -6026,7 +6026,7 @@ const UI = (() => {
       }
     },
     japaneseFull:{
-      label:'日本文字',
+      label:'日本語',
       text:'日本語・漢字・ひらがな・カタカナ・がぱ・「。、ー」・ＡＢＣ１２３',
       expect:{
         'CRC32':'e93187d8',
@@ -6499,7 +6499,7 @@ const UI = (() => {
       }
     },
     iterXor:{
-      label:'反復: XOR重畳（XOR）',
+      label:'反復: XOR累積（XOR）',
       text:'abc',
       setup:{ iterations:2, iterMode:'xor' },
       surfaceExpect:{
@@ -6778,7 +6778,7 @@ function showToast(msg, duration = TOAST_DURATION) {
     if (!els.metaEl) return;
     let meta = els.metaEl.textContent.replace(/｜反復: \d+回（[^）]*）/g, '');
     if (target > 1) {
-      const mode = AppState.iterMode === 'raw' ? '標準' : AppState.iterMode === 'hex' ? '手渡し' : 'XOR重畳';
+      const mode = AppState.iterMode === 'raw' ? '標準' : AppState.iterMode === 'hex' ? '手渡し' : 'XOR累積';
       meta = meta.replace('｜ステータス:', `｜反復: ${target}回（${mode}）｜ステータス:`);
     }
     els.metaEl.textContent = meta;
@@ -7220,7 +7220,7 @@ function showToast(msg, duration = TOAST_DURATION) {
     if (AppState.Base85Encode || AppState.Base85Decode) activeOpts.push(`Base85: ${AppState.base85Variant}`);
     if (AppState.hashOutputOrder.length > 0) activeOpts.push(`HASH出力: ${HashOutputFilter.handoffLabel()} / ${HashOutputFilter.describe(true)}`);
     const optLabel = activeOpts.length ? `｜${activeOpts.join('｜')}` : '';
-    const iterLabel = iterations > 1 ? `｜反復: ${iterations}回（${AppState.iterMode === 'raw' ? '標準' : AppState.iterMode === 'hex' ? '手渡し' : 'XOR重畳'}）` : '';
+    const iterLabel = iterations > 1 ? `｜反復: ${iterations}回（${AppState.iterMode === 'raw' ? '標準' : AppState.iterMode === 'hex' ? '手渡し' : 'XOR累積'}）` : '';
     const sanitizeLabel = isFile ? '対象外' : (AppState.sanitizeText ? 'オン' : 'オフ');
     const entropyLabel = isFile ? '対象外' : (Number.isFinite(AppState.currentEntropy) ? `${AppState.currentEntropy.toFixed(6)} bit/byte` : '—');
     els.metaEl.textContent = `${countLabel} ${count}${countUnit}｜エントロピー（Entropy）: ${entropyLabel}｜文字コード: ${encodingLabel}｜正規化: ${normLabel}｜不可視文字・改行整形: ${sanitizeLabel}｜コピー: ${copyLabel}｜HEX: ${hexLabel}｜区切り: ${groupLabel}｜区切り文字: ${separatorLabel}${optLabel}${iterLabel}｜ステータス: ${statusText}`;
@@ -7744,7 +7744,7 @@ async function detectBase85Variants(input) {
       AppState.iterations = iterations;
       els.iterIn.value = iterations;
       AppState.iterMode = cfg.iterMode || 'hex';
-      els.iterModeToggleBtn.textContent = AppState.iterMode === 'raw' ? '反復: 標準（Raw）' : AppState.iterMode === 'xor' ? '反復: XOR重畳（XOR）' : '反復: 手渡し（Hex）';
+      els.iterModeToggleBtn.textContent = AppState.iterMode === 'raw' ? '反復: 標準（Raw）' : AppState.iterMode === 'xor' ? '反復: XOR累積（XOR）' : '反復: 手渡し（Hex）';
     };
 
     const applySelectedTest = (key = AppState.testVector) => {
@@ -7915,9 +7915,9 @@ async function detectBase85Variants(input) {
           }
         });
 
-        AutoTestSession.setProgress('internal', hiddenStep, 0, '復位');
+        AutoTestSession.setProgress('internal', hiddenStep, 0, '復元');
         syncPauseControls();
-        showToast('全検証完了｜初期状態へ復位します');
+        showToast('全検証完了｜初期状態に戻します');
         await AutoTestSession.checkpoint();
         applySelectedTest('empty');
         await waitForTestIdle();
@@ -7937,11 +7937,11 @@ async function detectBase85Variants(input) {
         syncPauseControls();
         if (visibleFailed.length === 0 && hiddenFailed.length === 0 && !resetFailed) {
           setMetaStatus(skipped ? '自動検証完了（未対応あり）' : '自動検証完了');
-          showToast(`全検証成功｜入力 ${visiblePassed}/${visible.length}｜内部 ${hiddenPassed}/${hiddenPassed + hiddenFailed.length}｜復位 OK${skipped ? `｜未対応 ${skipped}` : ''}`, 6000);
+          showToast(`全検証成功｜入力 ${visiblePassed}/${visible.length}｜内部 ${hiddenPassed}/${hiddenPassed + hiddenFailed.length}｜復元 OK${skipped ? `｜未対応 ${skipped}` : ''}`, 6000);
         } else {
           setMetaStatus('自動検証失敗');
           const groups = Array.from(new Set(hiddenFailed.map(x => x.group))).join(', ');
-          showToast(`全検証失敗｜入力 ${visiblePassed}/${visible.length}｜内部 ${hiddenPassed}/${hiddenPassed + hiddenFailed.length}${groups ? `［${groups}］` : ''}${resetFailed ? '｜復位 FAIL' : '｜復位 OK'}${skipped ? `｜未対応 ${skipped}` : ''}`, 6000);
+          showToast(`全検証失敗｜入力 ${visiblePassed}/${visible.length}｜内部 ${hiddenPassed}/${hiddenPassed + hiddenFailed.length}${groups ? `［${groups}］` : ''}${resetFailed ? '｜復元 FAIL' : '｜復元 OK'}${skipped ? `｜未対応 ${skipped}` : ''}`, 6000);
           if (visibleFailed.length) console.warn('Visible self-test failures:', visibleFailed);
           if (hiddenFailed.length) console.warn('Self-test failures:', hiddenFailed);
           if (resetFailed) console.warn('Reset self-test failure:', resetResult.failed);
@@ -8093,18 +8093,18 @@ async function detectBase85Variants(input) {
                     if (matchedId === 'CRC64') detail = ` / 変種: ${AppState.crc64Variant}`;
                     else if (matchedId === 'Base64-Enc') detail = ' / Standard Base64';
                     else if (matchedId === 'Base85-Enc' || matchedId === 'Base85-Dec') detail = ` / 使用モード: ${AppState.base85Variant}`;
-                    showToast(`一致判定正常 / ${matchedId}一致 / ${ResultSurface.label()}${detail}${countSuffix}`);
+                    showToast(`一致判定: 一致 / ${matchedId}一致 / ${ResultSurface.label()}${detail}${countSuffix}`);
                     break;
                 }
 
                 if (/[^0-9a-fA-F]/.test(entered)) {
                     const variants = await detectBase85Variants(entered);
                     if (compareRevision !== continuousCompareRevision || els.compareIn.value !== entered) break;
-                    if (variants.length === 1) { showToast(`一致判定異常 / 一致なし / Base85推定: ${variants[0]}${countSuffix}`); break; }
-                    if (variants.length > 1) { showToast(`一致判定異常 / 一致なし / Base85変種候補: ${variants.join(' / ')}${countSuffix}`); break; }
+                    if (variants.length === 1) { showToast(`一致判定: 不一致 / 一致する値なし / Base85推定: ${variants[0]}${countSuffix}`); break; }
+                    if (variants.length > 1) { showToast(`一致判定: 不一致 / 一致する値なし / Base85変種候補: ${variants.join(' / ')}${countSuffix}`); break; }
                 }
 
-                showToast(`一致判定異常 / 一致なし / ${ResultSurface.label()}${countSuffix}`);
+                showToast(`一致判定: 不一致 / 一致する値なし / ${ResultSurface.label()}${countSuffix}`);
                 break;
             }
 
@@ -8209,7 +8209,7 @@ async function detectBase85Variants(input) {
                 syncHashOutputControls();
                 refreshHashOutput();
                 refreshCurrentMeta();
-                showToast(`HASH出力受渡し: ${HashOutputFilter.handoffLabel()}`);
+                showToast(`HASH出力受け渡し: ${HashOutputFilter.handoffLabel()}`);
                 break;
             }
             case 'toggleHashBase64': {
@@ -8268,7 +8268,7 @@ async function detectBase85Variants(input) {
                     els.iterModeToggleBtn.textContent = '反復: 標準（Raw）';
                 } else if (AppState.iterMode === 'raw') {
                     AppState.iterMode = 'xor';
-                    els.iterModeToggleBtn.textContent = '反復: XOR重畳（XOR）';
+                    els.iterModeToggleBtn.textContent = '反復: XOR累積（XOR）';
                 } else {
                     AppState.iterMode = 'hex';
                     els.iterModeToggleBtn.textContent = '反復: 手渡し（Hex）';
@@ -8319,7 +8319,7 @@ async function detectBase85Variants(input) {
 
                 const isFile = !!AppState.currentFile;
                 const normVal = isFile ? 'なし（ファイル）' : (AppState.normalization === 'none' ? 'なし' : AppState.normalization);
-                const iterModeStr = AppState.iterMode === 'raw' ? '標準（Raw）' : AppState.iterMode === 'hex' ? '手渡し（Hex）' : 'XOR重畳（XOR）';
+                const iterModeStr = AppState.iterMode === 'raw' ? '標準（Raw）' : AppState.iterMode === 'hex' ? '手渡し（Hex）' : 'XOR累積（XOR）';
                 const esc = str => String(str).replace(/\|/g, '\\|').replace(/`/g, '\\`').replace(/\r?\n/g, '<br>');
 
                 const zessStorage = window.__ZESS_MODE__ ? Security.getStorageIsolationStatus() : null;
@@ -8359,7 +8359,7 @@ async function detectBase85Variants(input) {
                     `| CRC64 モード | ${AppState.crc64Variant} |`,
                     `| Base64 判定 | ${AppState.base64Strict ? '厳格' : '寛容'} |`,
                     `| Base85 モード | ${AppState.base85Variant} |`,
-                    `| HASH出力受渡し | ${HashOutputFilter.handoffLabel()} |`,
+                    `| HASH出力受け渡し | ${HashOutputFilter.handoffLabel()} |`,
                     `| HASH出力フィルタ | ${HashOutputFilter.describe(true)} |`,
                     `| Base自動判別 | ${AppState.baseFileDetect ? 'オン' : 'オフ'} |\n`,
                     
