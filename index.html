@@ -2320,11 +2320,6 @@ const BaseCodec = (() => {
         resArr.push('z');
         continue;
       }
-      if (isAscii85 && val === 0x20202020 && paddingBytes === 0) {
-        resArr.push('y');
-        continue;
-      }
-
       let chunk = '';
       for(let j = 0; j < 5; j++) {
         chunk = charset[val % 85] + chunk;
@@ -2598,13 +2593,14 @@ const Base85Engine = (() => {
         const isAscii85 = variant === 'Standard ASCII85' || variant === 'Adobe ASCII85';
         let clean = str;
 
+        clean = clean.trim();
+
         if (variant === 'Adobe ASCII85') {
-          const start = clean.indexOf('<~');
-          const end = clean.lastIndexOf('~>');
-          if (start !== -1 && end !== -1 && end > start) {
-            clean = clean.substring(start + 2, end);
-          } else if (start !== -1) {
-             clean = clean.substring(start + 2);
+          const hasStart = clean.startsWith('<~');
+          const hasEnd = clean.endsWith('~>');
+          if (hasStart || hasEnd) {
+            if (!hasStart || !hasEnd) throw new Error('Invalid Adobe ASCII85 Wrapper');
+            clean = clean.substring(2, clean.length - 2);
           }
         }
 
@@ -2614,9 +2610,9 @@ const Base85Engine = (() => {
             let groupPos = 0;
             for (let i = 0; i < clean.length; i++) {
               const ch = clean[i];
-              if (ch === 'z' || ch === 'y') {
+              if (ch === 'z') {
                 if (groupPos !== 0) throw new Error('Invalid Base85 Shorthand Position');
-                expanded += ch === 'z' ? '!!!!!' : '+<VdL';
+                expanded += '!!!!!';
               } else {
                 expanded += ch;
                 groupPos = (groupPos + 1) % 5;
@@ -5722,6 +5718,9 @@ const SelfTest = (() => {
   async function runBase85Tests(report, control) {
     await step(control, 'BASE85', 'Vectors / Validity');
     const hello = Core.utf8Encode('Hello');
+    const partial1 = new Uint8Array([0x00]);
+    const partial2 = new Uint8Array([0x00,0x01]);
+    const partial3 = new Uint8Array([0x00,0x01,0x02]);
     const block = new Uint8Array([0x00,0x01,0x02,0x03]);
     const zeros = new Uint8Array([0x00,0x00,0x00,0x00]);
     const spaces = new Uint8Array([0x20,0x20,0x20,0x20]);
@@ -5729,25 +5728,45 @@ const SelfTest = (() => {
 
     add(report, 'BASE85', 'Standard Hello', BaseCodec.encodeBase85(hello, 'Standard ASCII85'), '87cURDZ');
     add(report, 'BASE85', 'Adobe Hello', BaseCodec.encodeBase85(hello, 'Adobe ASCII85'), '<~87cURDZ~>');
+    add(report, 'BASE85', 'Standard Partial 1 Byte', BaseCodec.encodeBase85(partial1, 'Standard ASCII85'), '!!');
+    add(report, 'BASE85', 'Standard Partial 2 Bytes', BaseCodec.encodeBase85(partial2, 'Standard ASCII85'), '!!*');
+    add(report, 'BASE85', 'Standard Partial 3 Bytes', BaseCodec.encodeBase85(partial3, 'Standard ASCII85'), '!!*-');
+    add(report, 'BASE85', 'Adobe Partial 1 Byte', BaseCodec.encodeBase85(partial1, 'Adobe ASCII85'), '<~!!~>');
+    add(report, 'BASE85', 'Adobe Partial 2 Bytes', BaseCodec.encodeBase85(partial2, 'Adobe ASCII85'), '<~!!*~>');
+    add(report, 'BASE85', 'Adobe Partial 3 Bytes', BaseCodec.encodeBase85(partial3, 'Adobe ASCII85'), '<~!!*-~>');
     add(report, 'BASE85', 'Standard Block', BaseCodec.encodeBase85(block, 'Standard ASCII85'), "!!*-'" );
     add(report, 'BASE85', 'Adobe Block', BaseCodec.encodeBase85(block, 'Adobe ASCII85'), "<~!!*-'~>" );
     add(report, 'BASE85', 'Standard Zero Shorthand', BaseCodec.encodeBase85(zeros, 'Standard ASCII85'), 'z');
-    add(report, 'BASE85', 'Standard Space Shorthand', BaseCodec.encodeBase85(spaces, 'Standard ASCII85'), 'y');
+    add(report, 'BASE85', 'Standard Space Block', BaseCodec.encodeBase85(spaces, 'Standard ASCII85'), '+<VdL');
     add(report, 'BASE85', 'Adobe Zero Shorthand', BaseCodec.encodeBase85(zeros, 'Adobe ASCII85'), '<~z~>');
-    add(report, 'BASE85', 'Adobe Space Shorthand', BaseCodec.encodeBase85(spaces, 'Adobe ASCII85'), '<~y~>');
+    add(report, 'BASE85', 'Adobe Space Block', BaseCodec.encodeBase85(spaces, 'Adobe ASCII85'), '<~+<VdL~>');
     add(report, 'BASE85', 'ZeroMQ Vector', BaseCodec.encodeBase85(z85, 'ZeroMQ (Z85)'), 'HelloWorld');
     add(report, 'BASE85', 'RFC 1924 Alphabet Block', BaseCodec.encodeBase85(block, 'RFC 1924 Alphabet'), '009C6');
 
+    await decodeBase85Case(report, 'Standard Partial 1 Byte Decode', '!!', 'Standard ASCII85', '00');
+    await decodeBase85Case(report, 'Standard Partial 2 Bytes Decode', '!!*', 'Standard ASCII85', '0001');
+    await decodeBase85Case(report, 'Standard Partial 3 Bytes Decode', '!!*-', 'Standard ASCII85', '000102');
+    await decodeBase85Case(report, 'Adobe Partial 1 Byte Decode', '<~!!~>', 'Adobe ASCII85', '00');
+    await decodeBase85Case(report, 'Adobe Partial 2 Bytes Decode', '<~!!*~>', 'Adobe ASCII85', '0001');
+    await decodeBase85Case(report, 'Adobe Partial 3 Bytes Decode', '<~!!*-~>', 'Adobe ASCII85', '000102');
     await decodeBase85Case(report, 'Standard Zero Decode', 'z', 'Standard ASCII85', '00000000');
-    await decodeBase85Case(report, 'Standard Space Decode', 'y', 'Standard ASCII85', '20202020');
+    await decodeBase85Case(report, 'Standard Space Decode', '+<VdL', 'Standard ASCII85', '20202020');
     await decodeBase85Case(report, 'Adobe Wrapper Decode', '<~87cURDZ~>', 'Adobe ASCII85', '48656c6c6f');
+    await decodeBase85Case(report, 'Adobe Bare Decode Compatibility', '87cURDZ', 'Adobe ASCII85', '48656c6c6f');
+    await decodeBase85Case(report, 'Adobe Space Decode', '<~+<VdL~>', 'Adobe ASCII85', '20202020');
     await decodeBase85Case(report, 'ZeroMQ Vector Decode', 'HelloWorld', 'ZeroMQ (Z85)', '864fd26fb559f75b');
     await decodeBase85Case(report, 'RFC 1924 Alphabet Decode', '009C6', 'RFC 1924 Alphabet', '00010203');
 
     await decodeBase85Case(report, 'Standard Reject Length 1', '!', 'Standard ASCII85', null);
     await decodeBase85Case(report, 'Standard Reject Overflow', 'uuuuu', 'Standard ASCII85', null);
     await decodeBase85Case(report, 'Standard Reject Mid-group z', '!z!!!', 'Standard ASCII85', null);
-    await decodeBase85Case(report, 'Adobe Reject Mid-group y', '<~!y!!!~>', 'Adobe ASCII85', null);
+    await decodeBase85Case(report, 'Standard Reject y', 'y', 'Standard ASCII85', null);
+    await decodeBase85Case(report, 'Adobe Reject y', '<~y~>', 'Adobe ASCII85', null);
+    await decodeBase85Case(report, 'Adobe Reject Unterminated Wrapper', '<~87cURDZ', 'Adobe ASCII85', null);
+    await decodeBase85Case(report, 'Adobe Reject Missing Start Wrapper', '87cURDZ~>', 'Adobe ASCII85', null);
+    await decodeBase85Case(report, 'Adobe Reject Broken Start Wrapper', '< ~87cURDZ~>', 'Adobe ASCII85', null);
+    await decodeBase85Case(report, 'Adobe Reject Leading Data', 'x<~87cURDZ~>', 'Adobe ASCII85', null);
+    await decodeBase85Case(report, 'Adobe Reject Trailing Data', '<~87cURDZ~>x', 'Adobe ASCII85', null);
     await decodeBase85Case(report, 'ZeroMQ Reject Length', 'abcd', 'ZeroMQ (Z85)', null);
     await decodeBase85Case(report, 'ZeroMQ Reject Character', '~~~~~', 'ZeroMQ (Z85)', null);
     await decodeBase85Case(report, 'RFC 1924 Alphabet Reject Length', '0000', 'RFC 1924 Alphabet', null);
@@ -8023,13 +8042,14 @@ els.compareIn.addEventListener('input', () => {
 
 async function detectBase85Variants(input) {
   const compact = input.replace(/\s+/g, '');
-  if (compact.startsWith('<~') && compact.endsWith('~>')) return ['Adobe ASCII85'];
-
-  const variants = ['Standard ASCII85', 'Adobe ASCII85', 'ZeroMQ (Z85)', 'RFC 1924 Alphabet'];
+  const adobeFramed = compact.startsWith('<~') || compact.endsWith('~>');
+  const variants = adobeFramed
+    ? ['Adobe ASCII85']
+    : ['Standard ASCII85', 'Adobe ASCII85', 'ZeroMQ (Z85)', 'RFC 1924 Alphabet'];
   const candidates = [];
   for (const variant of variants) {
     try {
-      const decoded = await Base85Engine.decode(compact, variant, true);
+      const decoded = await Base85Engine.decode(input, variant, true);
       if (!decoded || decoded.type === 'error') continue;
 
       let decodedBytes;
