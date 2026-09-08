@@ -511,7 +511,7 @@
       <button id="compareToggle" class="link" aria-label="一致判定の切替" data-action="toggleCompare">一致判定: オフ</button>
       <span class="sep hint">/</span>
       
-      <button id="baseGroupToggle" class="link" aria-label="BASEオプション群の切替" data-action="toggleBaseGroup">BASE: 展開 [+]</button>
+      <button id="baseGroupToggle" class="link" aria-label="BASEオプション群の切替" data-action="toggleBaseGroup">BASE: [+]</button>
       
       <span id="baseOptionsContainer" class="base-group-container hidden">
         <span class="sep hint">/</span>
@@ -1072,8 +1072,6 @@ const PanicSystem = (() => {
 
   const handleTouch = (e) => {
     if (e.touches.length >= 4) {
-      e.preventDefault();
-      e.stopPropagation();
       triggerPanic();
     }
   };
@@ -1086,7 +1084,7 @@ const PanicSystem = (() => {
     }
 
     document.addEventListener('keydown', handleKeydown, true);
-    document.addEventListener('touchstart', handleTouch, { passive: false, capture: true });
+    document.addEventListener('touchstart', handleTouch, { passive: true, capture: true });
     window.addEventListener('pageshow', enforcePanicState, true);
     window.addEventListener('popstate', enforcePanicState, true);
     return true;
@@ -2837,14 +2835,31 @@ const BaseRenderGate = (() => {
     for (const id of Object.keys(revisions)) revisions[id]++;
   }
 
+  const listeners = new Set();
+
+  function notify() {
+    for (const listener of listeners) {
+      try { listener(pending); } catch (_) {}
+    }
+  }
+
   function track(promise) {
     pending++;
-    return Promise.resolve(promise).finally(() => { pending = Math.max(0, pending - 1); });
+    notify();
+    return Promise.resolve(promise).finally(() => {
+      pending = Math.max(0, pending - 1);
+      notify();
+    });
   }
 
   function hasPending() { return pending > 0; }
+  function onChange(listener) {
+    if (typeof listener !== 'function') return () => {};
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  }
 
-  return { issue, isCurrent, invalidateAll, track, hasPending };
+  return { issue, isCurrent, invalidateAll, track, hasPending, onChange };
 })();
 
 /* =========================================================
@@ -3033,6 +3048,9 @@ const Engine = (() => {
   const WORKER_THRESHOLD = 200000;
   const hasWorker = !!window.Worker;
   let worker = null;
+  let selfTestWorker = null;
+  let selfTestReqSeq = 0;
+  const selfTestPending = new Map();
   let iterativeSessionActive = false;
   let iterativeSessionId = 0;
   let iterativeTargetRevision = 0;
@@ -4693,6 +4711,40 @@ const Engine = (() => {
     return w;
   }
 
+  function terminateSelfTestWorker(reason = 'Self Test Worker Terminated') {
+    const pending = Array.from(selfTestPending.values());
+    selfTestPending.clear();
+    if (selfTestWorker) {
+      try { selfTestWorker.terminate(); } catch (_) {}
+      selfTestWorker = null;
+    }
+    for (const entry of pending) {
+      clearTimeout(entry.timer);
+      entry.resolve({ status: 'error', error: reason });
+    }
+  }
+
+  function ensureSelfTestWorker() {
+    if (!hasWorker) return null;
+    if (selfTestWorker) return selfTestWorker;
+
+    const w = createWorkerBlob();
+    selfTestWorker = w;
+    w.addEventListener('message', ev => {
+      const data = ev.data;
+      if (!data || data.action !== 'self_test_result') return;
+      const entry = selfTestPending.get(data.reqId);
+      if (!entry) return;
+      selfTestPending.delete(data.reqId);
+      clearTimeout(entry.timer);
+      entry.resolve(data);
+    });
+    w.addEventListener('error', () => {
+      if (selfTestWorker === w) terminateSelfTestWorker('Self Test Worker Error');
+    });
+    return w;
+  }
+
   function ensureWorker() {
     if (hasWorker && !worker) {
       worker = createWorkerBlob();
@@ -4792,17 +4844,22 @@ const Engine = (() => {
       };
       worker.onerror = () => {
           EventBus.emit('hash:results', {'CRC32':'ワーカーエラー', 'CRC64':'ワーカーエラー', 'MD5':'ワーカーエラー', 'SHA-1':'ワーカーエラー', 'SHA-224':'ワーカーエラー', 'SHA-256':'ワーカーエラー', 'SHA-384':'ワーカーエラー', 'SHA-512':'ワーカーエラー'});
-          terminateWorker(); ensureWorker();
+          terminateLiveWorker(); ensureWorker();
       };
     }
   }
   
-  function terminateWorker() {
+  function terminateLiveWorker() {
     iterativeSessionActive = false;
     iterativeSessionId++;
     iterativeTargetRevision = 0;
     if (worker) { worker.terminate(); worker = null; }
     EventBus.emit('hash:sessionEnd', { reason: 'terminated' });
+  }
+
+  function terminateWorker() {
+    terminateLiveWorker();
+    terminateSelfTestWorker();
   }
   
   function verifyTestBytes(bytes, crc64Variant) {
@@ -4861,25 +4918,32 @@ const Engine = (() => {
 
   function runWorkerSelfTest(mode, payload = {}) {
     return new Promise((resolve) => {
-        if (!hasWorker) return resolve(null);
-        const testWorker = createWorkerBlob();
-        const reqId = Date.now() + Math.random();
-        let settled = false;
-        const finish = result => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            testWorker.terminate();
-            resolve(result);
-        };
-        const timer = setTimeout(() => finish({ status: 'error', error: 'Self Test Worker Timeout' }), 10000);
-        testWorker.onmessage = ev => {
-            if (ev.data.action === 'self_test_result' && ev.data.reqId === reqId) finish(ev.data);
-        };
-        testWorker.onerror = () => finish({ status: 'error', error: 'Self Test Worker Error' });
+      let testWorker;
+      try { testWorker = ensureSelfTestWorker(); }
+      catch (e) { resolve({ status: 'error', error: e?.message || 'Self Test Worker Error' }); return; }
+      if (!testWorker) { resolve(null); return; }
+
+      const reqId = `self-${Date.now()}-${++selfTestReqSeq}`;
+      const timer = setTimeout(() => {
+        const entry = selfTestPending.get(reqId);
+        if (!entry) return;
+        selfTestPending.delete(reqId);
+        entry.resolve({ status: 'error', error: 'Self Test Worker Timeout' });
+      }, 10000);
+      selfTestPending.set(reqId, { resolve, timer });
+
+      try {
         const message = { action: 'selfTest', mode, reqId };
         Object.assign(message, payload);
         testWorker.postMessage(message);
+      } catch (e) {
+        const entry = selfTestPending.get(reqId);
+        if (entry) {
+          selfTestPending.delete(reqId);
+          clearTimeout(entry.timer);
+          entry.resolve({ status: 'error', error: e?.message || 'Self Test Worker Error' });
+        }
+      }
     });
   }
 
@@ -5076,7 +5140,7 @@ const Engine = (() => {
         } catch (e) {
           const errRes = {'CRC32':'読込エラー', 'CRC64':'読込エラー', 'MD5':'読込エラー', 'SHA-1':'読込エラー', 'SHA-224':'読込エラー', 'SHA-256':'読込エラー', 'SHA-384':'読込エラー', 'SHA-512':'読込エラー'};
           EventBus.emit('hash:results', errRes);
-          terminateWorker(); ensureWorker();
+          terminateLiveWorker(); ensureWorker();
         } finally {
           if (AppState.streamHandles) {
               if (AppState.streamHandles.Base64) await AppState.streamHandles.Base64.close().catch(()=>{});
@@ -5796,6 +5860,7 @@ const SelfTest = (() => {
 const UI = (() => {
   const els = {};
   let scheduled = false;
+  let updateRunning = false;
   let continuousCompareRevision = 0;
   let fileLoadRevision = 0;
   let sysPanelUpdating = false;
@@ -5806,6 +5871,59 @@ const UI = (() => {
 
   let forceEmptyHashOnce = false;
 
+  const AUTO_TEST_SPEED = 5;
+  const AUTO_TEST_TIMING = Object.freeze({
+    afterSelect:250,
+    afterApply:600,
+    afterVerify:500,
+    phaseTransition:800
+  });
+
+  const AutoTestClock = (() => {
+    const speed = Math.max(0.01, Number(AUTO_TEST_SPEED) || 1);
+    const taskQueue = [];
+    const channel = typeof MessageChannel === 'function' ? new MessageChannel() : null;
+
+    if (channel) {
+      channel.port1.onmessage = () => {
+        const task = taskQueue.shift();
+        if (task) task();
+      };
+    }
+
+    const postTask = callback => {
+      if (!channel) { setTimeout(callback, 0); return; }
+      taskQueue.push(callback);
+      channel.port2.postMessage(0);
+    };
+
+    const yieldTask = () => new Promise(resolve => postTask(resolve));
+    const delay = ms => {
+      const scaled = Math.max(0, Number(ms) || 0) / speed;
+      if (scaled <= 0) return Promise.resolve();
+      if (scaled < 1) return yieldTask();
+      return new Promise(resolve => setTimeout(resolve, scaled));
+    };
+    const paint = (frames = 1) => new Promise(resolve => {
+      const step = () => {
+        if (--frames <= 0) resolve();
+        else requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
+    const hold = async (ms, requirePaint = false) => {
+      if (requirePaint && speed <= 1) await paint(1);
+      await delay(ms);
+    };
+    const schedule = callback => {
+      if (speed <= 1) requestAnimationFrame(callback);
+      else postTask(callback);
+    };
+    const yieldBudget = speed <= 1 ? 4 : speed >= 1000 ? 12 : 8;
+
+    return { speed, hold, schedule, yieldTask, yieldBudget };
+  })();
+
   const AutoTestSession = (() => {
     let active = false;
     let paused = false;
@@ -5813,7 +5931,6 @@ const UI = (() => {
     let phase = '';
     let current = 0;
     let total = 0;
-    let label = '';
     let waiters = [];
 
     const wake = () => {
@@ -5827,14 +5944,12 @@ const UI = (() => {
       phase = 'visible';
       current = 0;
       total = count;
-      label = '';
       wake();
     };
-    const setProgress = (nextPhase, nextCurrent, nextTotal, nextLabel = '') => {
+    const setProgress = (nextPhase, nextCurrent, nextTotal) => {
       phase = nextPhase;
       current = Math.max(0, Number(nextCurrent) || 0);
       total = Math.max(0, Number(nextTotal) || 0);
-      label = String(nextLabel || '');
     };
     const pause = () => { if (active) paused = true; };
     const resume = () => { if (active) { paused = false; wake(); } };
@@ -5851,7 +5966,6 @@ const UI = (() => {
       phase = '';
       current = 0;
       total = 0;
-      label = '';
       wake();
     };
 
@@ -5868,8 +5982,7 @@ const UI = (() => {
       get aborted() { return aborted; },
       get phase() { return phase; },
       get current() { return current; },
-      get total() { return total; },
-      get label() { return label; }
+      get total() { return total; }
     };
   })();
 
@@ -6759,6 +6872,46 @@ function showToast(msg, duration = TOAST_DURATION) {
     };
   })();
 
+  const TestIdleGate = (() => {
+    const waiters = new Set();
+
+    const isBusy = () => {
+      const busyTask = IterationSession.values().some(task => task.state === 'running' || task.state === 'paused');
+      return scheduled || updateRunning || isRendering || BaseRenderGate.hasPending() || busyTask;
+    };
+
+    const notify = () => {
+      if (isBusy()) return;
+      for (const waiter of Array.from(waiters)) waiter.resolve();
+    };
+
+    const wait = (timeout = 20000) => {
+      if (!isBusy()) return Promise.resolve();
+      return new Promise((resolve, reject) => {
+        const waiter = {
+          timer:null,
+          resolve:() => {
+            clearTimeout(waiter.timer);
+            waiters.delete(waiter);
+            resolve();
+          }
+        };
+        waiter.timer = setTimeout(() => {
+          waiters.delete(waiter);
+          reject(new Error('Visible Test Timeout'));
+        }, timeout);
+        waiters.add(waiter);
+      });
+    };
+
+    return { wait, notify };
+  })();
+
+  BaseRenderGate.onChange(pending => {
+    if (pending > 0) { TestIdleGate.notify(); return; }
+    AutoTestClock.yieldTask().then(() => TestIdleGate.notify());
+  });
+
   function renderHistory(algId, count = 0, limit = 65535) {
     const el = document.getElementById(`history-${algId}`);
     if (!el) return;
@@ -6860,40 +7013,32 @@ function showToast(msg, duration = TOAST_DURATION) {
   }
 
   function syncPauseControls() {
-    if (AutoTestSession.active) {
-      const tasks = IterationSession.values();
-      tasks.forEach(task => renderAlgControls(task.algId, task.state, task.total));
-
-      const activeTasks = tasks.filter(task => task.state === 'running' || task.state === 'paused');
-      const allPaused = activeTasks.length > 0 && activeTasks.every(task => task.state === 'paused');
-      const paused = AutoTestSession.paused || allPaused;
-      const stopAllWrap = document.getElementById('stop-all-wrap');
-
-      if (AutoTestSession.aborted) {
-        if (stopAllWrap) stopAllWrap.style.display = 'none';
-      } else {
-        setAllPauseControls(paused);
-        if (stopAllWrap) stopAllWrap.style.display = 'inline-block';
-      }
-
-      if (els.selfTestBtn) {
-        if (AutoTestSession.phase === 'visible') els.selfTestBtn.textContent = `自動検証 ${AutoTestSession.current}/${AutoTestSession.total}`;
-        else els.selfTestBtn.textContent = '自動検証 / 内部';
-      }
-      const phase = AutoTestSession.phase === 'visible' ? '自動検証' : '内部検証';
-      const suffix = AutoTestSession.label ? ` / ${AutoTestSession.label}` : '';
-      setMetaStatus(AutoTestSession.aborted ? `自動検証中止${suffix}` : paused ? `${phase}一時停止${suffix}` : `${phase}${suffix}`);
-      return;
-    }
-    if (els.selfTestBtn) els.selfTestBtn.textContent = '自動検証';
     const tasks = IterationSession.values();
     tasks.forEach(task => renderAlgControls(task.algId, task.state, task.total));
 
     const activeTasks = tasks.filter(task => task.state === 'running' || task.state === 'paused');
     const stopAllWrap = document.getElementById('stop-all-wrap');
+    const autoActive = AutoTestSession.active && !AutoTestSession.aborted;
+
+    if (els.selfTestBtn) {
+      if (!AutoTestSession.active) {
+        els.selfTestBtn.textContent = '自動検証';
+      } else if (AutoTestSession.phase === 'internal') {
+        els.selfTestBtn.textContent = '自動検証:内部';
+      } else {
+        els.selfTestBtn.textContent = `自動検証 ${AutoTestSession.current}/${AutoTestSession.total}`;
+      }
+    }
 
     if (!activeTasks.length) {
-      if (stopAllWrap) stopAllWrap.style.display = 'none';
+      if (stopAllWrap) {
+        if (autoActive) {
+          setAllPauseControls(AutoTestSession.paused);
+          stopAllWrap.style.display = 'inline-block';
+        } else {
+          stopAllWrap.style.display = 'none';
+        }
+      }
       if (!tasks.length) return;
 
       if (tasks.some(task => task.state === 'error')) setMetaStatus('エラー');
@@ -6902,13 +7047,14 @@ function showToast(msg, duration = TOAST_DURATION) {
       return;
     }
 
-    const allPaused = activeTasks.every(task => task.state === 'paused');
-    setAllPauseControls(allPaused);
+    const allTaskPaused = activeTasks.every(task => task.state === 'paused');
+    const combinedPaused = autoActive ? (AutoTestSession.paused && allTaskPaused) : allTaskPaused;
+    setAllPauseControls(combinedPaused);
     if (stopAllWrap) {
-      const shouldShow = allPaused || activeTasks.some(task => task.state === 'running' && task.total > 1);
+      const shouldShow = autoActive || allTaskPaused || activeTasks.some(task => task.state === 'running' && task.total > 1);
       stopAllWrap.style.display = shouldShow ? 'inline-block' : 'none';
     }
-    setMetaStatus(allPaused ? '一時停止' : '計算中');
+    setMetaStatus(allTaskPaused ? '一時停止' : '計算中');
   }
 
   function renderIterationAck(data) {
@@ -7002,6 +7148,7 @@ function showToast(msg, duration = TOAST_DURATION) {
              if (progEl) progEl.textContent = `完了 (1/1)`;
              if (btnEl) btnEl.style.display = 'none';
              if (abortBtn) abortBtn.style.display = 'none';
+             TestIdleGate.notify();
              return;
         }
     } else {
@@ -7011,19 +7158,21 @@ function showToast(msg, duration = TOAST_DURATION) {
         isRendering = true;
         requestAnimationFrame(renderLoop);
     }
+    TestIdleGate.notify();
   }
 
   EventBus.on('hash:session', data => {
       if (AppState.continuousCompareEnabled) clearContinuousCompareHit();
       IterationSession.begin(data);
-      if (AutoTestSession.active && AutoTestSession.paused) Engine.pauseAllTasks();
       syncPauseControls();
+      TestIdleGate.notify();
   });
   EventBus.on('hash:sessionEnd', data => {
       if (AppState.continuousCompareEnabled) clearContinuousCompareHit();
       IterationSession.end(data && data.reason);
       if (data && data.reason === 'aborted') resetHistories();
       syncPauseControls();
+      TestIdleGate.notify();
   });
   EventBus.on('hash:render', data => {
       let stateChanged = false;
@@ -7035,6 +7184,7 @@ function showToast(msg, duration = TOAST_DURATION) {
       }
       queueRender(data.algId, data.hex, data.iter, data.total, data.isDone, data.isAborted, data.isOOM, data.historyCount, data.historyLimit, data.isError, data.taskState);
       if (stateChanged) syncPauseControls();
+      TestIdleGate.notify();
   });
   EventBus.on('hash:paused', data => {
       delete renderState[data.algId];
@@ -7144,6 +7294,7 @@ function showToast(msg, duration = TOAST_DURATION) {
     } else {
         isRendering = false;
         syncPauseControls();
+        TestIdleGate.notify();
     }
   }
 
@@ -7369,9 +7520,24 @@ function showToast(msg, duration = TOAST_DURATION) {
   function scheduleUpdate() {
     if (!scheduled) {
       scheduled = true;
-      (window.requestIdleCallback || window.requestAnimationFrame)(() => {
-        scheduled = false; updateAll();
-      });
+      const run = async () => {
+        scheduled = false;
+        updateRunning = true;
+        try {
+          await updateAll();
+        } catch (e) {
+          console.warn('Update error:', e);
+        } finally {
+          updateRunning = false;
+          TestIdleGate.notify();
+        }
+      };
+
+      if (AutoTestSession.active && AutoTestSession.phase === 'visible') {
+        AutoTestClock.schedule(run);
+      } else {
+        (window.requestIdleCallback || window.requestAnimationFrame)(run);
+      }
     }
   }
 
@@ -7426,7 +7592,7 @@ function showToast(msg, duration = TOAST_DURATION) {
 
     const syncVisualThemeControls = () => {
       els.themeBtn.textContent = AppState.showTheme
-        ? 'テーマ: 折畳 [-]'
+        ? 'テーマ: [-]'
         : 'テーマ [+]';
       els.systemThemeToggleBtn.textContent = `システム: ${VisualTheme.label('system')}`;
       els.displayThemeToggleBtn.textContent = `ディスプレイ: ${VisualTheme.label('display')}`;
@@ -7451,7 +7617,7 @@ function showToast(msg, duration = TOAST_DURATION) {
       els.hashBase64ToggleBtn.textContent = `${first === 'base64' ? '*' : ''}Base64: ${base64On ? 'オン' : 'オフ'}`;
       els.hashBase85ToggleBtn.textContent = `${first === 'base85' ? '*' : ''}Base85: ${base85On ? 'オン' : 'オフ'}`;
       els.hashOutputToggle.textContent = AppState.showHashOutput
-        ? 'HASH出力: 折畳 [-]'
+        ? 'HASH出力: [-]'
         : `HASH出力: ${HashOutputFilter.describe()} [+]`;
       if (AppState.showHashOutput) els.hashOutputOptionsContainer.classList.remove('hidden');
       else els.hashOutputOptionsContainer.classList.add('hidden');
@@ -7688,9 +7854,6 @@ async function detectBase85Variants(input) {
       refreshCurrentMeta();
     });
 
-    const AUTO_TEST_SPEED = 100;
-    const testDelay = ms => new Promise(resolve => setTimeout(resolve, Math.max(0, Math.round(ms / AUTO_TEST_SPEED))));
-
     const syncTestOptionControls = setup => {
       const cfg = setup || {};
 
@@ -7737,7 +7900,7 @@ async function detectBase85Variants(input) {
 
       const baseVisible = AppState.Base64Encode || AppState.Base64Decode || AppState.Base85Encode || AppState.Base85Decode || AppState.hashOutputOrder.length > 0;
       AppState.showBaseGroup = baseVisible;
-      els.baseGroupToggle.textContent = baseVisible ? 'BASE: 折畳 [-]' : 'BASE: 展開 [+]';
+      els.baseGroupToggle.textContent = baseVisible ? 'BASE: [-]' : 'BASE: [+]';
       els.baseOptionsContainer.classList.toggle('hidden', !baseVisible);
 
       const iterations = Math.max(1, Number(cfg.iterations) || 1);
@@ -7851,20 +8014,75 @@ async function detectBase85Variants(input) {
       return { ok:failed.length === 0, total, passed:ok, skipped, failed };
     };
 
-    const waitForTestIdle = async (timeout = 20000) => {
-      const started = performance.now();
-      let stable = 0;
-      while (performance.now() - started < timeout) {
-        await AutoTestSession.checkpoint();
-        const tasks = IterationSession.values();
-        const busyTask = tasks.some(task => task.state === 'running' || task.state === 'paused');
-        const busyBase = BaseRenderGate.hasPending();
-        if (!scheduled && !isRendering && !busyTask && !busyBase) stable++;
-        else stable = 0;
-        if (stable >= 3) return true;
-        await testDelay(50);
+    let autoProgressRaf = 0;
+    let pendingAutoProgress = null;
+    const queueAutoProgress = (phase, current, total) => {
+      AutoTestSession.setProgress(phase, current, total);
+      pendingAutoProgress = true;
+      if (autoProgressRaf) return;
+      autoProgressRaf = requestAnimationFrame(() => {
+        autoProgressRaf = 0;
+        pendingAutoProgress = null;
+        syncPauseControls();
+      });
+    };
+
+    let autoClickTokenSeq = 0;
+    let dispatchingAutoClickToken = 0;
+    const autoVerifyWaiters = new Map();
+
+    const clickAsUser = el => {
+      if (!el) throw new Error('Auto Test Control Missing');
+      const token = ++autoClickTokenSeq;
+      dispatchingAutoClickToken = token;
+      try {
+        el.click();
+      } finally {
+        dispatchingAutoClickToken = 0;
       }
-      throw new Error('Visible Test Timeout');
+      return token;
+    };
+
+    const waitForAutoVerify = (token, timeout = 20000) => new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        autoVerifyWaiters.delete(token);
+        reject(new Error('Visible Verify Timeout'));
+      }, timeout);
+      autoVerifyWaiters.set(token, {
+        resolve: result => {
+          clearTimeout(timer);
+          autoVerifyWaiters.delete(token);
+          resolve(result);
+        },
+        reject: error => {
+          clearTimeout(timer);
+          autoVerifyWaiters.delete(token);
+          reject(error);
+        }
+      });
+    });
+
+    const finishAutoVerify = (token, result, error = null) => {
+      if (!token) return;
+      const waiter = autoVerifyWaiters.get(token);
+      if (!waiter) return;
+      if (error) waiter.reject(error);
+      else waiter.resolve(result);
+    };
+
+    const waitForTestIdle = async (timeout = 20000) => {
+      await AutoTestSession.checkpoint();
+      await TestIdleGate.wait(timeout);
+      await AutoTestSession.checkpoint();
+      return true;
+    };
+
+    const showAutoToast = (message, duration = TOAST_DURATION, force = false) => {
+      if (AutoTestClock.speed >= 1000 && !force) return;
+      const visibleDuration = AutoTestClock.speed <= 1
+        ? duration
+        : Math.max(150, Math.round(duration / AutoTestClock.speed));
+      showToast(message, visibleDuration);
     };
 
     const runAutomaticSelfTest = async () => {
@@ -7873,55 +8091,80 @@ async function detectBase85Variants(input) {
       const visible = [];
       let hidden = [];
       let completed = 0;
+      let lastYield = performance.now();
 
       if (AppState.continuousCompareEnabled) disarmContinuousCompare(true);
       BaseRenderGate.invalidateAll();
       Engine.resetMasterTask();
       AutoTestSession.begin(keys.length);
       syncPauseControls();
+      showAutoToast('自動検証開始｜画面上で順番に適用・検証します', 2600, true);
+
+      const setTestButtons = new Map(
+        Array.from(document.querySelectorAll('[data-action="setTest"][data-test]'))
+          .map(btn => [btn.dataset.test, btn])
+      );
+      const applyButton = document.querySelector('[data-action="applyTest"]');
+      const verifyButton = document.querySelector('[data-action="verifyTest"]');
 
       try {
         for (let i = 0; i < keys.length; i++) {
           const key = keys[i];
           const test = TEST_VECTORS[key];
+          const testButton = setTestButtons.get(key);
+          if (!testButton || !applyButton || !verifyButton) {
+            throw new Error(`Visible Test Control Missing: ${key}`);
+          }
+
           await AutoTestSession.checkpoint();
-          AutoTestSession.setProgress('visible', i + 1, keys.length, test.label);
-          syncPauseControls();
-          showToast(`自動検証 ${i + 1}/${keys.length}｜${test.label}｜適用`);
-          applySelectedTest(key);
-          await testDelay(180);
+          queueAutoProgress('visible', i + 1, keys.length);
+
+          clickAsUser(testButton);
+          await AutoTestClock.hold(AUTO_TEST_TIMING.afterSelect, true);
+
+          showAutoToast(`自動検証 ${i + 1}/${keys.length}｜${test.label}｜適用`, 900);
+          clickAsUser(applyButton);
           await waitForTestIdle();
+          await AutoTestClock.hold(AUTO_TEST_TIMING.afterApply, true);
+
           await AutoTestSession.checkpoint();
-          const result = await verifySelectedTest(key);
+          showAutoToast(`自動検証 ${i + 1}/${keys.length}｜${test.label}｜検証`, 900);
+          const verifyToken = clickAsUser(verifyButton);
+          const result = await waitForAutoVerify(verifyToken);
           visible.push({ key, label:test.label, ...result });
           completed++;
+
           await waitForTestIdle();
-          await testDelay(TOAST_DURATION + 120);
+          await AutoTestClock.hold(AUTO_TEST_TIMING.afterVerify, true);
         }
 
-        AutoTestSession.setProgress('internal', 0, 0, '開始');
+        AutoTestSession.setProgress('internal', 0, 0);
         syncPauseControls();
-        showToast('入力検証完了｜内部検証へ移行します');
-        await testDelay(TOAST_DURATION);
-        let hiddenStep = 0;
+        showAutoToast('入力検証完了｜内部検証へ移行します', 1500, true);
+        await AutoTestClock.hold(AUTO_TEST_TIMING.phaseTransition, true);
+
         hidden = await SelfTest.runAll({
           checkpoint: () => AutoTestSession.checkpoint(),
           onProgress: async (group, name) => {
-            hiddenStep++;
-            AutoTestSession.setProgress('internal', hiddenStep, 0, `${group} / ${name}`);
-            syncPauseControls();
-            showToast(`内部検証｜${group}｜${name}`, 700);
-            await testDelay(90);
+            const now = performance.now();
+            if (now - lastYield >= AutoTestClock.yieldBudget) {
+              await AutoTestClock.yieldTask();
+              lastYield = performance.now();
+            }
           }
         });
 
-        AutoTestSession.setProgress('internal', hiddenStep, 0, '復元');
+        AutoTestSession.setProgress('visible', keys.length, keys.length);
         syncPauseControls();
-        showToast('全検証完了｜初期状態に戻します');
-        await AutoTestSession.checkpoint();
-        applySelectedTest('empty');
+        const emptyButton = setTestButtons.get('empty');
+        if (!emptyButton) throw new Error('Visible Test Control Missing: empty');
+        clickAsUser(emptyButton);
+        await AutoTestClock.hold(AUTO_TEST_TIMING.afterSelect, true);
+        clickAsUser(applyButton);
         await waitForTestIdle();
-        const resetResult = await verifySelectedTest('empty');
+        await AutoTestClock.hold(AUTO_TEST_TIMING.afterApply, true);
+        const resetVerifyToken = clickAsUser(verifyButton);
+        const resetResult = await waitForAutoVerify(resetVerifyToken);
         await waitForTestIdle();
 
         const visibleFailed = visible.filter(x => !x.ok);
@@ -7934,7 +8177,13 @@ async function detectBase85Variants(input) {
         const resetFailed = !resetResult.ok;
 
         AutoTestSession.end();
+        if (autoProgressRaf) {
+          cancelAnimationFrame(autoProgressRaf);
+          autoProgressRaf = 0;
+          pendingAutoProgress = null;
+        }
         syncPauseControls();
+
         if (visibleFailed.length === 0 && hiddenFailed.length === 0 && !resetFailed) {
           setMetaStatus(skipped ? '自動検証完了（未対応あり）' : '自動検証完了');
           showToast(`全検証成功｜入力 ${visiblePassed}/${visible.length}｜内部 ${hiddenPassed}/${hiddenPassed + hiddenFailed.length}｜復元 OK${skipped ? `｜未対応 ${skipped}` : ''}`, 6000);
@@ -7949,9 +8198,20 @@ async function detectBase85Variants(input) {
       } catch (e) {
         const aborted = !!e?.autoTestAbort || AutoTestSession.aborted;
         AutoTestSession.end();
+        for (const [token, waiter] of autoVerifyWaiters) {
+          waiter.reject(e);
+          autoVerifyWaiters.delete(token);
+        }
+        if (autoProgressRaf) {
+          cancelAnimationFrame(autoProgressRaf);
+          autoProgressRaf = 0;
+          pendingAutoProgress = null;
+        }
         syncPauseControls();
-        if (aborted) { setMetaStatus('自動検証中止'); showToast(`自動検証中止｜入力 ${completed}/${keys.length}`, 4500); }
-        else {
+        if (aborted) {
+          setMetaStatus('自動検証中止');
+          showToast(`自動検証中止｜入力 ${completed}/${keys.length}`, 4500);
+        } else {
           setMetaStatus('自動検証エラー');
           showToast(`自動検証エラー｜${String(e?.message || e)}`, 4500);
           console.warn('Self-test error:', e);
@@ -7963,11 +8223,6 @@ async function detectBase85Variants(input) {
         const actionEl = e.target.closest('[data-action]');
         if (!actionEl) return;
         const action = actionEl.dataset.action;
-        if (AutoTestSession.active && !['stopAlg','resumeAlg','abortAlg','stopAll','resumeAll','abortAll','toggleTheme','cycleVisualTheme','toggleFullscreen','copyValue'].includes(action)) {
-          showToast('自動検証中です｜中止してから操作してください');
-          return;
-        }
-
         switch(action) {
             case 'toggleTheme': {
                 AppState.showTheme = !AppState.showTheme;
@@ -8111,7 +8366,7 @@ async function detectBase85Variants(input) {
             case 'toggleGrouping': {
                 AppState.showGrouping = !AppState.showGrouping;
                 els.groupingToggle.textContent = AppState.showGrouping
-                    ? '区切り: 折畳 [-]'
+                    ? '区切り: [-]'
                     : `区切り: ${AppState.grouping ? AppState.grouping + '文字' : '区切りなし'} [+]`;
                 if (AppState.showGrouping) {
                     els.groupingOptionsContainer.classList.remove('hidden');
@@ -8136,7 +8391,7 @@ async function detectBase85Variants(input) {
             case 'toggleTest': {
                 AppState.showTest = !AppState.showTest;
                 const testLabel = TEST_VECTORS[AppState.testVector]?.label || '空';
-                els.testToggle.textContent = AppState.showTest ? 'テスト: 折畳 [-]' : `テスト: ${testLabel} [+]`;
+                els.testToggle.textContent = AppState.showTest ? 'テスト: [-]' : `テスト: ${testLabel} [+]`;
                 if (AppState.showTest) {
                     els.testOptionsContainer.classList.remove('hidden');
                 } else {
@@ -8156,7 +8411,7 @@ async function detectBase85Variants(input) {
 
             case 'toggleBaseGroup': {
                 AppState.showBaseGroup = !AppState.showBaseGroup;
-                els.baseGroupToggle.textContent = AppState.showBaseGroup ? 'BASE: 折畳 [-]' : 'BASE: 展開 [+]';
+                els.baseGroupToggle.textContent = AppState.showBaseGroup ? 'BASE: [-]' : 'BASE: [+]';
                 if (AppState.showBaseGroup) {
                     els.baseOptionsContainer.classList.remove('hidden');
                 } else {
@@ -8292,8 +8547,15 @@ async function detectBase85Variants(input) {
             }
 
             case 'verifyTest': {
-                if (TEST_VECTORS[AppState.testVector]?.surfaceExpect) await waitForTestIdle();
-                await verifySelectedTest();
+                const autoToken = dispatchingAutoClickToken;
+                try {
+                    if (!autoToken && TEST_VECTORS[AppState.testVector]?.surfaceExpect) await waitForTestIdle();
+                    const result = await verifySelectedTest();
+                    finishAutoVerify(autoToken, result);
+                } catch (error) {
+                    finishAutoVerify(autoToken, null, error);
+                    throw error;
+                }
                 break;
             }
             case 'runSelfTest': {
