@@ -602,6 +602,8 @@
         <button class="link" data-action="setTest" data-test="utf8HighHigh">UTF-8 上位+上位</button>
         <span class="sep hint">/</span>
         <button class="link" data-action="setTest" data-test="utf8LowHigh">UTF-8 下位+上位</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setTest" data-test="sanitize">不可視文字・改行整形</button>
         <span class="sep hint">|</span>
         <span class="sep hint">/</span>
         <button class="link" data-action="setTest" data-test="salt">Salt</button>
@@ -688,6 +690,12 @@
         <button class="link" data-action="setTest" data-test="iterRaw">反復: 標準（Raw）</button>
         <span class="sep hint">/</span>
         <button class="link" data-action="setTest" data-test="iterXor">反復: XOR累積（XOR）</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setTest" data-test="iterHex3">反復: 手渡し（Hex）×3</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setTest" data-test="iterRaw3">反復: 標準（Raw）×3</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setTest" data-test="iterXor3">反復: XOR累積（XOR）×3</button>
         <span class="sep hint">|</span>
         <span class="sep hint">/</span>
         <button class="link" data-action="setTest" data-test="hashBase64Raw">HASH→Base64 Raw</button>
@@ -697,6 +705,8 @@
         <button class="link" data-action="setTest" data-test="hashBase85Raw">HASH→Base85 Raw</button>
         <span class="sep hint">/</span>
         <button class="link" data-action="setTest" data-test="hashBase64Base85">HASH→Base64→Base85</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setTest" data-test="hashBase85Base64">HASH→Base85→Base64</button>
         <span class="sep hint">/</span>
         <button class="link" data-action="setTest" data-test="hashZ85Raw">HASH→Base85 Raw（ZeroMQ (Z85)）</button>
         <span class="sep hint">/</span>
@@ -1701,7 +1711,7 @@ const Core = (() => {
       let isZipBased = false;
       let isPolyglot = false;
 
-      if (magic === '4D5A') {
+      if (getHex(0, 2) === '4D5A') {
         const peOffset = headBytes[0x3C] | (headBytes[0x3D] << 8) | (headBytes[0x3E] << 16) | (headBytes[0x3F] << 24);
         if (peOffset > 0 && peOffset + 4 <= headBytes.length) {
           type = getHex(peOffset, 4) === '50450000' ? 'Windows PE (EXE/DLL)' : 'MS-DOS Executable';
@@ -5623,6 +5633,13 @@ const SelfTest = (() => {
     add(report, 'UTF-8', 'Normalize NFC', Core.normalizeText('か\u3099', 'NFC'), 'が');
     add(report, 'UTF-8', 'Normalize NFKC Kana', Core.normalizeText('ｶﾞ', 'NFKC'), 'ガ');
     add(report, 'UTF-8', 'Normalize NFKC Fullwidth', Core.normalizeText('ＡＢＣ１２３', 'NFKC'), 'ABC123');
+
+    await step(control, 'UTF-8', 'Sanitize');
+    add(report, 'UTF-8', 'Sanitize Invisible', Core.sanitizeText('A\u200BB\u200CC\u200DD\u2060E\uFEFFF'), 'ABCDEF');
+    add(report, 'UTF-8', 'Sanitize EOL', Core.sanitizeText('a\r\nb\rc\n'), 'a\nb\nc\n');
+    const sanitized = Core.sanitizeText('A\u200B\r\nB\uFEFF');
+    add(report, 'UTF-8', 'Sanitize Mixed', sanitized, 'A\nB');
+    add(report, 'UTF-8', 'Sanitize Idempotent', Core.sanitizeText(sanitized), sanitized);
   }
 
   async function decodeBase64Case(report, name, value, strict, expectedHex = null) {
@@ -5773,6 +5790,65 @@ const SelfTest = (() => {
     }
   }
 
+  async function runFileTests(report, control) {
+    const checkType = async (name, bytes, expectedType) => {
+      await step(control, 'FILE', name);
+      const info = await Core.analyzeFileStructure(new Blob([bytes]));
+      add(report, 'FILE', name, info.type, expectedType);
+      return info;
+    };
+
+    await checkType('Short Unknown', new Uint8Array(8), 'unknown');
+    await checkType('Generic Binary', new Uint8Array(16), 'bin');
+
+    const png = new Uint8Array(16);
+    png.set([0x89,0x50,0x4e,0x47], 0);
+    await checkType('PNG', png, 'PNG Image');
+
+    const jpeg = new Uint8Array(16);
+    jpeg.set([0xff,0xd8,0xff,0xe0], 0);
+    await checkType('JPEG', jpeg, 'JPEG Image');
+
+    const sqlite = new Uint8Array(16);
+    sqlite.set(Core.utf8Encode('SQLite format 3\0'), 0);
+    await checkType('SQLite', sqlite, 'SQLite 3 Database');
+
+    const mp3 = new Uint8Array(16);
+    mp3.set([0x49,0x44,0x33,0x04,0x00,0x00,0x00,0x00,0x00,0x00], 0);
+    await checkType('MP3 ID3', mp3, 'MP3 (ID3v2, Tag Size: ~0KB)');
+
+    const pe = new Uint8Array(128);
+    pe.set([0x4d,0x5a], 0);
+    pe[0x3c] = 0x40;
+    pe.set([0x50,0x45,0x00,0x00], 0x40);
+    await checkType('Windows PE', pe, 'Windows PE (EXE/DLL)');
+
+    const dos = new Uint8Array(128);
+    dos.set([0x4d,0x5a], 0);
+    dos[0x3c] = 0x40;
+    await checkType('MS-DOS Executable', dos, 'MS-DOS Executable');
+
+    const unverifiedPe = new Uint8Array(64);
+    unverifiedPe.set([0x4d,0x5a], 0);
+    unverifiedPe[0x3c] = 0xff;
+    await checkType('Unverified PE', unverifiedPe, 'Executable (Unverified PE)');
+
+    const zipSmall = new Uint8Array(16);
+    zipSmall.set([0x50,0x4b,0x03,0x04], 0);
+    await checkType('ZIP Header', zipSmall, 'ZIP Archive');
+
+    const zipVerified = new Uint8Array(9000);
+    zipVerified.set([0x50,0x4b,0x03,0x04], 0);
+    zipVerified.set([0x50,0x4b,0x05,0x06], zipVerified.length - 4);
+    await checkType('ZIP Verified', zipVerified, 'ZIP Archive (Verified)');
+
+    const polyglot = new Uint8Array(9000);
+    polyglot.set([0x89,0x50,0x4e,0x47], 0);
+    polyglot.set([0x50,0x4b,0x05,0x06], polyglot.length - 4);
+    const polyInfo = await checkType('Polyglot Type', polyglot, 'PNG Image');
+    add(report, 'FILE', 'Polyglot Flag', polyInfo.isPolyglot, true);
+  }
+
   async function runWorkerTests(report, control) {
     await step(control, 'WORKER', 'History / Runtime');
     const result = await Engine.runWorkerSelfTest('runtime');
@@ -5793,8 +5869,11 @@ const SelfTest = (() => {
       { name:'Base85 Raw', outputOrder:['base85'], handoff:'raw', base85Variant:'Standard ASCII85' },
       { name:'ZeroMQ (Z85) Raw', outputOrder:['base85'], handoff:'raw', base85Variant:'ZeroMQ (Z85)' },
       { name:'RFC 1924 Alphabet Raw', outputOrder:['base85'], handoff:'raw', base85Variant:'RFC 1924 Alphabet' },
+      { name:'Adobe ASCII85 Raw', outputOrder:['base85'], handoff:'raw', base85Variant:'Adobe ASCII85' },
       { name:'Base64 → Base85 Raw', outputOrder:['base64','base85'], handoff:'raw', base85Variant:'Standard ASCII85' },
-      { name:'Base64 → Base85 Hex', outputOrder:['base64','base85'], handoff:'hex', base85Variant:'Standard ASCII85' }
+      { name:'Base64 → Base85 Hex', outputOrder:['base64','base85'], handoff:'hex', base85Variant:'Standard ASCII85' },
+      { name:'Base85 → Base64 Raw', outputOrder:['base85','base64'], handoff:'raw', base85Variant:'Standard ASCII85' },
+      { name:'Base85 → Base64 Hex', outputOrder:['base85','base64'], handoff:'hex', base85Variant:'Standard ASCII85' }
     ];
 
     for (const item of contexts) {
@@ -5837,6 +5916,90 @@ const SelfTest = (() => {
     } catch (e) {
       addFailure(report, 'FILTER', 'Visual Copy', e);
     }
+
+    const digestCases = [
+      ['CRC32', 4],
+      ['CRC64', 8],
+      ['MD5', 16],
+      ['SHA-1', 20],
+      ['SHA-224', 28],
+      ['SHA-256', 32],
+      ['SHA-384', 48],
+      ['SHA-512', 64]
+    ];
+    const digestContext = {
+      outputOrder:['base64'],
+      handoff:'raw',
+      base85Variant:'Standard ASCII85',
+      crc64Variant:CRC64_VARIANTS[0],
+      copyMode:'actual',
+      hexUpper:false,
+      grouping:0,
+      separator:' '
+    };
+    await step(control, 'FILTER', 'Digest Sizes');
+    for (const [algId, byteLength] of digestCases) {
+      const hex = 'ab'.repeat(byteLength);
+      try {
+        const value = HashOutputFilter.apply(algId, hex, digestContext);
+        const target = await HashOutputFilter.resolveCompareTarget(value, digestContext);
+        add(report, 'FILTER', `Digest Size / ${algId}`, target?.algId === algId ? target.hex : '', hex);
+      } catch (e) {
+        addFailure(report, 'FILTER', `Digest Size / ${algId}`, e);
+      }
+    }
+
+    await step(control, 'FILTER', 'Reject Invalid');
+    const rawContext = {
+      outputOrder:[],
+      handoff:'raw',
+      base85Variant:'Standard ASCII85',
+      crc64Variant:CRC64_VARIANTS[0],
+      copyMode:'actual',
+      hexUpper:false,
+      grouping:0,
+      separator:' '
+    };
+    for (const [name, value] of [
+      ['Reject Odd HEX', 'abc'],
+      ['Reject Non-HEX', 'zz'],
+      ['Reject Unsupported Digest Size', '000000']
+    ]) {
+      const target = await HashOutputFilter.resolveCompareTarget(value, rawContext);
+      add(report, 'FILTER', name, target === null, true);
+    }
+
+    const malformedBase64Context = { ...digestContext };
+    const malformedBase64 = HashOutputFilter.apply('SHA-256', canonical, malformedBase64Context) + '!';
+    add(
+      report,
+      'FILTER',
+      'Reject Malformed Encoded Output',
+      await HashOutputFilter.resolveCompareTarget(malformedBase64, malformedBase64Context) === null,
+      true
+    );
+
+    const groupedHexContext = {
+      ...rawContext,
+      copyMode:'visual',
+      grouping:4,
+      separator:'-'
+    };
+    const groupedHex = Core.formatForDisplay(canonical, false, 4, false, '-');
+    add(
+      report,
+      'FILTER',
+      'Reject Wrong Separator',
+      await HashOutputFilter.resolveCompareTarget(groupedHex.replace('-', ':'), groupedHexContext) === null,
+      true
+    );
+    add(
+      report,
+      'FILTER',
+      'Reject Wrong Visual Case',
+      await HashOutputFilter.resolveCompareTarget(groupedHex.toUpperCase(), groupedHexContext) === null,
+      true
+    );
   }
 
   async function runAll(control = null) {
@@ -5846,6 +6009,7 @@ const SelfTest = (() => {
     await runUtf8Tests(report, control);
     await runBase64Tests(report, control);
     await runBase85Tests(report, control);
+    await runFileTests(report, control);
     await runWorkerTests(report, control);
     await runFilterTests(report, control);
     return report;
@@ -6280,6 +6444,14 @@ const UI = (() => {
         'SHA-512':'ef26eddbcf27460ead8c2e3394b498efba9974f3ad2d2c0b5aedb0cda133047d1d75edb4d444daf0a595d2f181b4162e90a5d621f5266540a1735c56b81b0dd5'
       }
     },
+    sanitize:{
+      label:'不可視文字・改行整形',
+      text:'A\u200B\r\nB\uFEFF',
+      setup:{ sanitizeText:true },
+      surfaceExpect:{
+        'SHA-256':'23519a43c66b4c342f25b32e09797ec5f3fc0be388cd8243fb3449afbdce4013'
+      }
+    },
     salt:{
       label:'Salt',
       text:'abc',
@@ -6619,6 +6791,30 @@ const UI = (() => {
         'SHA-256':'f5f3547da2d2bd7110dae628d08385efeb2e01ce93cd97c6610273a1cc6c76f5'
       }
     },
+    iterHex3:{
+      label:'反復: 手渡し（Hex）×3',
+      text:'abc',
+      setup:{ iterations:3, iterMode:'hex' },
+      surfaceExpect:{
+        'SHA-256':'bbdb08dd3f8e0a2dbd9a4f45045fdf45cebee1ac6706de3353e753234b318e78'
+      }
+    },
+    iterRaw3:{
+      label:'反復: 標準（Raw）×3',
+      text:'abc',
+      setup:{ iterations:3, iterMode:'raw' },
+      surfaceExpect:{
+        'SHA-256':'f2a778f1a6ed3d5bc59a5d79104c598f3f07093f240ca4e91333fb09ed4f36da'
+      }
+    },
+    iterXor3:{
+      label:'反復: XOR累積（XOR）×3',
+      text:'abc',
+      setup:{ iterations:3, iterMode:'xor' },
+      surfaceExpect:{
+        'SHA-256':'07542c8c043f802ad540bb51c0cfdc60d42908f1b7c1332f723188a82123402f'
+      }
+    },
     hashBase64Raw:{
       label:'HASH→Base64 Raw',
       text:'abc',
@@ -6665,6 +6861,14 @@ const UI = (() => {
       setup:{ hashOutputOrder:['base64','base85'], hashOutputHandoff:'raw', base85Variant:'Standard ASCII85' },
       surfaceExpect:{
         'SHA-256':'F`(hnFu20FH7Nr$;,p"q=CF%#8N/q\'=^b*-7Pf$oF@&AK=_:5k7U[u6'
+      }
+    },
+    hashBase85Base64:{
+      label:'HASH→Base85→Base64',
+      text:'abc',
+      setup:{ hashOutputOrder:['base85','base64'], hashOutputHandoff:'raw', base85Variant:'Standard ASCII85' },
+      surfaceExpect:{
+        'SHA-256':'XHAsIipOcmRTbDVzW2NtPyo1QHJZUUo9L1E1PWs7WmszN0duYzBFLA=='
       }
     }
   };
