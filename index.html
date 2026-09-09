@@ -567,7 +567,7 @@
         <span class="sep hint">/</span>
         <button id="Base85DecToggle" class="link" aria-label="Base85デコードの切替" data-action="toggleBase85Dec">Base85 Dec: オフ</button>
         <span id="base85VariantSep" class="sep hint" hidden>/</span>
-        <button id="base85VariantToggle" class="link" aria-label="Base85形式の切替" title="btoa ASCII85 は xbtoa Begin/End・原始長・E/S/R checksum を含む完全形式。裸payloadのdecode互換も維持します" data-action="cycleBase85" hidden>Base85形式: Standard ASCII85</button>
+        <button id="base85VariantToggle" class="link" aria-label="Base85形式の切替" title="btoa ASCII85 は xbtoa Begin/End・元のデータ長・E/S/Rチェックサムを含む完全形式です。ラッパーなしのペイロードのデコード互換性も維持します" data-action="cycleBase85" hidden>Base85形式: Standard ASCII85</button>
         <span id="baseFileDetectSep" class="sep hint" hidden>/</span>
         <button id="baseFileDetectToggle" class="link" aria-label="Base自動ファイル判別の切替" data-action="toggleBaseFileDetect" hidden>Base自動判別: オフ</button>
         <span class="sep hint">/</span>
@@ -1327,7 +1327,7 @@ const MonospaceGuard = (() => {
     }
 
     document.body.dataset.monoGuard = 'failed';
-    console.warn('[MONOSPACE] 等幅フォント検証失敗: フォールバック後も字幅不一致');
+    console.warn('[MONOSPACE] 等幅フォント検証失敗: フォールバック後も字幅が一致しません');
   }
 
   function schedule() {
@@ -1467,12 +1467,12 @@ const VisualTheme = (() => {
     for (const kind of kinds) {
       const ids = new Set();
       for (const entry of REGISTRY[kind]) {
-        if (entry.kind !== kind) issues.push(`${kind}:${entry.id} kind不一致`);
-        if (!/^[a-z0-9-]+$/.test(entry.id)) issues.push(`${kind}:${entry.id} ID形式不正`);
-        if (ids.has(entry.id)) issues.push(`${kind}:${entry.id} ID重複`);
+        if (entry.kind !== kind) issues.push(`${kind}:${entry.id} kindの不一致`);
+        if (!/^[a-z0-9-]+$/.test(entry.id)) issues.push(`${kind}:${entry.id} ID形式が不正`);
+        if (ids.has(entry.id)) issues.push(`${kind}:${entry.id} IDが重複`);
         ids.add(entry.id);
       }
-      if (!has(kind, defaults[kind])) issues.push(`${kind} 既定テーマ不在`);
+      if (!has(kind, defaults[kind])) issues.push(`${kind} 既定テーマが存在しません`);
     }
 
     for (const rule of rules) {
@@ -1486,25 +1486,25 @@ const VisualTheme = (() => {
         if (usedKinds.length > 1) issues.push(`交差セレクタ禁止: ${selector}`);
         if (usedKinds[0] === 'system') {
           const match = selector.match(/^body\[data-system="([a-z0-9-]+)"\]$/);
-          if (!match) issues.push(`SYSTEM範囲不正: ${selector}`);
+          if (!match) issues.push(`SYSTEM範囲が不正: ${selector}`);
           else if (!has('system', match[1])) issues.push(`SYSTEM未登録: ${match[1]}`);
-          if (styleProps(rule).some(prop => !prop.startsWith('--sys-'))) issues.push(`SYSTEM宣言不正: ${selector}`);
+          if (styleProps(rule).some(prop => !prop.startsWith('--sys-'))) issues.push(`SYSTEM宣言が不正: ${selector}`);
         }
         if (usedKinds[0] === 'background') {
           const match = selector.match(/^body\[data-background="([a-z0-9-]+)"\]$/);
-          if (!match) issues.push(`BACKGROUND範囲不正: ${selector}`);
+          if (!match) issues.push(`BACKGROUND範囲が不正: ${selector}`);
           else if (!has('background', match[1])) issues.push(`BACKGROUND未登録: ${match[1]}`);
-          if (styleProps(rule).some(prop => !prop.startsWith('--app-'))) issues.push(`BACKGROUND宣言不正: ${selector}`);
+          if (styleProps(rule).some(prop => !prop.startsWith('--app-'))) issues.push(`BACKGROUND宣言が不正: ${selector}`);
         }
         if (usedKinds[0] === 'display') {
           const bodyMatch = selector.match(/^body\[data-display="([a-z0-9-]+)"\]$/);
           const fxMatch = selector.match(/^body\[data-display="([a-z0-9-]+)"\] #display-fx(?:::(before|after))?$/);
-          if (!bodyMatch && !fxMatch) issues.push(`DISPLAY範囲不正: ${selector}`);
+          if (!bodyMatch && !fxMatch) issues.push(`DISPLAY範囲が不正: ${selector}`);
           else {
             const id = (bodyMatch || fxMatch)[1];
             if (!has('display', id)) issues.push(`DISPLAY未登録: ${id}`);
           }
-          if (bodyMatch && styleProps(rule).some(prop => !prop.startsWith('--display-'))) issues.push(`DISPLAY宣言不正: ${selector}`);
+          if (bodyMatch && styleProps(rule).some(prop => !prop.startsWith('--display-'))) issues.push(`DISPLAY宣言が不正: ${selector}`);
           if (fxMatch && styleProps(rule).some(prop => prop.startsWith('--sys-') || prop.startsWith('--app-'))) issues.push(`DISPLAY越境宣言: ${selector}`);
         }
       }
@@ -1513,28 +1513,28 @@ const VisualTheme = (() => {
     for (const entry of REGISTRY.system) {
       const selector = `body[data-system="${entry.id}"]`;
       const matches = rules.filter(rule => rule.selectorText === selector);
-      if (matches.length !== 1) { issues.push(`SYSTEM CSS数不正: ${entry.id} ${matches.length}`); continue; }
+      if (matches.length !== 1) { issues.push(`SYSTEM CSSの数が不正: ${entry.id} ${matches.length}`); continue; }
       for (const name of systemVars) if (!matches[0].style.getPropertyValue(name)) issues.push(`SYSTEM未定義: ${entry.id} ${name}`);
     }
 
     for (const entry of REGISTRY.display) {
       const selector = `body[data-display="${entry.id}"]`;
       const matches = rules.filter(rule => rule.selectorText === selector);
-      if (matches.length !== 1) { issues.push(`DISPLAY CSS数不正: ${entry.id} ${matches.length}`); continue; }
+      if (matches.length !== 1) { issues.push(`DISPLAY CSSの数が不正: ${entry.id} ${matches.length}`); continue; }
       for (const name of displayVars) if (!matches[0].style.getPropertyValue(name)) issues.push(`DISPLAY未定義: ${entry.id} ${name}`);
     }
 
     for (const entry of REGISTRY.background) {
       const selector = `body[data-background="${entry.id}"]`;
       const matches = rules.filter(rule => rule.selectorText === selector);
-      if (matches.length !== 1) { issues.push(`BACKGROUND CSS数不正: ${entry.id} ${matches.length}`); continue; }
+      if (matches.length !== 1) { issues.push(`BACKGROUND CSSの数が不正: ${entry.id} ${matches.length}`); continue; }
       const rule = matches[0];
       for (const name of backgroundVars) if (!rule.style.getPropertyValue(name)) issues.push(`BACKGROUND未定義: ${entry.id} ${name}`);
       const declared = new Set(entry.overrides || []);
       for (const name of declared) if (!overrideVars[name]) issues.push(`BACKGROUND override不明: ${entry.id} ${name}`);
       for (const [name, cssVar] of Object.entries(overrideVars)) {
         const present = !!rule.style.getPropertyValue(cssVar);
-        if (present !== declared.has(name)) issues.push(`BACKGROUND override不一致: ${entry.id} ${name}`);
+        if (present !== declared.has(name)) issues.push(`BACKGROUND overrideの不一致: ${entry.id} ${name}`);
       }
     }
 
@@ -3397,43 +3397,43 @@ const IntegrityGuard = (() => {
     for (const [id, count] of idCounts) if (count !== 1) add(`重複DOM ID: ${id} ×${count}`);
 
     const hashIds = InternalContract.HASH_IDS;
-    if (JSON.stringify(HashOutputFilter.ids) !== JSON.stringify(hashIds)) add('HASH IDレジストリ不一致');
+    if (JSON.stringify(HashOutputFilter.ids) !== JSON.stringify(hashIds)) add('HASH IDレジストリの不一致');
 
     for (const id of hashIds) {
       const result = document.getElementById(id);
-      if (!result) add(`結果DOM欠落: #${id}`);
-      else if (result.dataset.alg !== id) add(`結果data-alg不一致: #${id}`);
+      if (!result) add(`結果DOMがありません: #${id}`);
+      else if (result.dataset.alg !== id) add(`結果data-algの不一致: #${id}`);
 
-      if (!document.getElementById(`prog-${id}`)) add(`進捗DOM欠落: #prog-${id}`);
-      if (!document.getElementById(`history-${id}`)) add(`履歴DOM欠落: #history-${id}`);
+      if (!document.getElementById(`prog-${id}`)) add(`進捗DOMがありません: #prog-${id}`);
+      if (!document.getElementById(`history-${id}`)) add(`履歴DOMがありません: #history-${id}`);
 
       const stop = Array.from(document.querySelectorAll('[data-action="stopAlg"]')).filter(el => el.dataset.alg === id);
       const abort = Array.from(document.querySelectorAll('[data-action="abortAlg"]')).filter(el => el.dataset.alg === id);
-      if (stop.length !== 1) add(`停止操作不一致: ${id} (${stop.length})`);
-      if (abort.length !== 1) add(`中止操作不一致: ${id} (${abort.length})`);
+      if (stop.length !== 1) add(`停止操作の不一致: ${id} (${stop.length})`);
+      if (abort.length !== 1) add(`中止操作の不一致: ${id} (${abort.length})`);
 
       const meta = InternalContract.HASH_ALGORITHMS[id];
-      if (!meta || meta.digestBytes * 2 !== meta.digestHex) add(`Digest幅契約不一致: ${id}`);
-      if (HashOutputFilter.digestHexLength(id) !== meta.digestHex) add(`Filter幅契約不一致: ${id}`);
+      if (!meta || meta.digestBytes * 2 !== meta.digestHex) add(`Digest幅契約の不一致: ${id}`);
+      if (HashOutputFilter.digestHexLength(id) !== meta.digestHex) add(`Filter幅契約の不一致: ${id}`);
     }
 
-    if (!InternalContract.CRC64_VARIANTS.includes(AppState.crc64Variant)) add(`CRC64規格不明: ${AppState.crc64Variant}`);
+    if (!InternalContract.CRC64_VARIANTS.includes(AppState.crc64Variant)) add(`CRC64規格が不明: ${AppState.crc64Variant}`);
 
     for (const event of InternalContract.EVENT_NAMES) {
-      if (EventBus.listenerCount(event) < 1) add(`Event listener欠落: ${event}`);
+      if (EventBus.listenerCount(event) < 1) add(`Event listenerがありません: ${event}`);
     }
     for (const event of EventBus.unknownEvents()) add(`未知Event: ${event}`);
 
-    if (StreamBlock.QUANTUM % 3 !== 0 || StreamBlock.QUANTUM % 4 !== 0) add(`Stream量子不正: ${StreamBlock.QUANTUM}`);
+    if (StreamBlock.QUANTUM % 3 !== 0 || StreamBlock.QUANTUM % 4 !== 0) add(`Stream量子が不正: ${StreamBlock.QUANTUM}`);
 
     const base85Contract = new Set(InternalContract.BASE85_VARIANTS);
     const base85Codec = new Set(BaseCodec.base85Variants);
-    if (base85Contract.size !== base85Codec.size || Array.from(base85Contract).some(id => !base85Codec.has(id))) add('Base85規格レジストリ不一致');
-    for (const id of InternalContract.BASE85_ASCII_VARIANTS) if (!base85Contract.has(id)) add(`Base85 ASCII分類不一致: ${id}`);
-    for (const id of InternalContract.BASE85_PARTIAL_VARIANTS) if (!base85Contract.has(id) || !InternalContract.BASE85_ASCII_VARIANTS.includes(id)) add(`Base85 Partial分類不一致: ${id}`);
-    for (const id of InternalContract.BASE85_PADDED_VARIANTS) if (!base85Contract.has(id) || !InternalContract.BASE85_ASCII_VARIANTS.includes(id)) add(`Base85 Padded分類不一致: ${id}`);
-    for (const id of InternalContract.BASE85_BLOCK4_VARIANTS) if (!base85Contract.has(id) || InternalContract.BASE85_ASCII_VARIANTS.includes(id)) add(`Base85 Block4分類不一致: ${id}`);
-    if (!base85Contract.has(AppState.base85Variant)) add(`Base85規格不明: ${AppState.base85Variant}`);
+    if (base85Contract.size !== base85Codec.size || Array.from(base85Contract).some(id => !base85Codec.has(id))) add('Base85規格レジストリの不一致');
+    for (const id of InternalContract.BASE85_ASCII_VARIANTS) if (!base85Contract.has(id)) add(`Base85 ASCII分類の不一致: ${id}`);
+    for (const id of InternalContract.BASE85_PARTIAL_VARIANTS) if (!base85Contract.has(id) || !InternalContract.BASE85_ASCII_VARIANTS.includes(id)) add(`Base85 Partial分類の不一致: ${id}`);
+    for (const id of InternalContract.BASE85_PADDED_VARIANTS) if (!base85Contract.has(id) || !InternalContract.BASE85_ASCII_VARIANTS.includes(id)) add(`Base85 Padded分類の不一致: ${id}`);
+    for (const id of InternalContract.BASE85_BLOCK4_VARIANTS) if (!base85Contract.has(id) || InternalContract.BASE85_ASCII_VARIANTS.includes(id)) add(`Base85 Block4分類の不一致: ${id}`);
+    if (!base85Contract.has(AppState.base85Variant)) add(`Base85規格が不明: ${AppState.base85Variant}`);
 
     if (typeof UI !== 'undefined' && UI && typeof UI.validate === 'function') {
       for (const issue of UI.validate()) add(issue);
@@ -5534,7 +5534,7 @@ const Engine = (() => {
 
         if (AppState.Base85Encode && base85RequiresBlock4 && (file.size % 4 !== 0)) {
             base85Failed = true;
-            EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, {'Base85-Enc': '入力長不正（4バイト単位が必要）'});
+            EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, {'Base85-Enc': '入力長が不正です（4バイト単位が必要）'});
         }
 
         if (AppState.Base85Encode && !base85Failed && AppState.base85Variant === 'Adobe ASCII85') {
@@ -10320,23 +10320,23 @@ async function detectBase85Variants(input) {
 
     for (const el of document.querySelectorAll('[data-action]')) {
       const action = el.dataset.action;
-      if (!handled.has(action)) add(`UI action未処理: ${action}`);
+      if (!handled.has(action)) add(`UI actionが未処理: ${action}`);
     }
 
     const testButtons = Array.from(document.querySelectorAll('[data-action="setTest"][data-test]'));
     const buttonKeys = testButtons.map(el => el.dataset.test);
     const vectorKeys = Object.keys(TEST_VECTORS);
-    if (new Set(buttonKeys).size !== buttonKeys.length) add('テストボタンdata-test重複');
+    if (new Set(buttonKeys).size !== buttonKeys.length) add('テストボタンのdata-testが重複');
     if (JSON.stringify(buttonKeys) !== JSON.stringify(vectorKeys)) {
       const buttonSet = new Set(buttonKeys);
       const vectorSet = new Set(vectorKeys);
-      for (const key of vectorKeys) if (!buttonSet.has(key)) add(`テストボタン欠落: ${key}`);
-      for (const key of buttonKeys) if (!vectorSet.has(key)) add(`TEST_VECTORS欠落: ${key}`);
+      for (const key of vectorKeys) if (!buttonSet.has(key)) add(`テストボタンがありません: ${key}`);
+      for (const key of buttonKeys) if (!vectorSet.has(key)) add(`TEST_VECTORSに対応項目がありません: ${key}`);
     }
 
     for (const id of InternalContract.HASH_IDS) {
       const result = document.getElementById(id);
-      if (!result || result.dataset.alg !== id) add(`UI HASH結果契約不一致: ${id}`);
+      if (!result || result.dataset.alg !== id) add(`UI HASH結果契約の不一致: ${id}`);
     }
 
     return Array.from(new Set(issues));
