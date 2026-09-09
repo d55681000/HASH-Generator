@@ -581,9 +581,9 @@
         <button class="link" data-action="setTest" data-test="hash65">65バイト</button>
         <span class="sep hint">|</span>
         <span class="sep hint">/</span>
-        <button class="link" data-action="setTest" data-test="japanese">日本語</button>
+        <button class="link" data-action="setTest" data-test="japanese">日本語1</button>
         <span class="sep hint">/</span>
-        <button class="link" data-action="setTest" data-test="japaneseFull">日本語</button>
+        <button class="link" data-action="setTest" data-test="japaneseFull">日本語2</button>
         <span class="sep hint">/</span>
         <button class="link" data-action="setTest" data-test="japaneseNfc">NFC: が</button>
         <span class="sep hint">/</span>
@@ -1462,12 +1462,20 @@ const Core = (() => {
   const subtle = crypto?.subtle;
   const seg = (window.Intl?.Segmenter) ? new Intl.Segmenter('ja',{granularity:'grapheme'}) : null;
   const HEX_LUT = Array.from({length: 256}, (_, i) => i.toString(16).padStart(2, '0'));
+  const HEX_DECODE_LUT = (() => {
+    const table = new Int8Array(103);
+    table.fill(-1);
+    for(let i=0; i<10; i++) table[48 + i] = i;
+    for(let i=0; i<6; i++) { table[65 + i] = 10 + i; table[97 + i] = 10 + i; }
+    return table;
+  })();
+  const UTF8_ENCODER = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
 
   async function safeAsync(fn, fallback = null) {
     try { return await fn(); } catch { return fallback; }
   }
 
-  function utf8Encode(str) {
+  function _manualUtf8Encode(str) {
     const arr = [];
     for (let i = 0; i < str.length; i++) {
       let charcode = str.charCodeAt(i);
@@ -1491,6 +1499,13 @@ const Core = (() => {
       }
     }
     return new Uint8Array(arr);
+  }
+
+  function utf8Encode(str) {
+    if (UTF8_ENCODER) {
+      try { return UTF8_ENCODER.encode(str); } catch (_) {}
+    }
+    return _manualUtf8Encode(str);
   }
 
   function _manualUtf8Decode(bytes) {
@@ -1550,8 +1565,15 @@ const Core = (() => {
   };
 
   function hexToBytes(hex) {
+    if (typeof hex !== 'string' || (hex.length & 1) !== 0) throw new Error('Invalid HEX');
     const bytes = new Uint8Array(hex.length / 2);
-    for(let i=0; i<hex.length; i+=2) bytes[i/2] = parseInt(hex.substring(i, i+2), 16);
+    for(let i=0, j=0; i<hex.length; i+=2, j++) {
+      const hiCode = hex.charCodeAt(i), loCode = hex.charCodeAt(i + 1);
+      if (hiCode > 102 || loCode > 102) throw new Error('Invalid HEX');
+      const hi = HEX_DECODE_LUT[hiCode], lo = HEX_DECODE_LUT[loCode];
+      if ((hi | lo) < 0) throw new Error('Invalid HEX');
+      bytes[j] = (hi << 4) | lo;
+    }
     return bytes;
   }
 
@@ -1931,7 +1953,11 @@ const Core = (() => {
     return toHex(buf);
   }
 
-  function countGraphemes(s){ return seg ? Array.from(seg.segment(s)).length : [...s].length; }
+  function countGraphemes(s){
+    let count = 0;
+    for (const _ of (seg ? seg.segment(s) : s)) count++;
+    return count;
+  }
 
   function shannonEntropy(bytes){
     if (!bytes || !bytes.length) return null;
@@ -2512,7 +2538,7 @@ const Base64Engine = (() => {
     URL.revokeObjectURL(url);
   }
 
-  function run(action, payload, detectFile = false, strict = false) {
+  function run(action, payload, detectFile = false, strict = false, transferOwned = false) {
     return new Promise((resolve) => {
       try { init(); }
       catch (e) { resolve({ type: 'error', message: e?.message || 'Base64 Worker Error' }); return; }
@@ -2542,8 +2568,13 @@ const Base64Engine = (() => {
 
       try {
         if(action === 'encode' || action === 'encode_stream') {
-          const copy = new Uint8Array(payload).buffer;
-          targetWorker.postMessage({ action, payload: new Uint8Array(copy), reqId }, [copy]);
+          const canTransferOwned = transferOwned && payload instanceof Uint8Array && payload.byteOffset === 0 && payload.byteLength === payload.buffer.byteLength;
+          if (canTransferOwned) {
+            targetWorker.postMessage({ action, payload, reqId }, [payload.buffer]);
+          } else {
+            const copy = new Uint8Array(payload).buffer;
+            targetWorker.postMessage({ action, payload: new Uint8Array(copy), reqId }, [copy]);
+          }
         } else {
           targetWorker.postMessage({ action, payload, detectFile, strict, reqId });
         }
@@ -2560,6 +2591,7 @@ const Base64Engine = (() => {
   return { 
     encode: (bytes) => run('encode', bytes), 
     encodeStream: (bytes) => run('encode_stream', bytes),
+    encodeStreamOwned: (bytes) => run('encode_stream', bytes, false, false, true),
     decode: (str, detectFile, strict = false) => run('decode', str, detectFile, strict),
     decodeBytes: (str, strict = true) => run('decode_bytes', str, false, strict), 
     terminate 
@@ -2760,7 +2792,7 @@ const Base85Engine = (() => {
     URL.revokeObjectURL(url);
   }
 
-  function run(action, payload, variant, detectFile = false) {
+  function run(action, payload, variant, detectFile = false, transferOwned = false) {
     return new Promise((resolve) => {
       try { init(); }
       catch (e) { resolve({ type: 'error', message: e?.message || 'Base85 Worker Error' }); return; }
@@ -2790,8 +2822,13 @@ const Base85Engine = (() => {
 
       try {
         if(action === 'encode' || action === 'encode_stream') {
-          const copy = new Uint8Array(payload).buffer;
-          targetWorker.postMessage({ action, payload: new Uint8Array(copy), variant, reqId }, [copy]);
+          const canTransferOwned = transferOwned && payload instanceof Uint8Array && payload.byteOffset === 0 && payload.byteLength === payload.buffer.byteLength;
+          if (canTransferOwned) {
+            targetWorker.postMessage({ action, payload, variant, reqId }, [payload.buffer]);
+          } else {
+            const copy = new Uint8Array(payload).buffer;
+            targetWorker.postMessage({ action, payload: new Uint8Array(copy), variant, reqId }, [copy]);
+          }
         } else {
           targetWorker.postMessage({ action, payload, variant, detectFile, reqId });
         }
@@ -2808,6 +2845,7 @@ const Base85Engine = (() => {
   return { 
     encode: (bytes, variant) => run('encode', bytes, variant), 
     encodeStream: (bytes, variant) => run('encode_stream', bytes, variant),
+    encodeStreamOwned: (bytes, variant) => run('encode_stream', bytes, variant, false, true),
     decode: (str, variant, detectFile) => run('decode', str, variant, detectFile),
     decodeBytes: (str, variant) => run('decode_bytes', str, variant, false), 
     terminate 
@@ -3091,8 +3129,16 @@ const Engine = (() => {
   function createWorkerBlob() {
     const code = `
       const HEX_LUT = [${Array.from({length: 256}, (_, i) => "'" + i.toString(16).padStart(2, '0') + "'").join(',')}];
+      const HEX_DECODE_LUT = (() => {
+        const table = new Int8Array(103);
+        table.fill(-1);
+        for(let i=0; i<10; i++) table[48 + i] = i;
+        for(let i=0; i<6; i++) { table[65 + i] = 10 + i; table[97 + i] = 10 + i; }
+        return table;
+      })();
+      const UTF8_ENCODER = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
 
-      function utf8Encode(str) {
+      function _manualUtf8Encode(str) {
         const arr = [];
         for (let i = 0; i < str.length; i++) {
           let charcode = str.charCodeAt(i);
@@ -3109,32 +3155,73 @@ const Engine = (() => {
         }
         return new Uint8Array(arr);
       }
+
+      function utf8Encode(str) {
+        if (UTF8_ENCODER) {
+          try { return UTF8_ENCODER.encode(str); } catch (_) {}
+        }
+        return _manualUtf8Encode(str);
+      }
       
       function hexToBytes(hex) {
+        if (typeof hex !== 'string' || (hex.length & 1) !== 0) throw new Error('Invalid HEX');
         const bytes = new Uint8Array(hex.length / 2);
-        for(let i=0; i<hex.length; i+=2) bytes[i/2] = parseInt(hex.substring(i, i+2), 16);
+        for(let i=0, j=0; i<hex.length; i+=2, j++) {
+          const hiCode = hex.charCodeAt(i), loCode = hex.charCodeAt(i + 1);
+          if (hiCode > 102 || loCode > 102) throw new Error('Invalid HEX');
+          const hi = HEX_DECODE_LUT[hiCode], lo = HEX_DECODE_LUT[loCode];
+          if ((hi | lo) < 0) throw new Error('Invalid HEX');
+          bytes[j] = (hi << 4) | lo;
+        }
         return bytes;
       }
 
+      function createCrc64ReflectedTable(polyHi, polyLo) {
+        const table = new Uint32Array(512);
+        for (let i = 0; i < 256; i++) {
+          let hi = 0, lo = i;
+          for (let j = 0; j < 8; j++) {
+            let isOdd = lo & 1;
+            lo = (lo >>> 1) | ((hi & 1) << 31);
+            hi = hi >>> 1;
+            if (isOdd) { hi ^= polyHi; lo ^= polyLo; }
+          }
+          table[i*2] = hi; table[i*2+1] = lo;
+        }
+        return table;
+      }
+
+      function createCrc64NormalTable(polyHi, polyLo) {
+        const table = new Uint32Array(512);
+        for (let i = 0; i < 256; i++) {
+          let hi = i << 24, lo = 0;
+          for (let j = 0; j < 8; j++) {
+            let isTop = hi & 0x80000000;
+            hi = (hi << 1) | (lo >>> 31);
+            lo = lo << 1;
+            if (isTop) { hi ^= polyHi; lo ^= polyLo; }
+          }
+          table[i*2] = hi; table[i*2+1] = lo;
+        }
+        return table;
+      }
+
+      const CRC64_XZ_TABLE = createCrc64ReflectedTable(0xC96C5795, 0xD7870F42);
+      const CRC64_WE_TABLE = createCrc64NormalTable(0x42F0E1EB, 0xA9EA3693);
+      const CRC64_ISO_TABLE = createCrc64NormalTable(0x00000000, 0x0000001B);
+      const CRC64_GO_ISO_TABLE = createCrc64ReflectedTable(0xD8000000, 0x00000000);
+      const CRC64_REDIS_TABLE = createCrc64ReflectedTable(0x95AC9329, 0xAC4BC9B5);
+
       class Crc64XzEngine {
         constructor() {
-          this.table = new Uint32Array(512);
-          const POLY_HI = 0xC96C5795, POLY_LO = 0xD7870F42;
-          for (let i = 0; i < 256; i++) {
-            let hi = 0, lo = i;
-            for (let j = 0; j < 8; j++) {
-              let isOdd = lo & 1;
-              lo = (lo >>> 1) | ((hi & 1) << 31);
-              hi = hi >>> 1;
-              if (isOdd) { hi ^= POLY_HI; lo ^= POLY_LO; }
-            }
-            this.table[i*2] = hi; this.table[i*2+1] = lo;
-          }
+          this.reset();
+        }
+        reset() {
           this.hi = 0xFFFFFFFF; this.lo = 0xFFFFFFFF;
         }
         update(bytes) {
           let hi = this.hi, lo = this.lo;
-          const t = this.table;
+          const t = CRC64_XZ_TABLE;
           for(let i=0; i<bytes.length; i++) {
             let idx = (lo ^ bytes[i]) & 0xFF;
             lo = (lo >>> 8) | ((hi & 0xFF) << 24);
@@ -3150,23 +3237,14 @@ const Engine = (() => {
 
       class Crc64WeEngine {
         constructor() {
-          this.table = new Uint32Array(512);
-          const POLY_HI = 0x42F0E1EB, POLY_LO = 0xA9EA3693;
-          for (let i = 0; i < 256; i++) {
-            let hi = i << 24, lo = 0;
-            for (let j = 0; j < 8; j++) {
-              let isTop = hi & 0x80000000;
-              hi = (hi << 1) | (lo >>> 31);
-              lo = lo << 1;
-              if (isTop) { hi ^= POLY_HI; lo ^= POLY_LO; }
-            }
-            this.table[i*2] = hi; this.table[i*2+1] = lo;
-          }
+          this.reset();
+        }
+        reset() {
           this.hi = 0xFFFFFFFF; this.lo = 0xFFFFFFFF;
         }
         update(bytes) {
           let hi = this.hi, lo = this.lo;
-          const t = this.table;
+          const t = CRC64_WE_TABLE;
           for(let i=0; i<bytes.length; i++) {
             let idx = ((hi >>> 24) ^ bytes[i]) & 0xFF;
             hi = (hi << 8) | (lo >>> 24);
@@ -3182,23 +3260,14 @@ const Engine = (() => {
 
       class Crc64IsoEngine {
         constructor() {
-          this.table = new Uint32Array(512);
-          const POLY_HI = 0x00000000, POLY_LO = 0x0000001B;
-          for (let i = 0; i < 256; i++) {
-            let hi = i << 24, lo = 0;
-            for (let j = 0; j < 8; j++) {
-              let isTop = hi & 0x80000000;
-              hi = (hi << 1) | (lo >>> 31);
-              lo = lo << 1;
-              if (isTop) { hi ^= POLY_HI; lo ^= POLY_LO; }
-            }
-            this.table[i*2] = hi; this.table[i*2+1] = lo;
-          }
+          this.reset();
+        }
+        reset() {
           this.hi = 0xFFFFFFFF; this.lo = 0xFFFFFFFF;
         }
         update(bytes) {
           let hi = this.hi, lo = this.lo;
-          const t = this.table;
+          const t = CRC64_ISO_TABLE;
           for(let i=0; i<bytes.length; i++) {
             let idx = ((hi >>> 24) ^ bytes[i]) & 0xFF;
             hi = (hi << 8) | (lo >>> 24);
@@ -3214,23 +3283,14 @@ const Engine = (() => {
 
       class Crc64GoIsoEngine {
         constructor() {
-          this.table = new Uint32Array(512);
-          const POLY_HI = 0xD8000000, POLY_LO = 0x00000000;
-          for (let i = 0; i < 256; i++) {
-            let hi = 0, lo = i;
-            for (let j = 0; j < 8; j++) {
-              let isOdd = lo & 1;
-              lo = (lo >>> 1) | ((hi & 1) << 31);
-              hi = hi >>> 1;
-              if (isOdd) { hi ^= POLY_HI; lo ^= POLY_LO; }
-            }
-            this.table[i*2] = hi; this.table[i*2+1] = lo;
-          }
+          this.reset();
+        }
+        reset() {
           this.hi = 0xFFFFFFFF; this.lo = 0xFFFFFFFF;
         }
         update(bytes) {
           let hi = this.hi, lo = this.lo;
-          const t = this.table;
+          const t = CRC64_GO_ISO_TABLE;
           for(let i=0; i<bytes.length; i++) {
             let idx = (lo ^ bytes[i]) & 0xFF;
             lo = (lo >>> 8) | ((hi & 0xFF) << 24);
@@ -3246,23 +3306,14 @@ const Engine = (() => {
 
       class Crc64RedisEngine {
         constructor() {
-          this.table = new Uint32Array(512);
-          const POLY_HI = 0x95AC9329, POLY_LO = 0xAC4BC9B5;
-          for (let i = 0; i < 256; i++) {
-            let hi = 0, lo = i;
-            for (let j = 0; j < 8; j++) {
-              let isOdd = lo & 1;
-              lo = (lo >>> 1) | ((hi & 1) << 31);
-              hi = hi >>> 1;
-              if (isOdd) { hi ^= POLY_HI; lo ^= POLY_LO; }
-            }
-            this.table[i*2] = hi; this.table[i*2+1] = lo;
-          }
+          this.reset();
+        }
+        reset() {
           this.hi = 0x00000000; this.lo = 0x00000000;
         }
         update(bytes) {
           let hi = this.hi, lo = this.lo;
-          const t = this.table;
+          const t = CRC64_REDIS_TABLE;
           for(let i=0; i<bytes.length; i++) {
             let idx = (lo ^ bytes[i]) & 0xFF;
             lo = (lo >>> 8) | ((hi & 0xFF) << 24);
@@ -3600,7 +3651,9 @@ const Engine = (() => {
           this.bufLen = 0;
           this.totalLen = 0;
           this.wMD5 = new Uint32Array(16);
-          this.wSHA = new Uint32Array(80);
+          this.wSHA1 = new Uint32Array(80);
+          this.wSHA224 = new Uint32Array(80);
+          this.wSHA256 = new Uint32Array(80);
           this.isHmac = false;
           this._saveBaseState();
         }
@@ -3684,11 +3737,12 @@ const Engine = (() => {
           if (offset < len) { this.buffer.set(bytes.subarray(offset), 0); this.bufLen = len - offset; }
         }
         _process(arr, off) {
-          const wMD5 = this.wMD5, wSHA = this.wSHA;
+          const wMD5 = this.wMD5, wSHA1 = this.wSHA1, wSHA224 = this.wSHA224, wSHA256 = this.wSHA256;
           for(let i=0; i<16; i++) {
             let p = off + i*4;
             wMD5[i] = arr[p] | (arr[p+1]<<8) | (arr[p+2]<<16) | (arr[p+3]<<24);
-            wSHA[i] = (arr[p]<<24) | (arr[p+1]<<16) | (arr[p+2]<<8) | arr[p+3];
+            const word = (arr[p]<<24) | (arr[p+1]<<16) | (arr[p+2]<<8) | arr[p+3];
+            wSHA1[i] = word; wSHA224[i] = word; wSHA256[i] = word;
           }
           let a=this.md5_h[0], b=this.md5_h[1], c=this.md5_h[2], d=this.md5_h[3];
           const x=wMD5;
@@ -3710,9 +3764,9 @@ const Engine = (() => {
           a=ii(a,b,c,d,x[4],6,0xf7537e82); d=ii(d,a,b,c,x[11],10,0xbd3af235); c=ii(c,d,a,b,x[2],15,0x2ad7d2bb); b=ii(b,c,d,a,x[9],21,0xeb86d391);
           this.md5_h[0]=(this.md5_h[0]+a)|0; this.md5_h[1]=(this.md5_h[1]+b)|0; this.md5_h[2]=(this.md5_h[2]+c)|0; this.md5_h[3]=(this.md5_h[3]+d)|0;
           
-          sha1Process(this.sha1_h, new Uint32Array(wSHA));
-          sha256Process(this.sha224_h, new Uint32Array(wSHA));
-          sha256Process(this.sha256_h, new Uint32Array(wSHA));
+          sha1Process(this.sha1_h, wSHA1);
+          sha256Process(this.sha224_h, wSHA224);
+          sha256Process(this.sha256_h, wSHA256);
         }
         _finalize() {
           const md5Final = this._finalizeMD5();
@@ -4343,6 +4397,7 @@ const Engine = (() => {
                         const currentByVariant = {}, xorByVariant = {};
                         let crc64All = {};
                         let saltScratch = null;
+                        const iterEngines = Object.fromEntries(CRC64_VARIANTS.map(variant => [variant, createCrc64Engine(variant)]));
                         for (const variant of CRC64_VARIANTS) currentByVariant[variant] = bytes;
 
                         const resetToZero = () => {
@@ -4441,7 +4496,8 @@ const Engine = (() => {
                                     payload = saltScratch;
                                 }
 
-                                const engine = createCrc64Engine(variant);
+                                const engine = iterEngines[variant];
+                                engine.reset();
                                 engine.update(payload);
                                 const rawHex = engine.finalize();
                                 const rawBytes = hexToBytes(rawHex);
@@ -5064,12 +5120,14 @@ const Engine = (() => {
             if (signal.aborted) { await reader.cancel(); return resolve(); }
 
             let current;
-            if (value) {
+            if (!value) {
+                current = leftover;
+            } else if (leftover.length === 0) {
+                current = value;
+            } else {
                 current = new Uint8Array(leftover.length + value.length);
                 current.set(leftover, 0);
                 current.set(value, leftover.length);
-            } else {
-                current = leftover;
             }
 
             let processLen = current.length;
@@ -5086,14 +5144,14 @@ const Engine = (() => {
 
                 if (AppState.Base64Encode) {
                     const Base64Copy = toProcess.slice();
-                    const Base64Res = await Base64Engine.encodeStream(Base64Copy);
+                    const Base64Res = await Base64Engine.encodeStreamOwned(Base64Copy);
                     if (AppState.streamHandles && AppState.streamHandles.Base64) await AppState.streamHandles.Base64.write(Base64Res.bytes).catch(()=>{});
                     else base64Chunks.push(Base64Res.bytes);
                 }
 
                 if (AppState.Base85Encode && !base85Failed) {
                     const Base85Copy = toProcess.slice();
-                    const Base85Res = await Base85Engine.encodeStream(Base85Copy, AppState.base85Variant);
+                    const Base85Res = await Base85Engine.encodeStreamOwned(Base85Copy, AppState.base85Variant);
 
                     if (Base85Res.type === 'error') {
                         base85Failed = true;
@@ -5598,6 +5656,20 @@ const SelfTest = (() => {
     add(report, 'HMAC', 'Core SHA-224 / Empty Key', Core.hmacSha224Hex(emptyKey, emptyData), EMPTY_HMAC_VECTOR.expect['SHA-224']);
   }
 
+  async function runHexTests(report, control) {
+    await step(control, 'HEX', 'Decode / Validity');
+    addBytes(report, 'HEX', 'Decode Empty', Core.hexToBytes(''), new Uint8Array(0));
+    addBytes(report, 'HEX', 'Decode Lowercase', Core.hexToBytes('00abcdef'), new Uint8Array([0x00,0xab,0xcd,0xef]));
+    addBytes(report, 'HEX', 'Decode Uppercase', Core.hexToBytes('00ABCDEF'), new Uint8Array([0x00,0xab,0xcd,0xef]));
+    addBytes(report, 'HEX', 'Decode Mixed Case', Core.hexToBytes('aBcDeF'), new Uint8Array([0xab,0xcd,0xef]));
+
+    for (const value of ['0','abc','0g','zz','ＦＦ']) {
+      let rejected = false;
+      try { Core.hexToBytes(value); } catch (e) { rejected = true; }
+      add(report, 'HEX', `Reject ${value}`, rejected, true);
+    }
+  }
+
   async function runUtf8Tests(report, control) {
     const encoder = new TextEncoder();
     for (let i = 0; i < UTF8_CASES.length; i++) {
@@ -5673,6 +5745,27 @@ const SelfTest = (() => {
     }
     for (const value of ['TQ',' TQ== ','-_8=','TR==','TWF=']) {
       await decodeBase64Case(report, `Strict Reject ${value}`, value, true, null);
+    }
+
+    await step(control, 'BASE64', 'Owned Transfer');
+    const owned = new Uint8Array([0x4d,0x61,0x6e]);
+    const ownedResult = await Base64Engine.encodeStreamOwned(owned);
+    add(report, 'BASE64', 'Owned Buffer Detached', owned.byteLength, 0);
+    if (!ownedResult || ownedResult.type !== 'binary' || !ownedResult.bytes) {
+      addFailure(report, 'BASE64', 'Owned Transfer Result', ownedResult?.message || 'Encode Error');
+    } else {
+      addBytes(report, 'BASE64', 'Owned Transfer Result', ownedResult.bytes, Core.utf8Encode('TWFu'));
+    }
+
+    const backing = new Uint8Array([0xff,0x4d,0x61,0x6e,0xff]);
+    const subview = backing.subarray(1, 4);
+    const subviewResult = await Base64Engine.encodeStreamOwned(subview);
+    add(report, 'BASE64', 'Subview Buffer Preserved', backing.byteLength, 5);
+    addBytes(report, 'BASE64', 'Subview Source Preserved', backing, new Uint8Array([0xff,0x4d,0x61,0x6e,0xff]));
+    if (!subviewResult || subviewResult.type !== 'binary' || !subviewResult.bytes) {
+      addFailure(report, 'BASE64', 'Subview Fallback Result', subviewResult?.message || 'Encode Error');
+    } else {
+      addBytes(report, 'BASE64', 'Subview Fallback Result', subviewResult.bytes, Core.utf8Encode('TWFu'));
     }
 
     await step(control, 'BASE64', 'Auto File Detect');
@@ -5770,6 +5863,27 @@ const SelfTest = (() => {
     await decodeBase85Case(report, 'ZeroMQ Reject Length', 'abcd', 'ZeroMQ (Z85)', null);
     await decodeBase85Case(report, 'ZeroMQ Reject Character', '~~~~~', 'ZeroMQ (Z85)', null);
     await decodeBase85Case(report, 'RFC 1924 Alphabet Reject Length', '0000', 'RFC 1924 Alphabet', null);
+
+    await step(control, 'BASE85', 'Owned Transfer');
+    const owned = new Uint8Array([0x00,0x01,0x02,0x03]);
+    const ownedResult = await Base85Engine.encodeStreamOwned(owned, 'Standard ASCII85');
+    add(report, 'BASE85', 'Owned Buffer Detached', owned.byteLength, 0);
+    if (!ownedResult || ownedResult.type !== 'binary' || !ownedResult.bytes) {
+      addFailure(report, 'BASE85', 'Owned Transfer Result', ownedResult?.message || 'Encode Error');
+    } else {
+      addBytes(report, 'BASE85', 'Owned Transfer Result', ownedResult.bytes, Core.utf8Encode("!!*-'"));
+    }
+
+    const backing = new Uint8Array([0xff,0x00,0x01,0x02,0x03,0xff]);
+    const subview = backing.subarray(1, 5);
+    const subviewResult = await Base85Engine.encodeStreamOwned(subview, 'Standard ASCII85');
+    add(report, 'BASE85', 'Subview Buffer Preserved', backing.byteLength, 6);
+    addBytes(report, 'BASE85', 'Subview Source Preserved', backing, new Uint8Array([0xff,0x00,0x01,0x02,0x03,0xff]));
+    if (!subviewResult || subviewResult.type !== 'binary' || !subviewResult.bytes) {
+      addFailure(report, 'BASE85', 'Subview Fallback Result', subviewResult?.message || 'Encode Error');
+    } else {
+      addBytes(report, 'BASE85', 'Subview Fallback Result', subviewResult.bytes, Core.utf8Encode("!!*-'"));
+    }
 
     await step(control, 'BASE85', 'Auto File Detect');
     const validText = await Base85Engine.decode(BaseCodec.encodeBase85(Core.utf8Encode('𠮷'), 'Standard ASCII85'), 'Standard ASCII85', true);
@@ -6025,6 +6139,7 @@ const SelfTest = (() => {
     const report = [];
     await runHashTests(report, control);
     await runHmacTests(report, control);
+    await runHexTests(report, control);
     await runUtf8Tests(report, control);
     await runBase64Tests(report, control);
     await runBase85Tests(report, control);
@@ -6309,7 +6424,7 @@ const UI = (() => {
       }
     },
     japanese:{
-      label:'日本語',
+      label:'日本語1',
       text:'日本語',
       expect:{
         'CRC32':'a80b52e5',
@@ -6322,7 +6437,7 @@ const UI = (() => {
       }
     },
     japaneseFull:{
-      label:'日本語',
+      label:'日本語2',
       text:'日本語・漢字・ひらがな・カタカナ・がぱ・「。、ー」・ＡＢＣ１２３',
       expect:{
         'CRC32':'e93187d8',
