@@ -85,9 +85,15 @@
   }
 
   body[data-display="crt"] #display-fx::after {
+    inset:auto -4px auto -4px;
+    top:-20vh;
+    height:20vh;
     background: linear-gradient(to bottom, transparent 0%, rgba(255,255,255,0.03) 50%, transparent 100%);
-    background-size: 100% 20vh;
+    background-size: 100% 100%;
     background-repeat: no-repeat;
+    transform:translate3d(0,0,0);
+    will-change:transform;
+    backface-visibility:hidden;
     animation: v-sync-roll 6s linear infinite;
   }
 
@@ -100,8 +106,8 @@
     50% { opacity: 0.98; }
   }
   @keyframes v-sync-roll {
-    0% { background-position: 0 -20vh; }
-    100% { background-position: 0 120vh; }
+    0% { transform: translate3d(0,0,0); }
+    100% { transform: translate3d(0,140vh,0); }
   }
 
   /* =========================================================
@@ -227,13 +233,19 @@
   }
 
   #display-fx {
-    position:fixed;inset:0;pointer-events:none;z-index:998;
+    position:fixed;inset:-4px;pointer-events:none;z-index:998;
+    overflow:hidden;
     opacity:0;background:none;animation:none;
+    transform:translateZ(0);
+    backface-visibility:hidden;
+    will-change:opacity;
+    contain:paint;
     transition:opacity .5s cubic-bezier(0.4,0,0.2,1);
   }
   #display-fx::before,#display-fx::after {
     content:"";position:absolute;inset:0;pointer-events:none;
     background:none;animation:none;
+    backface-visibility:hidden;
   }
 
   @keyframes emergency-pulse {
@@ -502,15 +514,45 @@
 
     <div class="toolbar">
       <span class="hint">オプション:</span>
+      <button id="groupingToggle" class="link" aria-label="区切り文字数の切替" data-action="toggleGrouping">区切り: 区切りなし [+]</button>
+
+      <span id="groupingOptionsContainer" class="base-group-container hidden">
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setGrouping" data-grouping="0">なし</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setGrouping" data-grouping="2">2文字</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setGrouping" data-grouping="4">4文字</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setGrouping" data-grouping="6">6文字</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setGrouping" data-grouping="8">8文字</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setGrouping" data-grouping="10">10文字</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setGrouping" data-grouping="12">12文字</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setGrouping" data-grouping="14">14文字</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setGrouping" data-grouping="16">16文字</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setGrouping" data-grouping="32">32文字</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setGrouping" data-grouping="64">64文字</button>
+      </span>
+
+      <span class="sep hint">/</span>
+      <label for="sep-in" class="hint" style="margin-right: -4px;">区切り文字:</label>
+      <input type="text" id="sep-in" class="text-input" value=" " style="width: 50px;" placeholder="空（なし）" autocomplete="off" spellcheck="false" title="任意の文字列を入力（例：空白、カンマ、AND など）">
+      <span class="sep hint">|</span>
+      <button id="hexcase" class="link" aria-label="HEX大文字・小文字の切替" data-action="toggleHex">HEX: lowercase</button>
+      <span class="sep hint">|</span>
       <button id="norm" class="link" aria-label="正規化の切替" data-action="toggleNorm">正規化: なし</button><span class="sep hint">/</span>
       <button id="sanitizeToggle" class="link" aria-label="不可視文字・改行整形の切替" title="ゼロ幅文字などを除去し、改行コードをLFに統一します" data-action="toggleSanitize">不可視文字・改行整形: オフ</button><span class="sep hint">/</span>
       <button id="saltToggle" class="link" aria-label="Saltの切替" data-action="toggleSalt">Salt: オフ</button>
       <span class="sep hint">/</span>
       <button id="hmacToggle" class="link" aria-label="HMACの切替" data-action="toggleHmac">HMAC: オフ</button>
       <span class="sep hint">/</span>
-      <button id="compareToggle" class="link" aria-label="一致判定の切替" data-action="toggleCompare">一致判定: オフ</button>
-      <span class="sep hint">/</span>
-      
       <button id="baseGroupToggle" class="link" aria-label="BASEオプション群の切替" data-action="toggleBaseGroup">BASE: [+]</button>
       
       <span id="baseOptionsContainer" class="base-group-container hidden">
@@ -518,14 +560,16 @@
         <button id="Base64EncToggle" class="link" aria-label="Base64エンコードの切替" data-action="toggleBase64Enc">Base64 Enc: オフ</button>
         <span class="sep hint">/</span>
         <button id="Base64DecToggle" class="link" aria-label="Base64デコードの切替" data-action="toggleBase64Dec">Base64 Dec: オフ</button>
-        <span class="sep hint">/</span>
-        <button id="Base64ModeToggle" class="link" aria-label="Base64デコード判定モードの切替" title="寛容: URL-safe形式・空白除去・パディング補完を許可 / 厳格: RFC 4648準拠の標準Base64形式のみ許可" data-action="toggleBase64Mode">Base64判定: 寛容</button>
+        <span id="Base64ModeSep" class="sep hint" hidden>/</span>
+        <button id="Base64ModeToggle" class="link" aria-label="Base64デコード判定モードの切替" title="寛容: URL-safe形式・空白除去・パディング補完を許可 / 厳格: RFC 4648準拠の標準Base64形式のみ許可" data-action="toggleBase64Mode" hidden>Base64判定: 寛容</button>
         <span class="sep hint">/</span>
         <button id="Base85EncToggle" class="link" aria-label="Base85エンコードの切替" data-action="toggleBase85Enc">Base85 Enc: オフ</button>
         <span class="sep hint">/</span>
         <button id="Base85DecToggle" class="link" aria-label="Base85デコードの切替" data-action="toggleBase85Dec">Base85 Dec: オフ</button>
-        <span class="sep hint">/</span>
-        <button id="base85VariantToggle" class="link" aria-label="Base85形式の切替" data-action="cycleBase85">Base85形式: Standard ASCII85</button>
+        <span id="base85VariantSep" class="sep hint" hidden>/</span>
+        <button id="base85VariantToggle" class="link" aria-label="Base85形式の切替" title="btoa ASCII85 は xbtoa Begin/End・原始長・E/S/R checksum を含む完全形式。裸payloadのdecode互換も維持します" data-action="cycleBase85" hidden>Base85形式: Standard ASCII85</button>
+        <span id="baseFileDetectSep" class="sep hint" hidden>/</span>
+        <button id="baseFileDetectToggle" class="link" aria-label="Base自動ファイル判別の切替" data-action="toggleBaseFileDetect" hidden>Base自動判別: オフ</button>
         <span class="sep hint">/</span>
         <button id="hashOutputToggle" class="link" aria-label="HASH出力フィルタの切替" data-action="toggleHashOutputGroup">HASH出力: オフ [+]</button>
         <span id="hashOutputOptionsContainer" class="base-group-container hidden">
@@ -536,13 +580,8 @@
           <span class="sep hint">/</span>
           <button id="hashBase85Toggle" class="link" aria-label="HASH結果Base85出力の切替" title="有効化した順に多段エンコードします。* は先行エンコードを示します" data-action="toggleHashBase85">Base85: オフ</button>
         </span>
-        <span class="sep hint">/</span>
-        <button id="baseFileDetectToggle" class="link" aria-label="Base自動ファイル判別の切替" data-action="toggleBaseFileDetect">Base自動判別: オフ</button>
       </span>
       
-      <span class="sep hint">|</span>
-      <button id="f-trigger" class="link" data-action="triggerFile">ファイル読込</button>
-      <button id="huge-file-btn" class="link warn" data-action="processHugeFile" style="display:none;">巨大ファイル出力開始</button>
       <span class="sep hint">|</span>
       
       <button id="iterModeToggle" class="link" aria-label="反復モードの切替" data-action="toggleIterMode">反復: 手渡し（Hex）</button>
@@ -666,13 +705,17 @@
         <span class="sep hint">/</span>
         <button class="link" data-action="setTest" data-test="adobe85Dec">Base85 Dec（Adobe ASCII85）</button>
         <span class="sep hint">/</span>
+        <button class="link" data-action="setTest" data-test="btoa85Enc">Base85 Enc（btoa ASCII85）</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setTest" data-test="btoa85Dec">Base85 Dec（btoa ASCII85）</button>
+        <span class="sep hint">/</span>
         <button class="link" data-action="setTest" data-test="z85Enc">Base85 Enc（ZeroMQ (Z85)）</button>
         <span class="sep hint">/</span>
         <button class="link" data-action="setTest" data-test="z85Dec">Base85 Dec（ZeroMQ (Z85)）</button>
         <span class="sep hint">/</span>
-        <button class="link" data-action="setTest" data-test="rfc85Enc">Base85 Enc（RFC 1924 Alphabet）</button>
+        <button class="link" data-action="setTest" data-test="rfc85Enc">Base85 Enc（RFC 1924 Alphabet (Block)）</button>
         <span class="sep hint">/</span>
-        <button class="link" data-action="setTest" data-test="rfc85Dec">Base85 Dec（RFC 1924 Alphabet）</button>
+        <button class="link" data-action="setTest" data-test="rfc85Dec">Base85 Dec（RFC 1924 Alphabet (Block)）</button>
         <span class="sep hint">/</span>
         <button class="link" data-action="setTest" data-test="ascii85RejectLength">Base85 Dec（Standard ASCII85）: 入力長</button>
         <span class="sep hint">/</span>
@@ -682,7 +725,7 @@
         <span class="sep hint">/</span>
         <button class="link" data-action="setTest" data-test="z85RejectChar">Base85 Dec（ZeroMQ (Z85)）: 不正文字</button>
         <span class="sep hint">/</span>
-        <button class="link" data-action="setTest" data-test="rfc85RejectLength">Base85 Dec（RFC 1924 Alphabet）: 入力長</button>
+        <button class="link" data-action="setTest" data-test="rfc85RejectLength">Base85 Dec（RFC 1924 Alphabet (Block)）: 入力長</button>
         <span class="sep hint">|</span>
         <span class="sep hint">/</span>
         <button class="link" data-action="setTest" data-test="iterHex">反復: 手渡し（Hex）</button>
@@ -708,49 +751,23 @@
         <span class="sep hint">/</span>
         <button class="link" data-action="setTest" data-test="hashBase85Base64">HASH→Base85→Base64</button>
         <span class="sep hint">/</span>
+        <button class="link" data-action="setTest" data-test="hashBtoa85Raw">HASH→Base85 Raw（btoa ASCII85）</button>
+        <span class="sep hint">/</span>
         <button class="link" data-action="setTest" data-test="hashZ85Raw">HASH→Base85 Raw（ZeroMQ (Z85)）</button>
         <span class="sep hint">/</span>
-        <button class="link" data-action="setTest" data-test="hashRfc85Raw">HASH→Base85 Raw（RFC 1924 Alphabet）</button>
+        <button class="link" data-action="setTest" data-test="hashRfc85Raw">HASH→Base85 Raw（RFC 1924 Alphabet (Block)）</button>
       </span>
 
       <button id="apply" class="link" data-action="applyTest">適用</button>
-      <button id="verify" class="link" data-action="verifyTest">検証</button>
+      <button id="verify" class="link" data-action="verifyTest" hidden>検証</button>
       <button id="selftest" class="link" aria-label="自動検証" data-action="runSelfTest">自動検証</button>
-      <span class="sep hint">|</span>
-      <button id="hexcase" class="link" aria-label="HEX大文字・小文字の切替" data-action="toggleHex">HEX: lowercase</button>
       <span class="sep hint">/</span>
-      <button id="groupingToggle" class="link" aria-label="区切り文字数の切替" data-action="toggleGrouping">区切り: 区切りなし [+]</button>
-
-      <span id="groupingOptionsContainer" class="base-group-container hidden">
-        <span class="sep hint">/</span>
-        <button class="link" data-action="setGrouping" data-grouping="0">なし</button>
-        <span class="sep hint">/</span>
-        <button class="link" data-action="setGrouping" data-grouping="2">2文字</button>
-        <span class="sep hint">/</span>
-        <button class="link" data-action="setGrouping" data-grouping="4">4文字</button>
-        <span class="sep hint">/</span>
-        <button class="link" data-action="setGrouping" data-grouping="6">6文字</button>
-        <span class="sep hint">/</span>
-        <button class="link" data-action="setGrouping" data-grouping="8">8文字</button>
-        <span class="sep hint">/</span>
-        <button class="link" data-action="setGrouping" data-grouping="10">10文字</button>
-        <span class="sep hint">/</span>
-        <button class="link" data-action="setGrouping" data-grouping="12">12文字</button>
-        <span class="sep hint">/</span>
-        <button class="link" data-action="setGrouping" data-grouping="14">14文字</button>
-        <span class="sep hint">/</span>
-        <button class="link" data-action="setGrouping" data-grouping="16">16文字</button>
-        <span class="sep hint">/</span>
-        <button class="link" data-action="setGrouping" data-grouping="32">32文字</button>
-        <span class="sep hint">/</span>
-        <button class="link" data-action="setGrouping" data-grouping="64">64文字</button>
-      </span>
-
-      <span class="sep hint">/</span>
-      <label for="sep-in" class="hint" style="margin-right: -4px;">区切り文字:</label>
-      <input type="text" id="sep-in" class="text-input" value=" " style="width: 50px;" placeholder="空（なし）" autocomplete="off" spellcheck="false" title="任意の文字列を入力（例：空白、カンマ、AND など）">
+      <button id="compareToggle" class="link" aria-label="一致判定の切替" data-action="toggleCompare">一致判定: オフ</button>
       <span class="sep hint">|</span>
       <button id="copyModeToggle" class="link" aria-label="コピー対象の切替" title="実値: 未整形の最終出力 / 表示: 大文字・小文字、区切りを含む画面表示" data-action="toggleCopyMode">コピー: 実値</button>
+      <span class="sep hint">/</span>
+      <button id="f-trigger" class="link" data-action="triggerFile">ファイル読込</button>
+      <button id="huge-file-btn" class="link warn" data-action="processHugeFile" style="display:none;">巨大ファイル出力開始</button>
       <span class="sep hint">/</span>
       <button id="save" class="link" aria-label="結果を保存" data-action="saveResults">セーブ</button>
       <span id="stop-all-wrap" style="display:none;"><span class="sep hint">|</span><button id="stop-all" class="link warn" data-action="stopAll">[全停止]</button><button id="abort-all" class="link warn" data-action="abortAll" style="display:none;">[全中止]</button></span>
@@ -1103,11 +1120,144 @@ const PanicSystem = (() => {
   return { init };
 })();
 
+/* =========================================================
+   INTERNAL CONTRACT
+========================================================= */
+const InternalContract = (() => {
+  const HASH_ALGORITHMS = Object.freeze({
+    'CRC32': Object.freeze({ digestBytes:4, digestHex:8, genericIteration:true }),
+    'CRC64': Object.freeze({ digestBytes:8, digestHex:16, genericIteration:false }),
+    'MD5': Object.freeze({ digestBytes:16, digestHex:32, genericIteration:true }),
+    'SHA-1': Object.freeze({ digestBytes:20, digestHex:40, genericIteration:true }),
+    'SHA-224': Object.freeze({ digestBytes:28, digestHex:56, genericIteration:true }),
+    'SHA-256': Object.freeze({ digestBytes:32, digestHex:64, genericIteration:true }),
+    'SHA-384': Object.freeze({ digestBytes:48, digestHex:96, genericIteration:true }),
+    'SHA-512': Object.freeze({ digestBytes:64, digestHex:128, genericIteration:true })
+  });
+
+  const HASH_IDS = Object.freeze(Object.keys(HASH_ALGORITHMS));
+  const GENERIC_ITERATION_IDS = Object.freeze(HASH_IDS.filter(id => HASH_ALGORITHMS[id].genericIteration));
+
+  const CRC64_VARIANTS = Object.freeze([
+    'XZ (ECMA, Reflected)',
+    'WE (ECMA, Non-Reflected)',
+    'ISO (HDLC, Non-Reflected)',
+    'GO-ISO (ISO, Reflected)',
+    'Redis (Jones, Reflected)'
+  ]);
+
+  const BASE85_VARIANTS = Object.freeze([
+    'Standard ASCII85',
+    'Adobe ASCII85',
+    'btoa ASCII85',
+    'ZeroMQ (Z85)',
+    'RFC 1924 Alphabet (Block)'
+  ]);
+
+  const BASE85_ASCII_VARIANTS = Object.freeze([
+    'Standard ASCII85',
+    'Adobe ASCII85',
+    'btoa ASCII85'
+  ]);
+
+  const BASE85_PARTIAL_VARIANTS = Object.freeze([
+    'Standard ASCII85',
+    'Adobe ASCII85'
+  ]);
+
+  const BASE85_PADDED_VARIANTS = Object.freeze([
+    'btoa ASCII85'
+  ]);
+
+  const BASE85_BLOCK4_VARIANTS = Object.freeze([
+    'ZeroMQ (Z85)',
+    'RFC 1924 Alphabet (Block)'
+  ]);
+
+  const EVENTS = Object.freeze({
+    VISUAL_APPLIED:'visual:applied',
+    HASH_RESULTS:'hash:results',
+    HASH_RENDER:'hash:render',
+    HASH_SESSION:'hash:session',
+    HASH_SESSION_END:'hash:sessionEnd',
+    HASH_PAUSED:'hash:paused',
+    HASH_TARGET_ACK:'hash:targetAck',
+    HASH_MATCH:'hash:match',
+    HASH_MATCH_CLEAR:'hash:matchClear'
+  });
+  const EVENT_NAMES = Object.freeze(Object.values(EVENTS));
+
+  const ENGINE_ACTIONS = Object.freeze({
+    SET_MATCH:'set_match',
+    CLEAR_MATCH:'clear_match',
+    SET_TARGET:'set_target',
+    PAUSE_ALL:'pause_all',
+    RESUME_ALL:'resume_all',
+    PAUSE:'pause',
+    RESUME:'resume',
+    ABORT_ALL:'abort_all',
+    ABORT:'abort',
+    INIT:'init',
+    UPDATE:'update',
+    FINALIZE:'finalize',
+    HASH_ALL:'hashAll',
+    HASH_SHA512_FALLBACK:'hashSha512Fallback',
+    VERIFY_TEST:'verifyTest',
+    SELF_TEST:'selfTest',
+    HASH_ITERATIVE:'hashIterative'
+  });
+
+  const ENGINE_MESSAGES = Object.freeze({
+    STREAM_HASH_RESULT:'stream_hash_result',
+    HASH_ALL_RESULT:'hash_all_result',
+    SHA512_FALLBACK_RESULT:'sha512_fallback_result',
+    VERIFY_RESULT:'verify_result',
+    SELF_TEST_RESULT:'self_test_result',
+    PAUSE_ACK:'pause_ack',
+    TARGET_ACK:'target_ack',
+    MATCH_HIT:'match_hit',
+    MATCH_CLEAR:'match_clear',
+    ITER_PROGRESS:'iter_progress'
+  });
+
+  return {
+    HASH_ALGORITHMS,
+    HASH_IDS,
+    GENERIC_ITERATION_IDS,
+    CRC64_VARIANTS,
+    BASE85_VARIANTS,
+    BASE85_ASCII_VARIANTS,
+    BASE85_PARTIAL_VARIANTS,
+    BASE85_PADDED_VARIANTS,
+    BASE85_BLOCK4_VARIANTS,
+    EVENTS,
+    EVENT_NAMES,
+    ENGINE_ACTIONS,
+    ENGINE_MESSAGES
+  };
+})();
+
 const EventBus = (() => {
   const events = {};
+  const known = new Set(InternalContract.EVENT_NAMES);
+  const unknown = new Set();
+  const validate = event => {
+    if (known.has(event)) return true;
+    unknown.add(event);
+    console.error(`[EVENT BUS] Unknown event: ${event}`);
+    return false;
+  };
   return {
-    on: (event, listener) => { (events[event] || (events[event] = [])).push(listener); },
-    emit: (event, data) => { (events[event] || []).forEach(l => l(data)); }
+    on: (event, listener) => {
+      validate(event);
+      (events[event] || (events[event] = [])).push(listener);
+    },
+    emit: (event, data) => {
+      validate(event);
+      (events[event] || []).forEach(l => l(data));
+    },
+    listenerCount: event => (events[event] || []).length,
+    unknownEvents: () => Array.from(unknown)
   };
 })();
 
@@ -1188,7 +1338,7 @@ const MonospaceGuard = (() => {
     });
   }
 
-  EventBus.on('visual:applied', schedule);
+  EventBus.on(InternalContract.EVENTS.VISUAL_APPLIED, schedule);
   return { verify, schedule };
 })();
 
@@ -1270,7 +1420,7 @@ const VisualTheme = (() => {
     document.body.dataset.display = AppState.visualDisplay;
     document.body.dataset.background = AppState.visualBackground;
     document.body.removeAttribute('data-theme');
-    EventBus.emit('visual:applied');
+    EventBus.emit(InternalContract.EVENTS.VISUAL_APPLIED);
   }
 
   function cycle(kind) {
@@ -1415,6 +1565,7 @@ const AppState = {
   separator: ' ',
   testVector: 'empty',
   showTest: false,
+  testVerifyArmed: false,
   iterations: 1,
   iterMode: 'hex',
   copyMode: 'actual',
@@ -2285,11 +2436,13 @@ const SysUtils = (() => {
 ========================================================= */
 const BaseCodec = (() => {
   const Base64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const ASCII85_CHARSET = (function(){ let s=''; for(let i=33; i<=117; i++) s+=String.fromCharCode(i); return s; })();
   const BASE85_CHARSETS = {
     'ZeroMQ (Z85)': '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#',
-    'RFC 1924 Alphabet': '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!#$%&()*+-;<=>?@^_' + String.fromCharCode(96) + '{|}~',
-    'Standard ASCII85': (function(){ let s=''; for(let i=33; i<=117; i++) s+=String.fromCharCode(i); return s; })(),
-    'Adobe ASCII85': (function(){ let s=''; for(let i=33; i<=117; i++) s+=String.fromCharCode(i); return s; })()
+    'RFC 1924 Alphabet (Block)': '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!#$%&()*+-;<=>?@^_' + String.fromCharCode(96) + '{|}~',
+    'Standard ASCII85': ASCII85_CHARSET,
+    'Adobe ASCII85': ASCII85_CHARSET,
+    'btoa ASCII85': ASCII85_CHARSET
   };
 
   function encodeBase64(bytes) {
@@ -2315,8 +2468,32 @@ const BaseCodec = (() => {
     return result;
   }
 
+  function btoaChecksum(bytes) {
+    let eor = 0, sum = 0, rot = 0;
+    for (let i = 0; i < bytes.length; i++) {
+      let ch = bytes[i];
+      eor = (eor ^ ch) >>> 0;
+      sum = (sum + ch + 1) >>> 0;
+      if (rot & 0x80000000) ch += 1;
+      rot = ((rot << 1) + ch) >>> 0;
+    }
+    return { eor, sum, rot };
+  }
+
+  function wrapBtoaPayload(bytes, payload, lineLength = 78) {
+    const source = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || 0);
+    const width = Math.max(1, Math.floor(Number(lineLength) || 78));
+    const lines = [];
+    for (let i = 0; i < payload.length; i += width) lines.push(payload.slice(i, i + width));
+    const checksum = btoaChecksum(source);
+    const n = source.length >>> 0;
+    const trailer = `xbtoa End N ${n} ${n.toString(16)} E ${checksum.eor.toString(16)} S ${checksum.sum.toString(16)} R ${checksum.rot.toString(16)}`;
+    return ['xbtoa Begin', ...lines, trailer].join('\n');
+  }
+
   function encodeBase85(bytes, variant, skipWrapper = false) {
-    const isAscii85 = variant === 'Standard ASCII85' || variant === 'Adobe ASCII85';
+    const isBtoa = variant === 'btoa ASCII85';
+    const isAscii85 = variant === 'Standard ASCII85' || variant === 'Adobe ASCII85' || isBtoa;
     const charset = BASE85_CHARSETS[variant];
     const len = bytes.length;
     const extra = len % 4;
@@ -2342,8 +2519,12 @@ const BaseCodec = (() => {
          val = val >>> 0;
       }
 
-      if (isAscii85 && val === 0 && paddingBytes === 0) {
+      if (isAscii85 && val === 0 && (paddingBytes === 0 || isBtoa)) {
         resArr.push('z');
+        continue;
+      }
+      if (isBtoa && val === 0x20202020 && paddingBytes === 0) {
+        resArr.push('y');
         continue;
       }
       let chunk = '';
@@ -2351,7 +2532,7 @@ const BaseCodec = (() => {
         chunk = charset[val % 85] + chunk;
         val = Math.floor(val / 85);
       }
-      if (paddingBytes > 0) {
+      if (paddingBytes > 0 && !isBtoa) {
          chunk = chunk.substring(0, 5 - paddingBytes);
       }
       resArr.push(chunk);
@@ -2361,6 +2542,9 @@ const BaseCodec = (() => {
     if (variant === 'Adobe ASCII85' && !skipWrapper) {
       return '<~' + res + '~>';
     }
+    if (variant === 'btoa ASCII85' && !skipWrapper) {
+      return wrapBtoaPayload(bytes, res);
+    }
     return res;
   }
 
@@ -2369,10 +2553,11 @@ const BaseCodec = (() => {
   }
 
   function base85WorkerSource() {
-    return `const BASE85_CHARSETS = ${JSON.stringify(BASE85_CHARSETS)};\n      const CHARSETS = BASE85_CHARSETS;\n      ${encodeBase85.toString()}`;
+    return `const BASE85_CHARSETS = ${JSON.stringify(BASE85_CHARSETS)};\n      const CHARSETS = BASE85_CHARSETS;\n      ${btoaChecksum.toString()}\n      ${wrapBtoaPayload.toString()}\n      ${encodeBase85.toString()}`;
   }
 
-  return { encodeBase64, encodeBase85, base64WorkerSource, base85WorkerSource };
+  const base85Variants = Object.freeze(Object.keys(BASE85_CHARSETS));
+  return { encodeBase64, encodeBase85, btoaChecksum, wrapBtoaPayload, base64WorkerSource, base85WorkerSource, base85Variants };
 })();
 
 /* =========================================================
@@ -2616,16 +2801,65 @@ const Base85Engine = (() => {
 
       const DECODE_MAPS = {
         'ZeroMQ (Z85)': createDecodeMap(CHARSETS['ZeroMQ (Z85)']),
-        'RFC 1924 Alphabet': createDecodeMap(CHARSETS['RFC 1924 Alphabet']),
+        'RFC 1924 Alphabet (Block)': createDecodeMap(CHARSETS['RFC 1924 Alphabet (Block)']),
         'Standard ASCII85': createDecodeMap(CHARSETS['Standard ASCII85']),
-        'Adobe ASCII85': createDecodeMap(CHARSETS['Adobe ASCII85'])
+        'Adobe ASCII85': createDecodeMap(CHARSETS['Adobe ASCII85']),
+        'btoa ASCII85': createDecodeMap(CHARSETS['btoa ASCII85'])
       };
 
       function decodeBase85(str, variant) {
-        const isAscii85 = variant === 'Standard ASCII85' || variant === 'Adobe ASCII85';
+        const isBtoa = variant === 'btoa ASCII85';
+        const isAscii85 = variant === 'Standard ASCII85' || variant === 'Adobe ASCII85' || isBtoa;
+        const allowsPartial = variant === 'Standard ASCII85' || variant === 'Adobe ASCII85';
         let clean = str;
+        let btoaMeta = null;
 
         clean = clean.trim();
+
+        if (isBtoa && /^xbtoa Begin(?:\\r?\\n|$)/.test(clean)) {
+          const lines = clean.replace(/\\r\\n?/g, '\\n').split('\\n');
+          if ((lines.shift() || '').trim() !== 'xbtoa Begin') throw new Error('Invalid btoa Header');
+          const trailer = (lines.pop() || '').trim();
+          const m = /^xbtoa End N (\\d+) ([0-9a-fA-F]+) E ([0-9a-fA-F]+) S ([0-9a-fA-F]+) R ([0-9a-fA-F]+)$/.exec(trailer);
+          if (!m) throw new Error('Invalid btoa Trailer');
+          const parseHexInteger = (text, label, max) => {
+            const value = Number.parseInt(text, 16);
+            if (!Number.isSafeInteger(value) || value < 0 || value > max) throw new Error('Invalid btoa ' + label);
+            return value;
+          };
+          const decimalLength = Number(m[1]);
+          const hexLength = parseHexInteger(m[2], 'Length', Number.MAX_SAFE_INTEGER);
+          if (!Number.isSafeInteger(decimalLength) || decimalLength < 0 || decimalLength !== hexLength) throw new Error('Invalid btoa Length');
+          btoaMeta = {
+            length: decimalLength,
+            eor: parseHexInteger(m[3], 'Checksum', 0xFFFFFFFF) >>> 0,
+            sum: parseHexInteger(m[4], 'Checksum', 0xFFFFFFFF) >>> 0,
+            rot: parseHexInteger(m[5], 'Checksum', 0xFFFFFFFF) >>> 0
+          };
+          clean = lines.join('');
+        } else if (isBtoa && /(^|\\n)xbtoa End\\b/.test(clean)) {
+          throw new Error('Invalid btoa Envelope');
+        }
+
+        const finishBtoa = decoded => {
+          if (!btoaMeta) return decoded;
+          const expectedPadded = Math.ceil(btoaMeta.length / 4) * 4;
+          if (decoded.length !== expectedPadded) throw new Error('Invalid btoa Encoded Length');
+          for (let i = btoaMeta.length; i < decoded.length; i++) {
+            if (decoded[i] !== 0) throw new Error('Invalid btoa Padding');
+          }
+          const original = decoded.slice(0, btoaMeta.length);
+          let eor = 0, sum = 0, rot = 0;
+          for (let i = 0; i < original.length; i++) {
+            let ch = original[i];
+            eor = (eor ^ ch) >>> 0;
+            sum = (sum + ch + 1) >>> 0;
+            if (rot & 0x80000000) ch += 1;
+            rot = ((rot << 1) + ch) >>> 0;
+          }
+          if (eor !== btoaMeta.eor || sum !== btoaMeta.sum || rot !== btoaMeta.rot) throw new Error('btoa Checksum Mismatch');
+          return original;
+        };
 
         if (variant === 'Adobe ASCII85') {
           const hasStart = clean.startsWith('<~');
@@ -2645,6 +2879,9 @@ const Base85Engine = (() => {
               if (ch === 'z') {
                 if (groupPos !== 0) throw new Error('Invalid Base85 Shorthand Position');
                 expanded += '!!!!!';
+              } else if (ch === 'y' && isBtoa) {
+                if (groupPos !== 0) throw new Error('Invalid Base85 Shorthand Position');
+                expanded += '+<VdL';
               } else {
                 expanded += ch;
                 groupPos = (groupPos + 1) % 5;
@@ -2653,7 +2890,7 @@ const Base85Engine = (() => {
             clean = expanded;
         }
         
-        if (!clean) return new Uint8Array(0);
+        if (!clean) return finishBtoa(new Uint8Array(0));
 
         const charset = CHARSETS[variant];
         const decodeMap = DECODE_MAPS[variant];
@@ -2668,7 +2905,7 @@ const Base85Engine = (() => {
         const len = clean.length;
         const extraChars = len % 5;
         
-        if (!isAscii85 && extraChars !== 0) {
+        if (!allowsPartial && extraChars !== 0) {
             throw new Error(variant + ' requires valid encoded string length to be a multiple of 5');
         }
 
@@ -2694,10 +2931,10 @@ const Base85Engine = (() => {
           view.setUint32((i/5)*4, val, false);
         }
 
-        if (extraChars > 0) {
-           return out.slice(0, out.length - (5 - extraChars));
-        }
-        return out;
+        let decoded = out;
+        if (extraChars > 0) decoded = out.slice(0, out.length - (5 - extraChars));
+
+        return finishBtoa(decoded);
       }
 
       function _manualUtf8Decode(bytes) {
@@ -2853,6 +3090,44 @@ const Base85Engine = (() => {
 })();
 
 /* =========================================================
+   BASE85 DETECTION LAYER
+========================================================= */
+const Base85Detect = (() => {
+  async function detectVariants(input) {
+    const compact = String(input || '').replace(/\s+/g, '');
+    const adobeFramed = compact.startsWith('<~') || compact.endsWith('~>');
+    const variants = adobeFramed ? ['Adobe ASCII85'] : Array.from(InternalContract.BASE85_VARIANTS);
+    const candidates = [];
+    for (const variant of variants) {
+      try {
+        const decoded = await Base85Engine.decode(input, variant, true);
+        if (!decoded || decoded.type === 'error') continue;
+        let decodedBytes;
+        if (decoded.type === 'binary' && decoded.bytes) decodedBytes = decoded.bytes;
+        else if (decoded.type === 'text') decodedBytes = Core.utf8Encode(decoded.value || '');
+        else continue;
+        const encoded = await Base85Engine.encode(decodedBytes, variant);
+        if (!encoded || encoded.type === 'error') continue;
+        const canonical = String(encoded.value || '').replace(/\s+/g, '');
+        let match = false;
+        if (variant === 'Adobe ASCII85') {
+          const inner = canonical.startsWith('<~') && canonical.endsWith('~>') ? canonical.slice(2, -2) : canonical;
+          match = compact === canonical || compact === inner;
+        } else if (variant === 'btoa ASCII85') {
+          const rawCanonical = BaseCodec.encodeBase85(decodedBytes, variant, true).replace(/\s+/g, '');
+          match = compact === canonical || compact === rawCanonical;
+        } else {
+          match = compact === canonical;
+        }
+        if (match) candidates.push(variant);
+      } catch (_) {}
+    }
+    return candidates;
+  }
+  return { detectVariants };
+})();
+
+/* =========================================================
    BASE RENDER GATE
 ========================================================= */
 const BaseRenderGate = (() => {
@@ -2910,17 +3185,10 @@ const BaseRenderGate = (() => {
    HASH OUTPUT FILTER LAYER
 ========================================================= */
 const HashOutputFilter = (() => {
-  const DIGEST_HEX_LENGTHS = Object.freeze({
-    'CRC32': 8,
-    'CRC64': 16,
-    'MD5': 32,
-    'SHA-1': 40,
-    'SHA-224': 56,
-    'SHA-256': 64,
-    'SHA-384': 96,
-    'SHA-512': 128
-  });
-  const ids = Object.freeze(Object.keys(DIGEST_HEX_LENGTHS));
+  const DIGEST_HEX_LENGTHS = Object.freeze(Object.fromEntries(
+    InternalContract.HASH_IDS.map(id => [id, InternalContract.HASH_ALGORITHMS[id].digestHex])
+  ));
+  const ids = InternalContract.HASH_IDS;
   const DIGEST_BYTE_ALGORITHMS = Object.freeze(Object.fromEntries(
     ids.map(id => [DIGEST_HEX_LENGTHS[id] / 2, id])
   ));
@@ -3058,7 +3326,9 @@ const HashOutputFilter = (() => {
     return target;
   }
 
-  return { ids, isHashResult, apply, describe, handoffLabel, resolveCompareTarget };
+  const digestHexLength = id => DIGEST_HEX_LENGTHS[id] || 0;
+
+  return { ids, digestHexLength, isHashResult, apply, describe, handoffLabel, resolveCompareTarget };
 })();
 
 /* =========================================================
@@ -3086,9 +3356,112 @@ const ResultSurface = (() => {
 })();
 
 /* =========================================================
+   STREAM BLOCK LAYER
+========================================================= */
+const StreamBlock = (() => {
+  const QUANTUM = 12;
+
+  function partition(leftover, value, done) {
+    const carry = leftover instanceof Uint8Array ? leftover : new Uint8Array(0);
+    let current;
+    if (!value || value.length === 0) current = carry;
+    else if (carry.length === 0) current = value;
+    else {
+      current = new Uint8Array(carry.length + value.length);
+      current.set(carry, 0);
+      current.set(value, carry.length);
+    }
+
+    const processLen = done ? current.length : current.length - (current.length % QUANTUM);
+    return {
+      toProcess: current.subarray(0, processLen),
+      leftover: current.subarray(processLen)
+    };
+  }
+
+  return { QUANTUM, partition };
+})();
+
+/* =========================================================
+   INTEGRITY GUARD
+========================================================= */
+const IntegrityGuard = (() => {
+  let lastIssues = Object.freeze([]);
+
+  function validate() {
+    const issues = [];
+    const add = message => issues.push(String(message));
+
+    const idCounts = new Map();
+    for (const el of document.querySelectorAll('[id]')) idCounts.set(el.id, (idCounts.get(el.id) || 0) + 1);
+    for (const [id, count] of idCounts) if (count !== 1) add(`重複DOM ID: ${id} ×${count}`);
+
+    const hashIds = InternalContract.HASH_IDS;
+    if (JSON.stringify(HashOutputFilter.ids) !== JSON.stringify(hashIds)) add('HASH IDレジストリ不一致');
+
+    for (const id of hashIds) {
+      const result = document.getElementById(id);
+      if (!result) add(`結果DOM欠落: #${id}`);
+      else if (result.dataset.alg !== id) add(`結果data-alg不一致: #${id}`);
+
+      if (!document.getElementById(`prog-${id}`)) add(`進捗DOM欠落: #prog-${id}`);
+      if (!document.getElementById(`history-${id}`)) add(`履歴DOM欠落: #history-${id}`);
+
+      const stop = Array.from(document.querySelectorAll('[data-action="stopAlg"]')).filter(el => el.dataset.alg === id);
+      const abort = Array.from(document.querySelectorAll('[data-action="abortAlg"]')).filter(el => el.dataset.alg === id);
+      if (stop.length !== 1) add(`停止操作不一致: ${id} (${stop.length})`);
+      if (abort.length !== 1) add(`中止操作不一致: ${id} (${abort.length})`);
+
+      const meta = InternalContract.HASH_ALGORITHMS[id];
+      if (!meta || meta.digestBytes * 2 !== meta.digestHex) add(`Digest幅契約不一致: ${id}`);
+      if (HashOutputFilter.digestHexLength(id) !== meta.digestHex) add(`Filter幅契約不一致: ${id}`);
+    }
+
+    if (!InternalContract.CRC64_VARIANTS.includes(AppState.crc64Variant)) add(`CRC64規格不明: ${AppState.crc64Variant}`);
+
+    for (const event of InternalContract.EVENT_NAMES) {
+      if (EventBus.listenerCount(event) < 1) add(`Event listener欠落: ${event}`);
+    }
+    for (const event of EventBus.unknownEvents()) add(`未知Event: ${event}`);
+
+    if (StreamBlock.QUANTUM % 3 !== 0 || StreamBlock.QUANTUM % 4 !== 0) add(`Stream量子不正: ${StreamBlock.QUANTUM}`);
+
+    const base85Contract = new Set(InternalContract.BASE85_VARIANTS);
+    const base85Codec = new Set(BaseCodec.base85Variants);
+    if (base85Contract.size !== base85Codec.size || Array.from(base85Contract).some(id => !base85Codec.has(id))) add('Base85規格レジストリ不一致');
+    for (const id of InternalContract.BASE85_ASCII_VARIANTS) if (!base85Contract.has(id)) add(`Base85 ASCII分類不一致: ${id}`);
+    for (const id of InternalContract.BASE85_PARTIAL_VARIANTS) if (!base85Contract.has(id) || !InternalContract.BASE85_ASCII_VARIANTS.includes(id)) add(`Base85 Partial分類不一致: ${id}`);
+    for (const id of InternalContract.BASE85_PADDED_VARIANTS) if (!base85Contract.has(id) || !InternalContract.BASE85_ASCII_VARIANTS.includes(id)) add(`Base85 Padded分類不一致: ${id}`);
+    for (const id of InternalContract.BASE85_BLOCK4_VARIANTS) if (!base85Contract.has(id) || InternalContract.BASE85_ASCII_VARIANTS.includes(id)) add(`Base85 Block4分類不一致: ${id}`);
+    if (!base85Contract.has(AppState.base85Variant)) add(`Base85規格不明: ${AppState.base85Variant}`);
+
+    if (typeof UI !== 'undefined' && UI && typeof UI.validate === 'function') {
+      for (const issue of UI.validate()) add(issue);
+    }
+
+    return Array.from(new Set(issues));
+  }
+
+  function init() {
+    const issues = validate();
+    lastIssues = Object.freeze(issues.slice());
+    if (issues.length) console.error(`[INTEGRITY] ${issues.join('\n[INTEGRITY] ')}`);
+    return issues;
+  }
+
+  return {
+    init,
+    validate,
+    get lastIssues() { return lastIssues.slice(); }
+  };
+})();
+
+/* =========================================================
    ENGINE LAYER
 ========================================================= */
 const Engine = (() => {
+  const ACTION = InternalContract.ENGINE_ACTIONS;
+  const MESSAGE = InternalContract.ENGINE_MESSAGES;
   const WORKER_THRESHOLD = 200000;
   const hasWorker = !!window.Worker;
   let worker = null;
@@ -3116,7 +3489,7 @@ const Engine = (() => {
         algs.set(id, ctrl);
         master.signal.addEventListener('abort', () => { if (!ctrl.signal.aborted) ctrl.abort(); });
         ctrl.signal.addEventListener('abort', () => {
-            if (worker) worker.postMessage({ action: 'abort', algId: id, sessionId: iterativeSessionId });
+            if (worker) worker.postMessage({ action: ACTION.ABORT, algId: id, sessionId: iterativeSessionId });
         });
         return ctrl.signal;
       },
@@ -3128,6 +3501,11 @@ const Engine = (() => {
 
   function createWorkerBlob() {
     const code = `
+      const ENGINE_ACTIONS = ${JSON.stringify(InternalContract.ENGINE_ACTIONS)};
+      const ENGINE_MESSAGES = ${JSON.stringify(InternalContract.ENGINE_MESSAGES)};
+      const CONTRACT_HASH_IDS = ${JSON.stringify(InternalContract.HASH_IDS)};
+      const CONTRACT_GENERIC_ITERATION_IDS = ${JSON.stringify(InternalContract.GENERIC_ITERATION_IDS)};
+      const CONTRACT_DIGEST_BYTES = ${JSON.stringify(Object.fromEntries(InternalContract.GENERIC_ITERATION_IDS.map(id => [id, InternalContract.HASH_ALGORITHMS[id].digestBytes])))};
       const HEX_LUT = [${Array.from({length: 256}, (_, i) => "'" + i.toString(16).padStart(2, '0') + "'").join(',')}];
       const HEX_DECODE_LUT = (() => {
         const table = new Int8Array(103);
@@ -3327,7 +3705,7 @@ const Engine = (() => {
         }
       }
 
-      const CRC64_VARIANTS = ['XZ (ECMA, Reflected)', 'WE (ECMA, Non-Reflected)', 'ISO (HDLC, Non-Reflected)', 'GO-ISO (ISO, Reflected)', 'Redis (Jones, Reflected)'];
+      const CRC64_VARIANTS = ${JSON.stringify(InternalContract.CRC64_VARIANTS)};
       function createCrc64Engine(variant) {
         if (variant === 'WE (ECMA, Non-Reflected)') return new Crc64WeEngine();
         if (variant === 'ISO (HDLC, Non-Reflected)') return new Crc64IsoEngine();
@@ -3888,15 +4266,7 @@ const Engine = (() => {
       const HISTORY_LIMIT = 65535;
       const CONTROL_YIELD_INTERVAL = 8;
       const PROGRESS_INTERVAL = 32;
-      const DIGEST_BYTES = {
-        'CRC32': 4,
-        'MD5': 16,
-        'SHA-1': 20,
-        'SHA-224': 28,
-        'SHA-256': 32,
-        'SHA-384': 48,
-        'SHA-512': 64
-      };
+      const DIGEST_BYTES = CONTRACT_DIGEST_BYTES;
 
       class IterationHistory {
         constructor(width) {
@@ -4095,7 +4465,7 @@ const Engine = (() => {
         if (!matches) {
           if (continuousMatch.matched) {
             continuousMatch.matched = false;
-            const msg = buildTaskMessage(alg, 'match_clear', candidate, iter, total, history, extra);
+            const msg = buildTaskMessage(alg, ENGINE_MESSAGES.MATCH_CLEAR, candidate, iter, total, history, extra);
             msg.matchTarget = continuousMatch.hex;
             msg.matchCrc64Variant = continuousMatch.crc64Variant;
             postMessage(msg);
@@ -4114,7 +4484,7 @@ const Engine = (() => {
           }
         }
 
-        const msg = buildTaskMessage(alg, 'match_hit', candidate, iter, total, history, extra);
+        const msg = buildTaskMessage(alg, ENGINE_MESSAGES.MATCH_HIT, candidate, iter, total, history, extra);
         msg.matchTarget = continuousMatch.hex;
         msg.matchCrc64Variant = continuousMatch.crc64Variant;
         postMessage(msg);
@@ -4170,7 +4540,7 @@ const Engine = (() => {
         else if (status === 'aborted') IterationRuntime.terminate(alg);
         else if (status === 'error') IterationRuntime.setState(alg, 'error');
         IterationRuntime.update(alg, iter, hex);
-        const msg = buildTaskMessage(alg, 'iter_progress', hex, iter, total, history, extra);
+        const msg = buildTaskMessage(alg, ENGINE_MESSAGES.ITER_PROGRESS, hex, iter, total, history, extra);
         msg.status = status;
         postMessage(msg);
       }
@@ -4178,12 +4548,12 @@ const Engine = (() => {
       function postPauseState(alg, hex, iter, total, history, extra = null) {
         IterationRuntime.setState(alg, 'paused');
         IterationRuntime.update(alg, iter, hex);
-        postMessage(buildTaskMessage(alg, 'pause_ack', hex, iter, total, history, extra));
+        postMessage(buildTaskMessage(alg, ENGINE_MESSAGES.PAUSE_ACK, hex, iter, total, history, extra));
       }
 
       function postTargetAck(alg, hex, iter, total, history, extra = null) {
         IterationRuntime.update(alg, iter, hex);
-        postMessage(buildTaskMessage(alg, 'target_ack', hex, iter, total, history, extra));
+        postMessage(buildTaskMessage(alg, ENGINE_MESSAGES.TARGET_ACK, hex, iter, total, history, extra));
       }
 
       function failTask(alg, message = 'エラー', generation = null) {
@@ -4198,21 +4568,21 @@ const Engine = (() => {
       onmessage = e => {
         const { action, bytes, key, crc64Variant, iterations, algorithms, saltBytes, algId, iterMode, reqId, target, sessionId = 0, targetRevision = 0, matchTarget = null } = e.data;
 
-        if (action === 'set_match') {
+        if (action === ENGINE_ACTIONS.SET_MATCH) {
             configureContinuousMatch(sessionId, matchTarget);
             tryCurrentContinuousMatch();
             return;
         }
-        if (action === 'clear_match') {
+        if (action === ENGINE_ACTIONS.CLEAR_MATCH) {
             clearContinuousMatch(sessionId);
             return;
         }
-        if (action === 'set_target') {
+        if (action === ENGINE_ACTIONS.SET_TARGET) {
             const changed = IterationRuntime.setTarget(sessionId, target, targetRevision);
             changed.forEach(wakeTask);
             return;
         }
-        if (action === 'pause_all') {
+        if (action === ENGINE_ACTIONS.PAUSE_ALL) {
             for (const alg of Object.keys(currentTaskGen)) {
                 const task = IterationRuntime.get(alg);
                 if (!task || task.sessionId !== sessionId || task.state !== 'running') continue;
@@ -4220,7 +4590,7 @@ const Engine = (() => {
             }
             return;
         }
-        if (action === 'resume_all') {
+        if (action === ENGINE_ACTIONS.RESUME_ALL) {
             for (const alg of Object.keys(currentTaskGen)) {
                 const task = IterationRuntime.get(alg);
                 if (!task || task.sessionId !== sessionId || task.state !== 'paused') continue;
@@ -4229,12 +4599,12 @@ const Engine = (() => {
             }
             return;
         }
-        if (action === 'pause') {
+        if (action === ENGINE_ACTIONS.PAUSE) {
             const task = IterationRuntime.get(algId);
             if (task && task.sessionId === sessionId && task.state === 'running') pausedTasks[algId] = true;
             return;
         }
-        if (action === 'resume') {
+        if (action === ENGINE_ACTIONS.RESUME) {
             const task = IterationRuntime.get(algId);
             if (task && task.sessionId === sessionId && task.state === 'paused') {
                 pausedTasks[algId] = false;
@@ -4242,7 +4612,7 @@ const Engine = (() => {
             }
             return;
         }
-        if (action === 'abort_all') {
+        if (action === ENGINE_ACTIONS.ABORT_ALL) {
             clearContinuousMatch(sessionId);
             for (const alg of Object.keys(currentTaskGen)) {
                 const task = IterationRuntime.get(alg);
@@ -4256,7 +4626,7 @@ const Engine = (() => {
             }
             return;
         }
-        if (action === 'abort') {
+        if (action === ENGINE_ACTIONS.ABORT) {
             const task = IterationRuntime.get(algId);
             if (!task || task.sessionId !== sessionId || IterationRuntime.terminal(task.state)) return;
             currentTaskGen[algId] = -1;
@@ -4268,39 +4638,100 @@ const Engine = (() => {
             return;
         }
 
-        if (action === 'init') {
+        if (action === ENGINE_ACTIONS.INIT) {
           hasher = new IncrementalHasher(crc64Variant);
           if(key) hasher.initHmac(key);
-        } else if (action === 'update') {
+        } else if (action === ENGINE_ACTIONS.UPDATE) {
           if(hasher) hasher.update(bytes);
-        } else if (action === 'finalize') {
-          if(hasher) postMessage(Object.assign({ action: 'stream_hash_result' }, hasher.finalizeHmacOrNormal()));
+        } else if (action === ENGINE_ACTIONS.FINALIZE) {
+          if(hasher) postMessage(Object.assign({ action: ENGINE_MESSAGES.STREAM_HASH_RESULT }, hasher.finalizeHmacOrNormal()));
           hasher = null;
-        } else if (action === 'hashAll') {
+        } else if (action === ENGINE_ACTIONS.HASH_ALL) {
           const temp = new IncrementalHasher(crc64Variant, !(self.crypto && self.crypto.subtle));
           if(key) temp.initHmac(key);
           temp.update(bytes);
-          postMessage(Object.assign({ action: 'hash_all_result' }, temp.finalizeHmacOrNormal()));
-        } else if (action === 'hashSha512Fallback') {
+          postMessage(Object.assign({ action: ENGINE_MESSAGES.HASH_ALL_RESULT }, temp.finalizeHmacOrNormal()));
+        } else if (action === ENGINE_ACTIONS.HASH_SHA512_FALLBACK) {
           const temp = new Sha512FamilyEngine(algId);
           if(key) temp.initHmac(key);
           temp.update(bytes);
           const result = temp.finalizeHmacOrNormal();
-          postMessage({ action: 'sha512_fallback_result', reqId, algId, hex: algId === 'SHA-384' ? result.sha384 : result.sha512 });
-        } else if (action === 'verifyTest') {
+          postMessage({ action: ENGINE_MESSAGES.SHA512_FALLBACK_RESULT, reqId, algId, hex: algId === 'SHA-384' ? result.sha384 : result.sha512 });
+        } else if (action === ENGINE_ACTIONS.VERIFY_TEST) {
           const temp = new IncrementalHasher(crc64Variant);
           temp.update(bytes);
-          postMessage({ action: 'verify_result', reqId, results: temp.finalizeHmacOrNormal() });
-        } else if (action === 'selfTest') {
+          postMessage({ action: ENGINE_MESSAGES.VERIFY_RESULT, reqId, results: temp.finalizeHmacOrNormal() });
+        } else if (action === ENGINE_ACTIONS.SELF_TEST) {
           try {
             const mode = e.data.mode;
             if (mode === 'hash' || mode === 'hmac') {
               const temp = new IncrementalHasher(crc64Variant || CRC64_VARIANTS[0]);
               if (mode === 'hmac' && key) temp.initHmac(key);
               temp.update(bytes || new Uint8Array(0));
-              postMessage({ action: 'self_test_result', reqId, status: 'ok', results: temp.finalizeHmacOrNormal() });
+              postMessage({ action: ENGINE_MESSAGES.SELF_TEST_RESULT, reqId, status: 'ok', results: temp.finalizeHmacOrNormal() });
             } else if (mode === 'utf8') {
-              postMessage({ action: 'self_test_result', reqId, status: 'ok', bytes: utf8Encode(String(e.data.text || '')) });
+              postMessage({ action: ENGINE_MESSAGES.SELF_TEST_RESULT, reqId, status: 'ok', bytes: utf8Encode(String(e.data.text || '')) });
+            } else if (mode === 'contract') {
+              postMessage({
+                action: ENGINE_MESSAGES.SELF_TEST_RESULT,
+                reqId,
+                status: 'ok',
+                hashIds: CONTRACT_HASH_IDS.slice(),
+                genericIterationIds: CONTRACT_GENERIC_ITERATION_IDS.slice(),
+                crc64Variants: CRC64_VARIANTS.slice(),
+                digestBytes: Object.assign({}, DIGEST_BYTES),
+                engineActions: Object.assign({}, ENGINE_ACTIONS),
+                engineMessages: Object.assign({}, ENGINE_MESSAGES)
+              });
+            } else if (mode === 'hash_chunks') {
+              const temp = new IncrementalHasher(crc64Variant || CRC64_VARIANTS[0]);
+              if (key) temp.initHmac(key);
+              for (const chunk of (e.data.chunks || [])) temp.update(chunk || new Uint8Array(0));
+              postMessage({ action: ENGINE_MESSAGES.SELF_TEST_RESULT, reqId, status: 'ok', results: temp.finalizeHmacOrNormal() });
+            } else if (mode === 'regression') {
+              const failed = [];
+              const check = (condition, name) => { if (!condition) failed.push(name); };
+              const equalResult = (a, b) => {
+                for (const key of ['crc','crc64','md5','sha1','sha224','sha256','sha384','sha512']) {
+                  if (String(a?.[key] || '') !== String(b?.[key] || '')) return false;
+                }
+                for (const variant of CRC64_VARIANTS) {
+                  if (String(a?.crc64All?.[variant] || '') !== String(b?.crc64All?.[variant] || '')) return false;
+                }
+                return true;
+              };
+
+              const payloads = [
+                new Uint8Array(0),
+                new Uint8Array([0x61]),
+                new Uint8Array([0x61,0x62,0x63]),
+                (() => { const b = new Uint8Array(65); for (let i=0;i<b.length;i++) b[i]=i; return b; })(),
+                (() => { const b = new Uint8Array(129); b.fill(0x61); return b; })()
+              ];
+
+              const reused = new IncrementalHasher(CRC64_VARIANTS[0], true);
+              for (let i = 0; i < payloads.length; i++) {
+                const fresh = new IncrementalHasher(CRC64_VARIANTS[0], true);
+                fresh.update(payloads[i]);
+                const expected = fresh.finalizeHmacOrNormal();
+                reused.reset();
+                reused.update(payloads[i]);
+                check(equalResult(reused.finalizeHmacOrNormal(), expected), 'Hasher Reuse ' + i);
+              }
+
+              for (const variant of CRC64_VARIANTS) {
+                const reusable = createCrc64Engine(variant);
+                for (let i = 0; i < payloads.length; i++) {
+                  const fresh = createCrc64Engine(variant);
+                  fresh.update(payloads[i]);
+                  const expected = fresh.finalize();
+                  reusable.reset();
+                  reusable.update(payloads[i]);
+                  check(reusable.finalize() === expected, 'CRC64 Reuse ' + variant + ' / ' + i);
+                }
+              }
+
+              postMessage({ action: ENGINE_MESSAGES.SELF_TEST_RESULT, reqId, status: failed.length ? 'error' : 'ok', failed });
             } else if (mode === 'runtime') {
               const failed = [];
               const check = (condition, name) => { if (!condition) failed.push(name); };
@@ -4356,14 +4787,14 @@ const Engine = (() => {
               lengthEngine._addLength(1);
               check(lengthEngine.bitLen0 === 7 && lengthEngine.bitLen1 === 0 && lengthEngine.bitLen2 === 0 && lengthEngine.bitLen3 === 1, 'SHA-512 Length Cascade Carry');
 
-              postMessage({ action: 'self_test_result', reqId, status: failed.length ? 'error' : 'ok', failed });
+              postMessage({ action: ENGINE_MESSAGES.SELF_TEST_RESULT, reqId, status: failed.length ? 'error' : 'ok', failed });
             } else {
               throw new Error('Unknown Self Test Mode');
             }
           } catch (err) {
-            postMessage({ action: 'self_test_result', reqId, status: 'error', error: err.message });
+            postMessage({ action: ENGINE_MESSAGES.SELF_TEST_RESULT, reqId, status: 'error', error: err.message });
           }
-        } else if (action === 'hashIterative') {
+        } else if (action === ENGINE_ACTIONS.HASH_ITERATIVE) {
             configureContinuousMatch(sessionId, matchTarget);
             for (const alg of algorithms) {
                 absoluteTaskCounter++;
@@ -4794,7 +5225,7 @@ const Engine = (() => {
     selfTestWorker = w;
     w.addEventListener('message', ev => {
       const data = ev.data;
-      if (!data || data.action !== 'self_test_result') return;
+      if (!data || data.action !== MESSAGE.SELF_TEST_RESULT) return;
       const entry = selfTestPending.get(data.reqId);
       if (!entry) return;
       selfTestPending.delete(data.reqId);
@@ -4813,41 +5244,41 @@ const Engine = (() => {
       worker.onmessage = ev => {
           const data = ev.data;
           const isIterationMessage = data && (
-              data.action === 'pause_ack' ||
-              data.action === 'target_ack' ||
-              data.action === 'match_hit' ||
-              data.action === 'match_clear' ||
-              data.action === 'iter_progress'
+              data.action === MESSAGE.PAUSE_ACK ||
+              data.action === MESSAGE.TARGET_ACK ||
+              data.action === MESSAGE.MATCH_HIT ||
+              data.action === MESSAGE.MATCH_CLEAR ||
+              data.action === MESSAGE.ITER_PROGRESS
           );
 
           if (isIterationMessage) {
               if (data.sessionId !== iterativeSessionId) return;
-              const terminalMessage = data.action === 'iter_progress' && (data.status === 'aborted' || data.status === 'error');
-              if (data.action !== 'match_hit' && !terminalMessage && (Number(data.targetRevision) || 0) < iterativeTargetRevision) return;
+              const terminalMessage = data.action === MESSAGE.ITER_PROGRESS && (data.status === 'aborted' || data.status === 'error');
+              if (data.action !== MESSAGE.MATCH_HIT && !terminalMessage && (Number(data.targetRevision) || 0) < iterativeTargetRevision) return;
 
               if (data.algId === 'CRC64' && data.crc64All) {
                   AppState.crc64Results = data.crc64All;
                   data.hex = data.crc64All[AppState.crc64Variant] || data.hex;
               }
 
-              if (data.action === 'pause_ack') {
-                  EventBus.emit('hash:paused', data);
+              if (data.action === MESSAGE.PAUSE_ACK) {
+                  EventBus.emit(InternalContract.EVENTS.HASH_PAUSED, data);
                   return;
               }
-              if (data.action === 'target_ack') {
-                  EventBus.emit('hash:targetAck', data);
+              if (data.action === MESSAGE.TARGET_ACK) {
+                  EventBus.emit(InternalContract.EVENTS.HASH_TARGET_ACK, data);
                   return;
               }
-              if (data.action === 'match_hit') {
-                  EventBus.emit('hash:match', data);
+              if (data.action === MESSAGE.MATCH_HIT) {
+                  EventBus.emit(InternalContract.EVENTS.HASH_MATCH, data);
                   return;
               }
-              if (data.action === 'match_clear') {
-                  EventBus.emit('hash:matchClear', data);
+              if (data.action === MESSAGE.MATCH_CLEAR) {
+                  EventBus.emit(InternalContract.EVENTS.HASH_MATCH_CLEAR, data);
                   return;
               }
 
-              EventBus.emit('hash:render', {
+              EventBus.emit(InternalContract.EVENTS.HASH_RENDER, {
                   algId: data.algId,
                   hex: data.hex,
                   iter: data.iter,
@@ -4887,13 +5318,13 @@ const Engine = (() => {
               };
               if (data.sha384) results['SHA-384'] = data.sha384;
               if (data.sha512) results['SHA-512'] = data.sha512;
-              EventBus.emit('hash:results', results);
+              EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, results);
           } else if (data.crc64 && !data.md5) {
               if (data.crc64All) {
                   AppState.crc64Results = data.crc64All;
               }
 
-              EventBus.emit('hash:results', {
+              EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, {
                   'CRC64':
                       (
                           data.crc64All &&
@@ -4905,7 +5336,7 @@ const Engine = (() => {
           }
       };
       worker.onerror = () => {
-          EventBus.emit('hash:results', {'CRC32':'ワーカーエラー', 'CRC64':'ワーカーエラー', 'MD5':'ワーカーエラー', 'SHA-1':'ワーカーエラー', 'SHA-224':'ワーカーエラー', 'SHA-256':'ワーカーエラー', 'SHA-384':'ワーカーエラー', 'SHA-512':'ワーカーエラー'});
+          EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, {'CRC32':'ワーカーエラー', 'CRC64':'ワーカーエラー', 'MD5':'ワーカーエラー', 'SHA-1':'ワーカーエラー', 'SHA-224':'ワーカーエラー', 'SHA-256':'ワーカーエラー', 'SHA-384':'ワーカーエラー', 'SHA-512':'ワーカーエラー'});
           terminateLiveWorker(); ensureWorker();
       };
     }
@@ -4916,7 +5347,7 @@ const Engine = (() => {
     iterativeSessionId++;
     iterativeTargetRevision = 0;
     if (worker) { worker.terminate(); worker = null; }
-    EventBus.emit('hash:sessionEnd', { reason: 'terminated' });
+    EventBus.emit(InternalContract.EVENTS.HASH_SESSION_END, { reason: 'terminated' });
   }
 
   function terminateWorker() {
@@ -4939,13 +5370,13 @@ const Engine = (() => {
             resolve(result);
         };
         const handler = (ev) => {
-            if (ev.data.action === 'verify_result' && ev.data.reqId === reqId) finish(ev.data.results);
+            if (ev.data.action === MESSAGE.VERIFY_RESULT && ev.data.reqId === reqId) finish(ev.data.results);
         };
         const errorHandler = () => finish(null);
         const timer = setTimeout(() => finish(null), 10000);
         testWorker.addEventListener('message', handler);
         testWorker.addEventListener('error', errorHandler);
-        try { testWorker.postMessage({ action: 'verifyTest', bytes, crc64Variant, reqId }); }
+        try { testWorker.postMessage({ action: ACTION.VERIFY_TEST, bytes, crc64Variant, reqId }); }
         catch (e) { finish(null); }
     });
   }
@@ -4967,13 +5398,13 @@ const Engine = (() => {
         };
         const handler = (ev) => {
             const data = ev.data;
-            if (data.action === 'sha512_fallback_result' && data.reqId === reqId && data.algId === alg) finish(data.hex || null);
+            if (data.action === MESSAGE.SHA512_FALLBACK_RESULT && data.reqId === reqId && data.algId === alg) finish(data.hex || null);
         };
         const errorHandler = () => finish(null);
         const timer = setTimeout(() => finish(null), 30000);
         fallbackWorker.addEventListener('message', handler);
         fallbackWorker.addEventListener('error', errorHandler);
-        try { fallbackWorker.postMessage({ action: 'hashSha512Fallback', algId: alg, bytes, key, reqId }); }
+        try { fallbackWorker.postMessage({ action: ACTION.HASH_SHA512_FALLBACK, algId: alg, bytes, key, reqId }); }
         catch (e) { finish(null); }
     });
   }
@@ -4995,7 +5426,7 @@ const Engine = (() => {
       selfTestPending.set(reqId, { resolve, timer });
 
       try {
-        const message = { action: 'selfTest', mode, reqId };
+        const message = { action: ACTION.SELF_TEST, mode, reqId };
         Object.assign(message, payload);
         testWorker.postMessage(message);
       } catch (e) {
@@ -5024,7 +5455,7 @@ const Engine = (() => {
                 const revision = BaseRenderGate.issue('Base64-Enc');
                 BaseRenderGate.track(Base64Engine.encode(bytes)).then(res => {
                     if (!signal.aborted && BaseRenderGate.isCurrent('Base64-Enc', revision)) {
-                        EventBus.emit('hash:results', {'Base64-Enc': res.type==='error'?'エラー':res.value});
+                        EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, {'Base64-Enc': res.type==='error'?'エラー':res.value});
                     }
                 });
             }
@@ -5032,7 +5463,7 @@ const Engine = (() => {
                 const revision = BaseRenderGate.issue('Base85-Enc');
                 BaseRenderGate.track(Base85Engine.encode(bytes, AppState.base85Variant)).then(res => {
                     if (!signal.aborted && BaseRenderGate.isCurrent('Base85-Enc', revision)) {
-                        EventBus.emit('hash:results', {'Base85-Enc': res.type==='error'?'エラー':res.value});
+                        EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, {'Base85-Enc': res.type==='error'?'エラー':res.value});
                     }
                 });
             }
@@ -5044,13 +5475,13 @@ const Engine = (() => {
             }
 
             if (hmacKeyBytes) {
-                EventBus.emit('hash:results', {'CRC32': Core.crc32Hex(bytes), 'CRC64': "処理中…", 'MD5': Core.hmacMd5Hex(hmacKeyBytes, bytes), 'SHA-224': Core.hmacSha224Hex(hmacKeyBytes, bytes)});
+                EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, {'CRC32': Core.crc32Hex(bytes), 'CRC64': "処理中…", 'MD5': Core.hmacMd5Hex(hmacKeyBytes, bytes), 'SHA-224': Core.hmacSha224Hex(hmacKeyBytes, bytes)});
             } else {
-                EventBus.emit('hash:results', {'CRC32': Core.crc32Hex(bytes), 'CRC64': "処理中…", 'MD5': Core.md5Hex(bytes), 'SHA-224': Core.sha224Hex(bytes)});
+                EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, {'CRC32': Core.crc32Hex(bytes), 'CRC64': "処理中…", 'MD5': Core.md5Hex(bytes), 'SHA-224': Core.sha224Hex(bytes)});
             }
 
             if (hasWorker) {
-                worker.postMessage({action: 'hashAll', bytes: bytes, key: hmacKeyBytes, crc64Variant: AppState.crc64Variant});
+                worker.postMessage({action: ACTION.HASH_ALL, bytes: bytes, key: hmacKeyBytes, crc64Variant: AppState.crc64Variant});
             }
 
             const nativeAlgorithms = window.crypto?.subtle
@@ -5060,14 +5491,14 @@ const Engine = (() => {
                 try {
                     if (signal.aborted) return;
                     const hex = hmacKeyBytes ? await Core.hmacHex(alg, hmacKeyBytes, bytes) : await Core.digestHex(alg, bytes);
-                    if (!signal.aborted) EventBus.emit('hash:results', {[id]: hex});
+                    if (!signal.aborted) EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, {[id]: hex});
                 } catch {
                     if (signal.aborted) return;
                     if ((id === 'SHA-384' || id === 'SHA-512') && hasWorker) {
                         const hex = await hashSha512Manual(id, bytes, hmacKeyBytes);
-                        if (!signal.aborted) EventBus.emit('hash:results', {[id]: hex || '未対応/エラー'});
+                        if (!signal.aborted) EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, {[id]: hex || '未対応/エラー'});
                     } else if (!hasWorker) {
-                        EventBus.emit('hash:results', {[id]: '未対応/エラー'});
+                        EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, {[id]: '未対応/エラー'});
                     }
                 }
             });
@@ -5076,7 +5507,7 @@ const Engine = (() => {
         } catch (e) {
             const errRes = {};
             ['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','Base64-Enc','Base85-Enc'].forEach(id => errRes[id] = '読込エラー');
-            EventBus.emit('hash:results', errRes);
+            EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, errRes);
             resolve();
         }
       } else {
@@ -5084,10 +5515,10 @@ const Engine = (() => {
           const errRes = {'CRC32':'サイズ超過', 'CRC64':'サイズ超過', 'MD5':'サイズ超過', 'SHA-1':'サイズ超過', 'SHA-224':'サイズ超過', 'SHA-256':'サイズ超過', 'SHA-384':'サイズ超過', 'SHA-512':'サイズ超過'};
           if (AppState.Base64Encode) errRes['Base64-Enc'] = 'サイズ超過';
           if (AppState.Base85Encode) errRes['Base85-Enc'] = 'サイズ超過';
-          EventBus.emit('hash:results', errRes); resolve(); return;
+          EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, errRes); resolve(); return;
         }
 
-        worker.postMessage({action: 'init', key: hmacKeyBytes, crc64Variant: AppState.crc64Variant});
+        worker.postMessage({action: ACTION.INIT, key: hmacKeyBytes, crc64Variant: AppState.crc64Variant});
         const stream = file.stream();
         const reader = stream.getReader();
         let bytesSinceLastYield = 0;
@@ -5097,18 +5528,23 @@ const Engine = (() => {
         let base85Chunks = [];
         let leftover = new Uint8Array(0);
         let base85Failed = false;
+        let btoaStreamEor = 0, btoaStreamSum = 0, btoaStreamRot = 0, btoaStreamColumn = 0;
 
-        const base85RequiresBlock4 =
-            AppState.base85Variant === 'ZeroMQ (Z85)' ||
-            AppState.base85Variant === 'RFC 1924 Alphabet';
+        const base85RequiresBlock4 = InternalContract.BASE85_BLOCK4_VARIANTS.includes(AppState.base85Variant);
 
         if (AppState.Base85Encode && base85RequiresBlock4 && (file.size % 4 !== 0)) {
             base85Failed = true;
-            EventBus.emit('hash:results', {'Base85-Enc': '入力長不正（4バイト単位が必要）'});
+            EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, {'Base85-Enc': '入力長不正（4バイト単位が必要）'});
         }
 
         if (AppState.Base85Encode && !base85Failed && AppState.base85Variant === 'Adobe ASCII85') {
             const pre = new TextEncoder().encode('<~');
+            if (AppState.streamHandles && AppState.streamHandles.Base85) await AppState.streamHandles.Base85.write(pre).catch(()=>{});
+            else base85Chunks.push(pre);
+        }
+
+        if (AppState.Base85Encode && !base85Failed && AppState.base85Variant === 'btoa ASCII85') {
+            const pre = new TextEncoder().encode('xbtoa Begin\n');
             if (AppState.streamHandles && AppState.streamHandles.Base85) await AppState.streamHandles.Base85.write(pre).catch(()=>{});
             else base85Chunks.push(pre);
         }
@@ -5119,28 +5555,13 @@ const Engine = (() => {
             const {done, value} = await reader.read();
             if (signal.aborted) { await reader.cancel(); return resolve(); }
 
-            let current;
-            if (!value) {
-                current = leftover;
-            } else if (leftover.length === 0) {
-                current = value;
-            } else {
-                current = new Uint8Array(leftover.length + value.length);
-                current.set(leftover, 0);
-                current.set(value, leftover.length);
-            }
-
-            let processLen = current.length;
-            if (!done) {
-                processLen = current.length - (current.length % 12);
-            }
-
-            let toProcess = current.subarray(0, processLen);
-            leftover = current.subarray(processLen);
+            const block = StreamBlock.partition(leftover, value, done);
+            let toProcess = block.toProcess;
+            leftover = block.leftover;
 
             if (toProcess.length > 0) {
                 const hashCopy = toProcess.slice();
-                worker.postMessage({action: 'update', bytes: hashCopy}, [hashCopy.buffer]);
+                worker.postMessage({action: ACTION.UPDATE, bytes: hashCopy}, [hashCopy.buffer]);
 
                 if (AppState.Base64Encode) {
                     const Base64Copy = toProcess.slice();
@@ -5150,16 +5571,38 @@ const Engine = (() => {
                 }
 
                 if (AppState.Base85Encode && !base85Failed) {
+                    if (AppState.base85Variant === 'btoa ASCII85') {
+                        for (let bi = 0; bi < toProcess.length; bi++) {
+                            let ch = toProcess[bi];
+                            btoaStreamEor = (btoaStreamEor ^ ch) >>> 0;
+                            btoaStreamSum = (btoaStreamSum + ch + 1) >>> 0;
+                            if (btoaStreamRot & 0x80000000) ch += 1;
+                            btoaStreamRot = ((btoaStreamRot << 1) + ch) >>> 0;
+                        }
+                    }
                     const Base85Copy = toProcess.slice();
                     const Base85Res = await Base85Engine.encodeStreamOwned(Base85Copy, AppState.base85Variant);
 
                     if (Base85Res.type === 'error') {
                         base85Failed = true;
                         base85Chunks = [];
-                        EventBus.emit('hash:results', {'Base85-Enc': 'エンコードエラー'});
+                        EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, {'Base85-Enc': 'エンコードエラー'});
                     } else {
-                        if (AppState.streamHandles && AppState.streamHandles.Base85) await AppState.streamHandles.Base85.write(Base85Res.bytes).catch(()=>{});
-                        else base85Chunks.push(Base85Res.bytes);
+                        let outputBytes = Base85Res.bytes;
+                        if (AppState.base85Variant === 'btoa ASCII85' && outputBytes.length) {
+                            const wrapped = [];
+                            for (let wi = 0; wi < outputBytes.length; wi++) {
+                                wrapped.push(outputBytes[wi]);
+                                btoaStreamColumn++;
+                                if (btoaStreamColumn === 78) {
+                                    wrapped.push(10);
+                                    btoaStreamColumn = 0;
+                                }
+                            }
+                            outputBytes = new Uint8Array(wrapped);
+                        }
+                        if (AppState.streamHandles && AppState.streamHandles.Base85) await AppState.streamHandles.Base85.write(outputBytes).catch(()=>{});
+                        else base85Chunks.push(outputBytes);
                     }
                 }
 
@@ -5173,8 +5616,8 @@ const Engine = (() => {
             if (done) break;
           }
 
-          if (saltBytes && saltBytes.length > 0) { worker.postMessage({action: 'update', bytes: saltBytes}); }
-          worker.postMessage({action: 'finalize'});
+          if (saltBytes && saltBytes.length > 0) { worker.postMessage({action: ACTION.UPDATE, bytes: saltBytes}); }
+          worker.postMessage({action: ACTION.FINALIZE});
 
           if (AppState.Base85Encode && !base85Failed && AppState.base85Variant === 'Adobe ASCII85') {
               const post = new TextEncoder().encode('~>');
@@ -5182,28 +5625,36 @@ const Engine = (() => {
               else base85Chunks.push(post);
           }
 
+          if (AppState.Base85Encode && !base85Failed && AppState.base85Variant === 'btoa ASCII85') {
+              const n = file.size;
+              const trailerText = `${btoaStreamColumn === 0 ? '' : '\n'}xbtoa End N ${n} ${n.toString(16)} E ${btoaStreamEor.toString(16)} S ${btoaStreamSum.toString(16)} R ${btoaStreamRot.toString(16)}`;
+              const post = new TextEncoder().encode(trailerText);
+              if (AppState.streamHandles && AppState.streamHandles.Base85) await AppState.streamHandles.Base85.write(post).catch(()=>{});
+              else base85Chunks.push(post);
+          }
+
           if (AppState.Base64Encode) {
               if (AppState.streamHandles && AppState.streamHandles.Base64) {
-                  EventBus.emit('hash:results', {'Base64-Enc': '[ディスクへ直接保存完了]'});
+                  EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, {'Base64-Enc': '[ディスクへ直接保存完了]'});
               } else {
                   const blob = new Blob(base64Chunks, {type: 'text/plain'});
                   const sizeMB = (blob.size / 1048576).toFixed(2);
-                  EventBus.emit('hash:results', {'Base64-Enc': { type: 'huge_blob', blob: blob, sizeMB } });
+                  EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, {'Base64-Enc': { type: 'huge_blob', blob: blob, sizeMB } });
               }
           }
           if (AppState.Base85Encode && !base85Failed) {
               if (AppState.streamHandles && AppState.streamHandles.Base85) {
-                  EventBus.emit('hash:results', {'Base85-Enc': '[ディスクへ直接保存完了]'});
+                  EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, {'Base85-Enc': '[ディスクへ直接保存完了]'});
               } else {
                   const blob = new Blob(base85Chunks, {type: 'text/plain'});
                   const sizeMB = (blob.size / 1048576).toFixed(2);
-                  EventBus.emit('hash:results', {'Base85-Enc': { type: 'huge_blob', blob: blob, sizeMB } });
+                  EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, {'Base85-Enc': { type: 'huge_blob', blob: blob, sizeMB } });
               }
           }
 
         } catch (e) {
           const errRes = {'CRC32':'読込エラー', 'CRC64':'読込エラー', 'MD5':'読込エラー', 'SHA-1':'読込エラー', 'SHA-224':'読込エラー', 'SHA-256':'読込エラー', 'SHA-384':'読込エラー', 'SHA-512':'読込エラー'};
-          EventBus.emit('hash:results', errRes);
+          EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, errRes);
           terminateLiveWorker(); ensureWorker();
         } finally {
           if (AppState.streamHandles) {
@@ -5221,34 +5672,34 @@ const Engine = (() => {
     const signal = TaskManager.masterSignal;
     if (AppState.Base64Encode) {
         if (bytesToHash.length > 50000000) {
-            EventBus.emit('hash:render', {algId: 'Base64-Enc', hex: 'サイズ超過 (テキスト上限)', iter: 1, total: 1, isDone: true});
+            EventBus.emit(InternalContract.EVENTS.HASH_RENDER, {algId: 'Base64-Enc', hex: 'サイズ超過 (テキスト上限)', iter: 1, total: 1, isDone: true});
         } else {
             const revision = BaseRenderGate.issue('Base64-Enc');
             BaseRenderGate.track(Base64Engine.encode(bytesToHash)).then(res => {
                 if (!signal.aborted && BaseRenderGate.isCurrent('Base64-Enc', revision)) {
-                    if (res.type === 'error') EventBus.emit('hash:render', {algId: 'Base64-Enc', hex: 'エラー', iter: 1, total: 1, isDone: true});
-                    else EventBus.emit('hash:render', {algId: 'Base64-Enc', hex: res.value, iter: 1, total: 1, isDone: true});
+                    if (res.type === 'error') EventBus.emit(InternalContract.EVENTS.HASH_RENDER, {algId: 'Base64-Enc', hex: 'エラー', iter: 1, total: 1, isDone: true});
+                    else EventBus.emit(InternalContract.EVENTS.HASH_RENDER, {algId: 'Base64-Enc', hex: res.value, iter: 1, total: 1, isDone: true});
                 }
             });
         }
     } else {
-        EventBus.emit('hash:render', {algId: 'Base64-Enc', hex: '', iter: 0, total: iterations, isDone: true});
+        EventBus.emit(InternalContract.EVENTS.HASH_RENDER, {algId: 'Base64-Enc', hex: '', iter: 0, total: iterations, isDone: true});
     }
     
     if (AppState.Base85Encode) {
         if (bytesToHash.length > 50000000) {
-            EventBus.emit('hash:render', {algId: 'Base85-Enc', hex: 'サイズ超過 (テキスト上限)', iter: 1, total: 1, isDone: true});
+            EventBus.emit(InternalContract.EVENTS.HASH_RENDER, {algId: 'Base85-Enc', hex: 'サイズ超過 (テキスト上限)', iter: 1, total: 1, isDone: true});
         } else {
             const revision = BaseRenderGate.issue('Base85-Enc');
             BaseRenderGate.track(Base85Engine.encode(bytesToHash, AppState.base85Variant)).then(res => {
                 if (!signal.aborted && BaseRenderGate.isCurrent('Base85-Enc', revision)) {
-                    if (res.type === 'error') EventBus.emit('hash:render', {algId: 'Base85-Enc', hex: 'エラー', iter: 1, total: 1, isDone: true});
-                    else EventBus.emit('hash:render', {algId: 'Base85-Enc', hex: res.value, iter: 1, total: 1, isDone: true});
+                    if (res.type === 'error') EventBus.emit(InternalContract.EVENTS.HASH_RENDER, {algId: 'Base85-Enc', hex: 'エラー', iter: 1, total: 1, isDone: true});
+                    else EventBus.emit(InternalContract.EVENTS.HASH_RENDER, {algId: 'Base85-Enc', hex: res.value, iter: 1, total: 1, isDone: true});
                 }
             });
         }
     } else {
-        EventBus.emit('hash:render', {algId: 'Base85-Enc', hex: '', iter: 0, total: iterations, isDone: true});
+        EventBus.emit(InternalContract.EVENTS.HASH_RENDER, {algId: 'Base85-Enc', hex: '', iter: 0, total: iterations, isDone: true});
     }
 
     const activeAlgs = ['CRC32', 'CRC64', 'MD5', 'SHA-1', 'SHA-224', 'SHA-256', 'SHA-384', 'SHA-512'];
@@ -5258,9 +5709,9 @@ const Engine = (() => {
     const sessionId = iterativeSessionId;
     activeAlgs.forEach(alg => TaskManager.startAlg(alg));
     if (hasWorker) {
-        EventBus.emit('hash:session', { sessionId, target: iterations, targetRevision: 0, algorithms: activeAlgs });
+        EventBus.emit(InternalContract.EVENTS.HASH_SESSION, { sessionId, target: iterations, targetRevision: 0, algorithms: activeAlgs });
         worker.postMessage({
-            action: 'hashIterative', bytes: bytesToHash, saltBytes, key: hmacKeyBytes, crc64Variant: AppState.crc64Variant, iterations, algorithms: activeAlgs, iterMode: AppState.iterMode, sessionId, targetRevision: 0,
+            action: ACTION.HASH_ITERATIVE, bytes: bytesToHash, saltBytes, key: hmacKeyBytes, crc64Variant: AppState.crc64Variant, iterations, algorithms: activeAlgs, iterMode: AppState.iterMode, sessionId, targetRevision: 0,
             matchTarget: AppState.continuousCompareEnabled ? AppState.continuousCompareTarget : null
         });
     }
@@ -5271,14 +5722,14 @@ const Engine = (() => {
     TaskManager.resetMaster();
     iterativeSessionId++;
     iterativeTargetRevision = 0;
-    EventBus.emit('hash:sessionEnd', { reason });
+    EventBus.emit(InternalContract.EVENTS.HASH_SESSION_END, { reason });
   }
 
   function setIterationTarget(target) {
     if (!worker || !iterativeSessionActive) return null;
     iterativeTargetRevision++;
     const revision = iterativeTargetRevision;
-    worker.postMessage({ action: 'set_target', target, sessionId: iterativeSessionId, targetRevision: revision });
+    worker.postMessage({ action: ACTION.SET_TARGET, target, sessionId: iterativeSessionId, targetRevision: revision });
     return { sessionId: iterativeSessionId, targetRevision: revision };
   }
 
@@ -5290,18 +5741,18 @@ const Engine = (() => {
       resetMasterTask,
       setIterationTarget,
       cancelTask: (algId) => TaskManager.cancelAlg(algId),
-      pauseTask: (algId) => { if (worker && iterativeSessionActive) worker.postMessage({ action: 'pause', algId, sessionId: iterativeSessionId }); },
-      resumeTask: (algId) => { if (worker && iterativeSessionActive) worker.postMessage({ action: 'resume', algId, sessionId: iterativeSessionId }); },
-      pauseAllTasks: () => { if (worker && iterativeSessionActive) worker.postMessage({ action: 'pause_all', sessionId: iterativeSessionId }); },
-      resumeAllTasks: () => { if (worker && iterativeSessionActive) worker.postMessage({ action: 'resume_all', sessionId: iterativeSessionId }); },
+      pauseTask: (algId) => { if (worker && iterativeSessionActive) worker.postMessage({ action: ACTION.PAUSE, algId, sessionId: iterativeSessionId }); },
+      resumeTask: (algId) => { if (worker && iterativeSessionActive) worker.postMessage({ action: ACTION.RESUME, algId, sessionId: iterativeSessionId }); },
+      pauseAllTasks: () => { if (worker && iterativeSessionActive) worker.postMessage({ action: ACTION.PAUSE_ALL, sessionId: iterativeSessionId }); },
+      resumeAllTasks: () => { if (worker && iterativeSessionActive) worker.postMessage({ action: ACTION.RESUME_ALL, sessionId: iterativeSessionId }); },
       setContinuousMatch: target => {
         if (!worker || !iterativeSessionActive || !target) return false;
-        worker.postMessage({ action: 'set_match', sessionId: iterativeSessionId, matchTarget: target });
+        worker.postMessage({ action: ACTION.SET_MATCH, sessionId: iterativeSessionId, matchTarget: target });
         return true;
       },
       clearContinuousMatch: () => {
         if (!worker || !iterativeSessionActive) return false;
-        worker.postMessage({ action: 'clear_match', sessionId: iterativeSessionId });
+        worker.postMessage({ action: ACTION.CLEAR_MATCH, sessionId: iterativeSessionId });
         return true;
       }
   };
@@ -5430,6 +5881,63 @@ const SelfTest = (() => {
     }
   ]);
 
+  const HMAC_BOUNDARY_VECTORS = Object.freeze([
+    { name:'Key Boundary 63', keyHex:'aa'.repeat(63), dataHex:'426f756e6461727920484d4143', expect:{
+      'MD5':'645c28796fc6f027935c97c3b902725a',
+      'SHA-1':'55bcb4e9561498ae7fd0c444023fdc705de24524',
+      'SHA-224':'ce0dbb7685bc77eb1ca5597f5c677a78ffa53996f822a3fa53ec9252',
+      'SHA-256':'2cf0ca65c5ef044f56f496f8f6b0b259c909f945b6c05283f47fd99d2beb2ad0',
+      'SHA-384':'b8fd705426ccce1a22000bccc14ea2659a27fbb77722a243c2f4187e861ed87b2ea8358ce396f67f7ef129ab150c5770',
+      'SHA-512':'1bbf3361d37687e311c8c441d2e99e2cbf6a0e581dad3faa525213aa297fcacd86aa5063b83fe5df50cba1426a8667cd627216c8faaf25dc5de4a744dac1048a'
+    }
+    },
+    { name:'Key Boundary 64', keyHex:'aa'.repeat(64), dataHex:'426f756e6461727920484d4143', expect:{
+      'MD5':'2262da8adc4b46b50aa24db1b5e29b7e',
+      'SHA-1':'ba55a7fd297c31404efa8488f6edd92d000bf10b',
+      'SHA-224':'6c5cbf55c6c95b33e1c35d43906f0f12aeb2120efb9a251b67897e02',
+      'SHA-256':'577c68c71196bf3a7e563a34b7ab0ee62413fcd5d3936e2612a836319570d299',
+      'SHA-384':'bbd406dd718d88e0d64b34af5e82fbd0a5b2e961a286b0449986bc0ca505e903fe4a2ceca47a1394a4ef7c9d8c2c2acf',
+      'SHA-512':'eb56fa3f2f840d90e78767321ca08b06b91995442fb60beeb48a2e883434f7efd8d2fecfc5b49a21e3cf0c424ca3eae28a85d389b471ab286ab7335d0f16f917'
+    }
+    },
+    { name:'Key Boundary 65', keyHex:'aa'.repeat(65), dataHex:'426f756e6461727920484d4143', expect:{
+      'MD5':'f81ed5a4656b4ccf1b323a1af93f395b',
+      'SHA-1':'c292fcb71a6d3d75037f87d6761122dd9913ae72',
+      'SHA-224':'0fd2f9c68a2eca2ba917084b2b18dda7e631cf0cbc2aacba1ccea0d0',
+      'SHA-256':'7f2bd5b33be787cbf50d91013dc80b361b2be9d42a0034dac807e6b9dda9a484',
+      'SHA-384':'830046dd352604c240bab8e11e015553e8e3815ad56a0574d952eda455bcb826e6539c22dccaa779f9812f3210230bf0',
+      'SHA-512':'830227ea29eb0c1c81c3897a9f116229b6f6f1bc1696a18ed60297f0df9f9bf86e26723112e7fd336171bd7efa5df14cf4ba9a8b54911de927f158bdc9349f58'
+    }
+    },
+    { name:'Key Boundary 127', keyHex:'aa'.repeat(127), dataHex:'426f756e6461727920484d4143', expect:{
+      'MD5':'b7fc600417da0766c111ec37468f3041',
+      'SHA-1':'49f9220085be09e7486bc9c1e2e9c5de02a4f58c',
+      'SHA-224':'7221f72259fbfe32ae33363917eabe98de989ab9582abf9c4e030926',
+      'SHA-256':'1a3dfa699f2b3070cff8c373f0f7107a372b329bb0f7bfc58207beccda273769',
+      'SHA-384':'3886b34a69816cdfc39754633cc7d105a64626868df77e3ea61506b08b61deb8e2d05254a679f9c17f49206c8091cfbf',
+      'SHA-512':'242334a833691c258e8429bf49c7bff9fa20857ad621114ed0c5bc2e60a7795edd0cee87d0753d145442225993a26bccbba1ebe01aa75ac778b248695dc05b2c'
+    }
+    },
+    { name:'Key Boundary 128', keyHex:'aa'.repeat(128), dataHex:'426f756e6461727920484d4143', expect:{
+      'MD5':'5ad8fc2211ff734a7e57e78234e4143d',
+      'SHA-1':'43757b8ea1860ea626aff81c8b05978f1f9c50a6',
+      'SHA-224':'5bb289c90dbd6f8a3f04405cb803b4e62a252d7c01604e128a4e0428',
+      'SHA-256':'9a7fbe4985cabc0d188b31229aa32b1f0260c6a99b3657b3e6d395326eb1416c',
+      'SHA-384':'d09cf772484cdb2286a9b3ef584681e1ca8c024750b60b17005bb43e0944a545baeb7e2451cf6ad4b6354dc19d85fd4c',
+      'SHA-512':'dcaa0635fb0ede2db1ede36578e9100d936d50f85a801df55b46674c8083cd094b679fa99f07db815e6453d9b94564c4dd3b9f9d64f56d870399aba87449cf70'
+    }
+    },
+    { name:'Key Boundary 129', keyHex:'aa'.repeat(129), dataHex:'426f756e6461727920484d4143', expect:{
+      'MD5':'cbe24f039bd86ede3ccf652956049d9a',
+      'SHA-1':'9df3d05e786081966c026107a9a878a28cfadd0c',
+      'SHA-224':'8babeb26c66041bc4ab4e044daf0de40ac32eb81c9d7ed40246cd06b',
+      'SHA-256':'f1123851915194a180c3ccfb377fbffaa4416b235a7a07532d6298d1f103410f',
+      'SHA-384':'7214f3b50516c5bdfb1b74e68e3b2ccfc0d4b5c57bf932ca86028dcc3301a9df42ccb7c5830c493d0d743b1559ab1992',
+      'SHA-512':'d497553c53f77e372981fda4f9d378a78c83928f91e20d65e823b0d94c0d98008e5a82f0ce0f3e700b06ed6f90af25b3be4bf97bcf175df22e957be08d25483b'
+    }
+    }
+  ]);
+
   const EMPTY_HMAC_VECTOR = Object.freeze({
     dataHex:'616263',
     expect:{
@@ -5464,17 +5972,17 @@ const SelfTest = (() => {
     { name:'Bad Continuation', bytes:[0xE2,0x28,0xA1] },
     { name:'Surrogate Range', bytes:[0xED,0xA0,0x80] },
     { name:'Above U+10FFFF', bytes:[0xF4,0x90,0x80,0x80] },
+    { name:'Truncated 2-byte', bytes:[0xC2] },
+    { name:'Truncated 3-byte', bytes:[0xE2,0x82] },
     { name:'Truncated 4-byte', bytes:[0xF0,0x9F,0x92] },
+    { name:'Overlong 3-byte', bytes:[0xE0,0x80,0x80] },
+    { name:'Overlong 4-byte', bytes:[0xF0,0x80,0x80,0x80] },
+    { name:'Invalid Lead F5', bytes:[0xF5,0x80,0x80,0x80] },
+    { name:'Invalid Lead FF', bytes:[0xFF] },
     { name:'Lone Continuation', bytes:[0x80] }
   ]);
 
-  const CRC64_VARIANTS = Object.freeze([
-    'XZ (ECMA, Reflected)',
-    'WE (ECMA, Non-Reflected)',
-    'ISO (HDLC, Non-Reflected)',
-    'GO-ISO (ISO, Reflected)',
-    'Redis (Jones, Reflected)'
-  ]);
+  const CRC64_VARIANTS = InternalContract.CRC64_VARIANTS;
 
   function makeBytes(length) {
     const bytes = new Uint8Array(length);
@@ -5488,9 +5996,26 @@ const SelfTest = (() => {
     return hex;
   }
 
-  function add(report, group, name, actual, expected) {
+  let resultObserver = null;
+  const expectedCountCache = new Map();
+
+  async function expectedCount() {
+    const capabilityKey = `${Engine.hasWorker ? 1 : 0}:${window.crypto?.subtle ? 1 : 0}`;
+    if (expectedCountCache.has(capabilityKey)) return expectedCountCache.get(capabilityKey);
+    const report = await runAll(null);
+    const count = report.length;
+    expectedCountCache.set(capabilityKey, count);
+    return count;
+  }
+
+  async function pushResult(report, item) {
+    report.push(item);
+    if (typeof resultObserver === 'function') await resultObserver(item, report.length);
+  }
+
+  async function add(report, group, name, actual, expected) {
     const ok = String(actual) === String(expected);
-    report.push({
+    await pushResult(report, {
       group,
       name,
       ok,
@@ -5499,7 +6024,7 @@ const SelfTest = (() => {
     });
   }
 
-  function addBytes(report, group, name, actual, expected) {
+  async function addBytes(report, group, name, actual, expected) {
     const a = actual instanceof Uint8Array ? actual : new Uint8Array(actual || 0);
     const b = expected instanceof Uint8Array ? expected : new Uint8Array(expected || 0);
     let ok = a.length === b.length;
@@ -5508,7 +6033,7 @@ const SelfTest = (() => {
         if (a[i] !== b[i]) { ok = false; break; }
       }
     }
-    report.push({
+    await pushResult(report, {
       group,
       name,
       ok,
@@ -5517,12 +6042,12 @@ const SelfTest = (() => {
     });
   }
 
-  function addFailure(report, group, name, error) {
-    report.push({ group, name, ok:false, skip:false, detail:String(error?.message || error || 'Error') });
+  async function addFailure(report, group, name, error) {
+    await pushResult(report, { group, name, ok:false, skip:false, detail:String(error?.message || error || 'Error') });
   }
 
-  function addSkip(report, group, name, detail) {
-    report.push({ group, name, ok:false, skip:true, detail:String(detail || '未対応') });
+  async function addSkip(report, group, name, detail) {
+    await pushResult(report, { group, name, ok:false, skip:true, detail:String(detail || '未対応') });
   }
 
   async function step(control, group, name) {
@@ -5536,36 +6061,36 @@ const SelfTest = (() => {
       const bytes = makeBytes(vector.length);
       const name = `${vector.length} Bytes`;
 
-      add(report, 'HASH', `Core CRC32 / ${name}`, Core.crc32Hex(bytes), vector.expect['CRC32']);
-      add(report, 'HASH', `Core MD5 / ${name}`, Core.md5Hex(bytes), vector.expect['MD5']);
-      add(report, 'HASH', `Core SHA-224 / ${name}`, Core.sha224Hex(bytes), vector.expect['SHA-224']);
+      await add(report, 'HASH', `Core CRC32 / ${name}`, Core.crc32Hex(bytes), vector.expect['CRC32']);
+      await add(report, 'HASH', `Core MD5 / ${name}`, Core.md5Hex(bytes), vector.expect['MD5']);
+      await add(report, 'HASH', `Core SHA-224 / ${name}`, Core.sha224Hex(bytes), vector.expect['SHA-224']);
 
       const workerResult = await Engine.runWorkerSelfTest('hash', { bytes, crc64Variant:CRC64_VARIANTS[0] });
       if (!workerResult) {
-        addSkip(report, 'HASH', `Worker / ${name}`, 'Worker未対応');
+        await addSkip(report, 'HASH', `Worker / ${name}`, 'Worker未対応');
       } else if (workerResult.status !== 'ok' || !workerResult.results) {
-        addFailure(report, 'HASH', `Worker / ${name}`, workerResult.error || 'Worker Error');
+        await addFailure(report, 'HASH', `Worker / ${name}`, workerResult.error || 'Worker Error');
       } else {
-        add(report, 'HASH', `Worker CRC32 / ${name}`, workerResult.results.crc, vector.expect['CRC32']);
-        add(report, 'HASH', `Worker MD5 / ${name}`, workerResult.results.md5, vector.expect['MD5']);
-        add(report, 'HASH', `Worker SHA-1 / ${name}`, workerResult.results.sha1, vector.expect['SHA-1']);
-        add(report, 'HASH', `Worker SHA-224 / ${name}`, workerResult.results.sha224, vector.expect['SHA-224']);
-        add(report, 'HASH', `Worker SHA-256 / ${name}`, workerResult.results.sha256, vector.expect['SHA-256']);
-        add(report, 'HASH', `Worker SHA-384 / ${name}`, workerResult.results.sha384, vector.expect['SHA-384']);
-        add(report, 'HASH', `Worker SHA-512 / ${name}`, workerResult.results.sha512, vector.expect['SHA-512']);
+        await add(report, 'HASH', `Worker CRC32 / ${name}`, workerResult.results.crc, vector.expect['CRC32']);
+        await add(report, 'HASH', `Worker MD5 / ${name}`, workerResult.results.md5, vector.expect['MD5']);
+        await add(report, 'HASH', `Worker SHA-1 / ${name}`, workerResult.results.sha1, vector.expect['SHA-1']);
+        await add(report, 'HASH', `Worker SHA-224 / ${name}`, workerResult.results.sha224, vector.expect['SHA-224']);
+        await add(report, 'HASH', `Worker SHA-256 / ${name}`, workerResult.results.sha256, vector.expect['SHA-256']);
+        await add(report, 'HASH', `Worker SHA-384 / ${name}`, workerResult.results.sha384, vector.expect['SHA-384']);
+        await add(report, 'HASH', `Worker SHA-512 / ${name}`, workerResult.results.sha512, vector.expect['SHA-512']);
       }
 
       if (window.crypto?.subtle) {
         try {
-          add(report, 'HASH', `WebCrypto SHA-1 / ${name}`, await Core.digestHex('SHA-1', bytes), vector.expect['SHA-1']);
-          add(report, 'HASH', `WebCrypto SHA-256 / ${name}`, await Core.digestHex('SHA-256', bytes), vector.expect['SHA-256']);
-          add(report, 'HASH', `WebCrypto SHA-384 / ${name}`, await Core.digestHex('SHA-384', bytes), vector.expect['SHA-384']);
-          add(report, 'HASH', `WebCrypto SHA-512 / ${name}`, await Core.digestHex('SHA-512', bytes), vector.expect['SHA-512']);
+          await add(report, 'HASH', `WebCrypto SHA-1 / ${name}`, await Core.digestHex('SHA-1', bytes), vector.expect['SHA-1']);
+          await add(report, 'HASH', `WebCrypto SHA-256 / ${name}`, await Core.digestHex('SHA-256', bytes), vector.expect['SHA-256']);
+          await add(report, 'HASH', `WebCrypto SHA-384 / ${name}`, await Core.digestHex('SHA-384', bytes), vector.expect['SHA-384']);
+          await add(report, 'HASH', `WebCrypto SHA-512 / ${name}`, await Core.digestHex('SHA-512', bytes), vector.expect['SHA-512']);
         } catch (e) {
-          addFailure(report, 'HASH', `WebCrypto / ${name}`, e);
+          await addFailure(report, 'HASH', `WebCrypto / ${name}`, e);
         }
       } else {
-        addSkip(report, 'HASH', `WebCrypto / ${name}`, 'Web Crypto API未対応');
+        await addSkip(report, 'HASH', `WebCrypto / ${name}`, 'Web Crypto API未対応');
       }
     }
 
@@ -5576,10 +6101,10 @@ const SelfTest = (() => {
       bytes.fill(0x61);
       const workerResult = await Engine.runWorkerSelfTest('hash', { bytes, crc64Variant:CRC64_VARIANTS[0] });
       if (!workerResult || workerResult.status !== 'ok' || !workerResult.results) {
-        addFailure(report, 'SHA-512 FAMILY', `Worker / ${vector.length} Bytes`, workerResult?.error || 'Worker Error');
+        await addFailure(report, 'SHA-512 FAMILY', `Worker / ${vector.length} Bytes`, workerResult?.error || 'Worker Error');
       } else {
-        add(report, 'SHA-512 FAMILY', `Worker SHA-384 / ${vector.length} Bytes`, workerResult.results.sha384, vector.sha384);
-        add(report, 'SHA-512 FAMILY', `Worker SHA-512 / ${vector.length} Bytes`, workerResult.results.sha512, vector.sha512);
+        await add(report, 'SHA-512 FAMILY', `Worker SHA-384 / ${vector.length} Bytes`, workerResult.results.sha384, vector.sha384);
+        await add(report, 'SHA-512 FAMILY', `Worker SHA-512 / ${vector.length} Bytes`, workerResult.results.sha512, vector.sha512);
       }
     }
 
@@ -5589,12 +6114,12 @@ const SelfTest = (() => {
       crc64Variant:CRC64_VARIANTS[0]
     });
     if (!crcResult) {
-      addSkip(report, 'CRC64', 'All Variants', 'Worker未対応');
+      await addSkip(report, 'CRC64', 'All Variants', 'Worker未対応');
     } else if (crcResult.status !== 'ok' || !crcResult.results?.crc64All) {
-      addFailure(report, 'CRC64', 'All Variants', crcResult.error || 'Worker Error');
+      await addFailure(report, 'CRC64', 'All Variants', crcResult.error || 'Worker Error');
     } else {
       for (const variant of CRC64_VARIANTS) {
-        add(report, 'CRC64', variant, crcResult.results.crc64All[variant], CRC64_CHECK[variant]);
+        await add(report, 'CRC64', variant, crcResult.results.crc64All[variant], CRC64_CHECK[variant]);
       }
     }
   }
@@ -5607,32 +6132,32 @@ const SelfTest = (() => {
       const workerResult = await Engine.runWorkerSelfTest('hmac', { key, bytes:data, crc64Variant:CRC64_VARIANTS[0] });
 
       if (!workerResult) {
-        addSkip(report, 'HMAC', `Worker / ${vector.name}`, 'Worker未対応');
+        await addSkip(report, 'HMAC', `Worker / ${vector.name}`, 'Worker未対応');
       } else if (workerResult.status !== 'ok' || !workerResult.results) {
-        addFailure(report, 'HMAC', `Worker / ${vector.name}`, workerResult.error || 'Worker Error');
+        await addFailure(report, 'HMAC', `Worker / ${vector.name}`, workerResult.error || 'Worker Error');
       } else {
-        if (vector.expect['MD5']) add(report, 'HMAC', `Worker MD5 / ${vector.name}`, workerResult.results.md5, vector.expect['MD5']);
-        if (vector.expect['SHA-1']) add(report, 'HMAC', `Worker SHA-1 / ${vector.name}`, workerResult.results.sha1, vector.expect['SHA-1']);
-        if (vector.expect['SHA-224']) add(report, 'HMAC', `Worker SHA-224 / ${vector.name}`, workerResult.results.sha224, vector.expect['SHA-224']);
-        if (vector.expect['SHA-256']) add(report, 'HMAC', `Worker SHA-256 / ${vector.name}`, workerResult.results.sha256, vector.expect['SHA-256']);
-        if (vector.expect['SHA-384']) add(report, 'HMAC', `Worker SHA-384 / ${vector.name}`, workerResult.results.sha384, vector.expect['SHA-384']);
-        if (vector.expect['SHA-512']) add(report, 'HMAC', `Worker SHA-512 / ${vector.name}`, workerResult.results.sha512, vector.expect['SHA-512']);
+        if (vector.expect['MD5']) await add(report, 'HMAC', `Worker MD5 / ${vector.name}`, workerResult.results.md5, vector.expect['MD5']);
+        if (vector.expect['SHA-1']) await add(report, 'HMAC', `Worker SHA-1 / ${vector.name}`, workerResult.results.sha1, vector.expect['SHA-1']);
+        if (vector.expect['SHA-224']) await add(report, 'HMAC', `Worker SHA-224 / ${vector.name}`, workerResult.results.sha224, vector.expect['SHA-224']);
+        if (vector.expect['SHA-256']) await add(report, 'HMAC', `Worker SHA-256 / ${vector.name}`, workerResult.results.sha256, vector.expect['SHA-256']);
+        if (vector.expect['SHA-384']) await add(report, 'HMAC', `Worker SHA-384 / ${vector.name}`, workerResult.results.sha384, vector.expect['SHA-384']);
+        if (vector.expect['SHA-512']) await add(report, 'HMAC', `Worker SHA-512 / ${vector.name}`, workerResult.results.sha512, vector.expect['SHA-512']);
       }
 
-      if (vector.expect['MD5']) add(report, 'HMAC', `Core MD5 / ${vector.name}`, Core.hmacMd5Hex(key, data), vector.expect['MD5']);
-      if (vector.expect['SHA-224']) add(report, 'HMAC', `Core SHA-224 / ${vector.name}`, Core.hmacSha224Hex(key, data), vector.expect['SHA-224']);
+      if (vector.expect['MD5']) await add(report, 'HMAC', `Core MD5 / ${vector.name}`, Core.hmacMd5Hex(key, data), vector.expect['MD5']);
+      if (vector.expect['SHA-224']) await add(report, 'HMAC', `Core SHA-224 / ${vector.name}`, Core.hmacSha224Hex(key, data), vector.expect['SHA-224']);
 
       if (window.crypto?.subtle) {
         for (const alg of ['SHA-1','SHA-256','SHA-384','SHA-512']) {
           if (!vector.expect[alg]) continue;
           try {
-            add(report, 'HMAC', `WebCrypto ${alg} / ${vector.name}`, await Core.hmacHex(alg, key, data), vector.expect[alg]);
+            await add(report, 'HMAC', `WebCrypto ${alg} / ${vector.name}`, await Core.hmacHex(alg, key, data), vector.expect[alg]);
           } catch (e) {
-            addFailure(report, 'HMAC', `WebCrypto ${alg} / ${vector.name}`, e);
+            await addFailure(report, 'HMAC', `WebCrypto ${alg} / ${vector.name}`, e);
           }
         }
       } else {
-        addSkip(report, 'HMAC', `WebCrypto / ${vector.name}`, 'Web Crypto API未対応');
+        await addSkip(report, 'HMAC', `WebCrypto / ${vector.name}`, 'Web Crypto API未対応');
       }
     }
 
@@ -5641,32 +6166,79 @@ const SelfTest = (() => {
     const emptyData = Core.hexToBytes(EMPTY_HMAC_VECTOR.dataHex);
     const emptyResult = await Engine.runWorkerSelfTest('hmac', { key:emptyKey, bytes:emptyData, crc64Variant:CRC64_VARIANTS[0] });
     if (!emptyResult) {
-      addSkip(report, 'HMAC', 'Worker / Empty Key', 'Worker未対応');
+      await addSkip(report, 'HMAC', 'Worker / Empty Key', 'Worker未対応');
     } else if (emptyResult.status !== 'ok' || !emptyResult.results) {
-      addFailure(report, 'HMAC', 'Worker / Empty Key', emptyResult.error || 'Worker Error');
+      await addFailure(report, 'HMAC', 'Worker / Empty Key', emptyResult.error || 'Worker Error');
     } else {
-      add(report, 'HMAC', 'Worker MD5 / Empty Key', emptyResult.results.md5, EMPTY_HMAC_VECTOR.expect['MD5']);
-      add(report, 'HMAC', 'Worker SHA-1 / Empty Key', emptyResult.results.sha1, EMPTY_HMAC_VECTOR.expect['SHA-1']);
-      add(report, 'HMAC', 'Worker SHA-224 / Empty Key', emptyResult.results.sha224, EMPTY_HMAC_VECTOR.expect['SHA-224']);
-      add(report, 'HMAC', 'Worker SHA-256 / Empty Key', emptyResult.results.sha256, EMPTY_HMAC_VECTOR.expect['SHA-256']);
-      add(report, 'HMAC', 'Worker SHA-384 / Empty Key', emptyResult.results.sha384, EMPTY_HMAC_VECTOR.expect['SHA-384']);
-      add(report, 'HMAC', 'Worker SHA-512 / Empty Key', emptyResult.results.sha512, EMPTY_HMAC_VECTOR.expect['SHA-512']);
+      await add(report, 'HMAC', 'Worker MD5 / Empty Key', emptyResult.results.md5, EMPTY_HMAC_VECTOR.expect['MD5']);
+      await add(report, 'HMAC', 'Worker SHA-1 / Empty Key', emptyResult.results.sha1, EMPTY_HMAC_VECTOR.expect['SHA-1']);
+      await add(report, 'HMAC', 'Worker SHA-224 / Empty Key', emptyResult.results.sha224, EMPTY_HMAC_VECTOR.expect['SHA-224']);
+      await add(report, 'HMAC', 'Worker SHA-256 / Empty Key', emptyResult.results.sha256, EMPTY_HMAC_VECTOR.expect['SHA-256']);
+      await add(report, 'HMAC', 'Worker SHA-384 / Empty Key', emptyResult.results.sha384, EMPTY_HMAC_VECTOR.expect['SHA-384']);
+      await add(report, 'HMAC', 'Worker SHA-512 / Empty Key', emptyResult.results.sha512, EMPTY_HMAC_VECTOR.expect['SHA-512']);
     }
-    add(report, 'HMAC', 'Core MD5 / Empty Key', Core.hmacMd5Hex(emptyKey, emptyData), EMPTY_HMAC_VECTOR.expect['MD5']);
-    add(report, 'HMAC', 'Core SHA-224 / Empty Key', Core.hmacSha224Hex(emptyKey, emptyData), EMPTY_HMAC_VECTOR.expect['SHA-224']);
+    await add(report, 'HMAC', 'Core MD5 / Empty Key', Core.hmacMd5Hex(emptyKey, emptyData), EMPTY_HMAC_VECTOR.expect['MD5']);
+    await add(report, 'HMAC', 'Core SHA-224 / Empty Key', Core.hmacSha224Hex(emptyKey, emptyData), EMPTY_HMAC_VECTOR.expect['SHA-224']);
+
+    for (const vector of HMAC_BOUNDARY_VECTORS) {
+      await step(control, 'HMAC BOUNDARY', vector.name);
+      const key = Core.hexToBytes(vector.keyHex);
+      const data = Core.hexToBytes(vector.dataHex);
+      const workerResult = await Engine.runWorkerSelfTest('hmac', { key, bytes:data, crc64Variant:CRC64_VARIANTS[0] });
+      if (!workerResult || workerResult.status !== 'ok' || !workerResult.results) {
+        await addFailure(report, 'HMAC BOUNDARY', `Worker / ${vector.name}`, workerResult?.error || 'Worker Error');
+      } else {
+        const resultKeys = { 'MD5':'md5', 'SHA-1':'sha1', 'SHA-224':'sha224', 'SHA-256':'sha256', 'SHA-384':'sha384', 'SHA-512':'sha512' };
+        for (const [alg, resultKey] of Object.entries(resultKeys)) {
+          await add(report, 'HMAC BOUNDARY', `Worker ${alg} / ${vector.name}`, workerResult.results[resultKey], vector.expect[alg]);
+        }
+      }
+      await add(report, 'HMAC BOUNDARY', `Core MD5 / ${vector.name}`, Core.hmacMd5Hex(key, data), vector.expect['MD5']);
+      await add(report, 'HMAC BOUNDARY', `Core SHA-224 / ${vector.name}`, Core.hmacSha224Hex(key, data), vector.expect['SHA-224']);
+      if (window.crypto?.subtle) {
+        for (const alg of ['SHA-1','SHA-256','SHA-384','SHA-512']) {
+          try {
+            await add(report, 'HMAC BOUNDARY', `WebCrypto ${alg} / ${vector.name}`, await Core.hmacHex(alg, key, data), vector.expect[alg]);
+          } catch (e) {
+            await addFailure(report, 'HMAC BOUNDARY', `WebCrypto ${alg} / ${vector.name}`, e);
+          }
+        }
+      }
+    }
+
+    await step(control, 'HMAC', 'Empty Data');
+    const emptyDataKey = Core.utf8Encode('Jefe');
+    const zeroData = new Uint8Array(0);
+    const emptyDataResult = await Engine.runWorkerSelfTest('hmac', { key:emptyDataKey, bytes:zeroData, crc64Variant:CRC64_VARIANTS[0] });
+    if (!emptyDataResult || emptyDataResult.status !== 'ok' || !emptyDataResult.results) {
+      await addFailure(report, 'HMAC', 'Worker / Empty Data', emptyDataResult?.error || 'Worker Error');
+    } else {
+      await add(report, 'HMAC', 'Worker SHA-256 / Empty Data', emptyDataResult.results.sha256, '923598ca6d64af2a5dba79dcd021a8a0fe5c5f557519adaaf0ad532d4506dd30');
+      await add(report, 'HMAC', 'Worker SHA-512 / Empty Data', emptyDataResult.results.sha512, 'b9d14c51a6d4dd41604eb06c9c240f1f64f143b5cfdea37129b28bb75d1371d326fc219216171261a84e6c05707cd3be0f61e0a973a33f706d190db9acffc68f');
+    }
   }
 
   async function runHexTests(report, control) {
     await step(control, 'HEX', 'Decode / Validity');
-    addBytes(report, 'HEX', 'Decode Empty', Core.hexToBytes(''), new Uint8Array(0));
-    addBytes(report, 'HEX', 'Decode Lowercase', Core.hexToBytes('00abcdef'), new Uint8Array([0x00,0xab,0xcd,0xef]));
-    addBytes(report, 'HEX', 'Decode Uppercase', Core.hexToBytes('00ABCDEF'), new Uint8Array([0x00,0xab,0xcd,0xef]));
-    addBytes(report, 'HEX', 'Decode Mixed Case', Core.hexToBytes('aBcDeF'), new Uint8Array([0xab,0xcd,0xef]));
+    await addBytes(report, 'HEX', 'Decode Empty', Core.hexToBytes(''), new Uint8Array(0));
+    await addBytes(report, 'HEX', 'Decode Lowercase', Core.hexToBytes('00abcdef'), new Uint8Array([0x00,0xab,0xcd,0xef]));
+    await addBytes(report, 'HEX', 'Decode Uppercase', Core.hexToBytes('00ABCDEF'), new Uint8Array([0x00,0xab,0xcd,0xef]));
+    await addBytes(report, 'HEX', 'Decode Mixed Case', Core.hexToBytes('aBcDeF'), new Uint8Array([0xab,0xcd,0xef]));
 
     for (const value of ['0','abc','0g','zz','ＦＦ']) {
       let rejected = false;
       try { Core.hexToBytes(value); } catch (e) { rejected = true; }
-      add(report, 'HEX', `Reject ${value}`, rejected, true);
+      await add(report, 'HEX', `Reject ${value}`, rejected, true);
+    }
+
+    await step(control, 'HEX', 'All Byte Values');
+    const allBytes = new Uint8Array(256);
+    for (let i = 0; i < allBytes.length; i++) allBytes[i] = i;
+    await addBytes(report, 'HEX', 'All Byte Values Roundtrip', Core.hexToBytes(bytesToHex(allBytes)), allBytes);
+    for (const value of [null, undefined, 255, {}, new Uint8Array([0xff])]) {
+      let rejected = false;
+      try { Core.hexToBytes(value); } catch (e) { rejected = true; }
+      await add(report, 'HEX', `Reject Non-string ${Object.prototype.toString.call(value)}`, rejected, true);
     }
   }
 
@@ -5676,60 +6248,60 @@ const SelfTest = (() => {
       await step(control, 'UTF-8', `Case ${i + 1}`);
       const value = UTF8_CASES[i];
       const expected = encoder.encode(value);
-      addBytes(report, 'UTF-8', `Core / Case ${i + 1}`, Core.utf8Encode(value), expected);
+      await addBytes(report, 'UTF-8', `Core / Case ${i + 1}`, Core.utf8Encode(value), expected);
 
       const workerResult = await Engine.runWorkerSelfTest('utf8', { text:value });
       if (!workerResult) {
-        addSkip(report, 'UTF-8', `Worker / Case ${i + 1}`, 'Worker未対応');
+        await addSkip(report, 'UTF-8', `Worker / Case ${i + 1}`, 'Worker未対応');
       } else if (workerResult.status !== 'ok') {
-        addFailure(report, 'UTF-8', `Worker / Case ${i + 1}`, workerResult.error || 'Worker Error');
+        await addFailure(report, 'UTF-8', `Worker / Case ${i + 1}`, workerResult.error || 'Worker Error');
       } else {
-        addBytes(report, 'UTF-8', `Worker / Case ${i + 1}`, workerResult.bytes, expected);
+        await addBytes(report, 'UTF-8', `Worker / Case ${i + 1}`, workerResult.bytes, expected);
       }
     }
 
     await step(control, 'UTF-8', 'Decode Validity');
-    add(report, 'UTF-8', 'Decode Supplementary', Core.utf8Decode(encoder.encode('𠮷')), '𠮷');
+    await add(report, 'UTF-8', 'Decode Supplementary', Core.utf8Decode(encoder.encode('𠮷')), '𠮷');
     for (const item of INVALID_UTF8_CASES) {
       let rejected = false;
       try { Core.utf8Decode(new Uint8Array(item.bytes)); } catch (e) { rejected = true; }
-      add(report, 'UTF-8', `Reject ${item.name}`, rejected, true);
+      await add(report, 'UTF-8', `Reject ${item.name}`, rejected, true);
     }
 
     await step(control, 'UTF-8', 'Normalization');
-    add(report, 'UTF-8', 'Normalize None', Core.normalizeText('か\u3099', 'none'), 'か\u3099');
-    add(report, 'UTF-8', 'Normalize NFC', Core.normalizeText('か\u3099', 'NFC'), 'が');
-    add(report, 'UTF-8', 'Normalize NFKC Kana', Core.normalizeText('ｶﾞ', 'NFKC'), 'ガ');
-    add(report, 'UTF-8', 'Normalize NFKC Fullwidth', Core.normalizeText('ＡＢＣ１２３', 'NFKC'), 'ABC123');
+    await add(report, 'UTF-8', 'Normalize None', Core.normalizeText('か\u3099', 'none'), 'か\u3099');
+    await add(report, 'UTF-8', 'Normalize NFC', Core.normalizeText('か\u3099', 'NFC'), 'が');
+    await add(report, 'UTF-8', 'Normalize NFKC Kana', Core.normalizeText('ｶﾞ', 'NFKC'), 'ガ');
+    await add(report, 'UTF-8', 'Normalize NFKC Fullwidth', Core.normalizeText('ＡＢＣ１２３', 'NFKC'), 'ABC123');
 
     await step(control, 'UTF-8', 'Sanitize');
-    add(report, 'UTF-8', 'Sanitize Invisible', Core.sanitizeText('A\u200BB\u200CC\u200DD\u2060E\uFEFFF'), 'ABCDEF');
-    add(report, 'UTF-8', 'Sanitize EOL', Core.sanitizeText('a\r\nb\rc\n'), 'a\nb\nc\n');
+    await add(report, 'UTF-8', 'Sanitize Invisible', Core.sanitizeText('A\u200BB\u200CC\u200DD\u2060E\uFEFFF'), 'ABCDEF');
+    await add(report, 'UTF-8', 'Sanitize EOL', Core.sanitizeText('a\r\nb\rc\n'), 'a\nb\nc\n');
     const sanitized = Core.sanitizeText('A\u200B\r\nB\uFEFF');
-    add(report, 'UTF-8', 'Sanitize Mixed', sanitized, 'A\nB');
-    add(report, 'UTF-8', 'Sanitize Idempotent', Core.sanitizeText(sanitized), sanitized);
+    await add(report, 'UTF-8', 'Sanitize Mixed', sanitized, 'A\nB');
+    await add(report, 'UTF-8', 'Sanitize Idempotent', Core.sanitizeText(sanitized), sanitized);
   }
 
   async function decodeBase64Case(report, name, value, strict, expectedHex = null) {
     const result = await Base64Engine.decodeBytes(value, strict);
     if (expectedHex === null) {
-      add(report, 'BASE64', name, result?.type === 'error', true);
+      await add(report, 'BASE64', name, result?.type === 'error', true);
       return;
     }
     if (!result || result.type !== 'binary' || !result.bytes) {
-      addFailure(report, 'BASE64', name, result?.message || 'Decode Error');
+      await addFailure(report, 'BASE64', name, result?.message || 'Decode Error');
       return;
     }
-    add(report, 'BASE64', name, bytesToHex(result.bytes), expectedHex);
+    await add(report, 'BASE64', name, bytesToHex(result.bytes), expectedHex);
   }
 
   async function runBase64Tests(report, control) {
     await step(control, 'BASE64', 'Encode / Validity');
-    add(report, 'BASE64', 'Encode Empty', BaseCodec.encodeBase64(new Uint8Array(0)), '');
-    add(report, 'BASE64', 'Encode M', BaseCodec.encodeBase64(Core.utf8Encode('M')), 'TQ==');
-    add(report, 'BASE64', 'Encode Ma', BaseCodec.encodeBase64(Core.utf8Encode('Ma')), 'TWE=');
-    add(report, 'BASE64', 'Encode Man', BaseCodec.encodeBase64(Core.utf8Encode('Man')), 'TWFu');
-    add(report, 'BASE64', 'Encode URL Bytes', BaseCodec.encodeBase64(new Uint8Array([0xfb, 0xff])), '+/8=');
+    await add(report, 'BASE64', 'Encode Empty', BaseCodec.encodeBase64(new Uint8Array(0)), '');
+    await add(report, 'BASE64', 'Encode M', BaseCodec.encodeBase64(Core.utf8Encode('M')), 'TQ==');
+    await add(report, 'BASE64', 'Encode Ma', BaseCodec.encodeBase64(Core.utf8Encode('Ma')), 'TWE=');
+    await add(report, 'BASE64', 'Encode Man', BaseCodec.encodeBase64(Core.utf8Encode('Man')), 'TWFu');
+    await add(report, 'BASE64', 'Encode URL Bytes', BaseCodec.encodeBase64(new Uint8Array([0xfb, 0xff])), '+/8=');
 
     await decodeBase64Case(report, 'Strict TQ==', 'TQ==', true, '4d');
     await decodeBase64Case(report, 'Strict TWE=', 'TWE=', true, '4d61');
@@ -5750,31 +6322,31 @@ const SelfTest = (() => {
     await step(control, 'BASE64', 'Owned Transfer');
     const owned = new Uint8Array([0x4d,0x61,0x6e]);
     const ownedResult = await Base64Engine.encodeStreamOwned(owned);
-    add(report, 'BASE64', 'Owned Buffer Detached', owned.byteLength, 0);
+    await add(report, 'BASE64', 'Owned Buffer Detached', owned.byteLength, 0);
     if (!ownedResult || ownedResult.type !== 'binary' || !ownedResult.bytes) {
-      addFailure(report, 'BASE64', 'Owned Transfer Result', ownedResult?.message || 'Encode Error');
+      await addFailure(report, 'BASE64', 'Owned Transfer Result', ownedResult?.message || 'Encode Error');
     } else {
-      addBytes(report, 'BASE64', 'Owned Transfer Result', ownedResult.bytes, Core.utf8Encode('TWFu'));
+      await addBytes(report, 'BASE64', 'Owned Transfer Result', ownedResult.bytes, Core.utf8Encode('TWFu'));
     }
 
     const backing = new Uint8Array([0xff,0x4d,0x61,0x6e,0xff]);
     const subview = backing.subarray(1, 4);
     const subviewResult = await Base64Engine.encodeStreamOwned(subview);
-    add(report, 'BASE64', 'Subview Buffer Preserved', backing.byteLength, 5);
-    addBytes(report, 'BASE64', 'Subview Source Preserved', backing, new Uint8Array([0xff,0x4d,0x61,0x6e,0xff]));
+    await add(report, 'BASE64', 'Subview Buffer Preserved', backing.byteLength, 5);
+    await addBytes(report, 'BASE64', 'Subview Source Preserved', backing, new Uint8Array([0xff,0x4d,0x61,0x6e,0xff]));
     if (!subviewResult || subviewResult.type !== 'binary' || !subviewResult.bytes) {
-      addFailure(report, 'BASE64', 'Subview Fallback Result', subviewResult?.message || 'Encode Error');
+      await addFailure(report, 'BASE64', 'Subview Fallback Result', subviewResult?.message || 'Encode Error');
     } else {
-      addBytes(report, 'BASE64', 'Subview Fallback Result', subviewResult.bytes, Core.utf8Encode('TWFu'));
+      await addBytes(report, 'BASE64', 'Subview Fallback Result', subviewResult.bytes, Core.utf8Encode('TWFu'));
     }
 
     await step(control, 'BASE64', 'Auto File Detect');
     const validText = await Base64Engine.decode(BaseCodec.encodeBase64(Core.utf8Encode('𠮷')), true, true);
-    add(report, 'BASE64', 'Auto Detect Valid UTF-8', validText?.type, 'text');
+    await add(report, 'BASE64', 'Auto Detect Valid UTF-8', validText?.type, 'text');
     for (const item of INVALID_UTF8_CASES) {
       const encoded = BaseCodec.encodeBase64(new Uint8Array(item.bytes));
       const detected = await Base64Engine.decode(encoded, true, true);
-      add(report, 'BASE64', `Auto Detect ${item.name}`, detected?.type, 'binary');
+      await add(report, 'BASE64', `Auto Detect ${item.name}`, detected?.type, 'binary');
     }
 
     for (const length of [0,1,2,3,4,5,7,31,32,33,63,64,65]) {
@@ -5783,14 +6355,14 @@ const SelfTest = (() => {
       const encoded = BaseCodec.encodeBase64(bytes);
       if (length === 0) {
         const empty = await Base64Engine.decodeBytes(encoded, true);
-        add(report, 'BASE64', 'Roundtrip 0 Bytes', empty?.type, 'empty');
+        await add(report, 'BASE64', 'Roundtrip 0 Bytes', empty?.type, 'empty');
         continue;
       }
       const decoded = await Base64Engine.decodeBytes(encoded, true);
       if (!decoded || decoded.type !== 'binary' || !decoded.bytes) {
-        addFailure(report, 'BASE64', `Roundtrip ${length} Bytes`, decoded?.message || 'Decode Error');
+        await addFailure(report, 'BASE64', `Roundtrip ${length} Bytes`, decoded?.message || 'Decode Error');
       } else {
-        addBytes(report, 'BASE64', `Roundtrip ${length} Bytes`, decoded.bytes, bytes);
+        await addBytes(report, 'BASE64', `Roundtrip ${length} Bytes`, decoded.bytes, bytes);
       }
     }
   }
@@ -5798,14 +6370,14 @@ const SelfTest = (() => {
   async function decodeBase85Case(report, name, value, variant, expectedHex = null) {
     const result = await Base85Engine.decodeBytes(value, variant);
     if (expectedHex === null) {
-      add(report, 'BASE85', name, result?.type === 'error', true);
+      await add(report, 'BASE85', name, result?.type === 'error', true);
       return;
     }
     if (!result || result.type !== 'binary' || !result.bytes) {
-      addFailure(report, 'BASE85', name, result?.message || 'Decode Error');
+      await addFailure(report, 'BASE85', name, result?.message || 'Decode Error');
       return;
     }
-    add(report, 'BASE85', name, bytesToHex(result.bytes), expectedHex);
+    await add(report, 'BASE85', name, bytesToHex(result.bytes), expectedHex);
   }
 
   async function runBase85Tests(report, control) {
@@ -5819,22 +6391,26 @@ const SelfTest = (() => {
     const spaces = new Uint8Array([0x20,0x20,0x20,0x20]);
     const z85 = new Uint8Array([0x86,0x4f,0xd2,0x6f,0xb5,0x59,0xf7,0x5b]);
 
-    add(report, 'BASE85', 'Standard Hello', BaseCodec.encodeBase85(hello, 'Standard ASCII85'), '87cURDZ');
-    add(report, 'BASE85', 'Adobe Hello', BaseCodec.encodeBase85(hello, 'Adobe ASCII85'), '<~87cURDZ~>');
-    add(report, 'BASE85', 'Standard Partial 1 Byte', BaseCodec.encodeBase85(partial1, 'Standard ASCII85'), '!!');
-    add(report, 'BASE85', 'Standard Partial 2 Bytes', BaseCodec.encodeBase85(partial2, 'Standard ASCII85'), '!!*');
-    add(report, 'BASE85', 'Standard Partial 3 Bytes', BaseCodec.encodeBase85(partial3, 'Standard ASCII85'), '!!*-');
-    add(report, 'BASE85', 'Adobe Partial 1 Byte', BaseCodec.encodeBase85(partial1, 'Adobe ASCII85'), '<~!!~>');
-    add(report, 'BASE85', 'Adobe Partial 2 Bytes', BaseCodec.encodeBase85(partial2, 'Adobe ASCII85'), '<~!!*~>');
-    add(report, 'BASE85', 'Adobe Partial 3 Bytes', BaseCodec.encodeBase85(partial3, 'Adobe ASCII85'), '<~!!*-~>');
-    add(report, 'BASE85', 'Standard Block', BaseCodec.encodeBase85(block, 'Standard ASCII85'), "!!*-'" );
-    add(report, 'BASE85', 'Adobe Block', BaseCodec.encodeBase85(block, 'Adobe ASCII85'), "<~!!*-'~>" );
-    add(report, 'BASE85', 'Standard Zero Shorthand', BaseCodec.encodeBase85(zeros, 'Standard ASCII85'), 'z');
-    add(report, 'BASE85', 'Standard Space Block', BaseCodec.encodeBase85(spaces, 'Standard ASCII85'), '+<VdL');
-    add(report, 'BASE85', 'Adobe Zero Shorthand', BaseCodec.encodeBase85(zeros, 'Adobe ASCII85'), '<~z~>');
-    add(report, 'BASE85', 'Adobe Space Block', BaseCodec.encodeBase85(spaces, 'Adobe ASCII85'), '<~+<VdL~>');
-    add(report, 'BASE85', 'ZeroMQ Vector', BaseCodec.encodeBase85(z85, 'ZeroMQ (Z85)'), 'HelloWorld');
-    add(report, 'BASE85', 'RFC 1924 Alphabet Block', BaseCodec.encodeBase85(block, 'RFC 1924 Alphabet'), '009C6');
+    await add(report, 'BASE85', 'Standard Hello', BaseCodec.encodeBase85(hello, 'Standard ASCII85'), '87cURDZ');
+    await add(report, 'BASE85', 'Adobe Hello', BaseCodec.encodeBase85(hello, 'Adobe ASCII85'), '<~87cURDZ~>');
+    await add(report, 'BASE85', 'Standard Partial 1 Byte', BaseCodec.encodeBase85(partial1, 'Standard ASCII85'), '!!');
+    await add(report, 'BASE85', 'Standard Partial 2 Bytes', BaseCodec.encodeBase85(partial2, 'Standard ASCII85'), '!!*');
+    await add(report, 'BASE85', 'Standard Partial 3 Bytes', BaseCodec.encodeBase85(partial3, 'Standard ASCII85'), '!!*-');
+    await add(report, 'BASE85', 'Adobe Partial 1 Byte', BaseCodec.encodeBase85(partial1, 'Adobe ASCII85'), '<~!!~>');
+    await add(report, 'BASE85', 'Adobe Partial 2 Bytes', BaseCodec.encodeBase85(partial2, 'Adobe ASCII85'), '<~!!*~>');
+    await add(report, 'BASE85', 'Adobe Partial 3 Bytes', BaseCodec.encodeBase85(partial3, 'Adobe ASCII85'), '<~!!*-~>');
+    await add(report, 'BASE85', 'Standard Block', BaseCodec.encodeBase85(block, 'Standard ASCII85'), "!!*-'" );
+    await add(report, 'BASE85', 'Adobe Block', BaseCodec.encodeBase85(block, 'Adobe ASCII85'), "<~!!*-'~>" );
+    await add(report, 'BASE85', 'Standard Zero Shorthand', BaseCodec.encodeBase85(zeros, 'Standard ASCII85'), 'z');
+    await add(report, 'BASE85', 'Standard Space Block', BaseCodec.encodeBase85(spaces, 'Standard ASCII85'), '+<VdL');
+    await add(report, 'BASE85', 'Adobe Zero Shorthand', BaseCodec.encodeBase85(zeros, 'Adobe ASCII85'), '<~z~>');
+    await add(report, 'BASE85', 'Adobe Space Block', BaseCodec.encodeBase85(spaces, 'Adobe ASCII85'), '<~+<VdL~>');
+    await add(report, 'BASE85', 'btoa Hello Envelope', BaseCodec.encodeBase85(hello, 'btoa ASCII85'), 'xbtoa Begin\n87cURDZBb;\nxbtoa End N 5 5 E 42 S 1f9 R a9f');
+    await add(report, 'BASE85', 'btoa Block Envelope', BaseCodec.encodeBase85(block, 'btoa ASCII85'), "xbtoa Begin\n!!*-'\nxbtoa End N 4 4 E 0 S a R b");
+    await add(report, 'BASE85', 'btoa Zero Shorthand Envelope', BaseCodec.encodeBase85(zeros, 'btoa ASCII85'), 'xbtoa Begin\nz\nxbtoa End N 4 4 E 0 S 4 R 0');
+    await add(report, 'BASE85', 'btoa Space Shorthand Envelope', BaseCodec.encodeBase85(spaces, 'btoa ASCII85'), 'xbtoa Begin\ny\nxbtoa End N 4 4 E 0 S 84 R 1e0');
+    await add(report, 'BASE85', 'ZeroMQ Vector', BaseCodec.encodeBase85(z85, 'ZeroMQ (Z85)'), 'HelloWorld');
+    await add(report, 'BASE85', 'RFC 1924 Alphabet (Block)', BaseCodec.encodeBase85(block, 'RFC 1924 Alphabet (Block)'), '009C6');
 
     await decodeBase85Case(report, 'Standard Partial 1 Byte Decode', '!!', 'Standard ASCII85', '00');
     await decodeBase85Case(report, 'Standard Partial 2 Bytes Decode', '!!*', 'Standard ASCII85', '0001');
@@ -5847,14 +6423,43 @@ const SelfTest = (() => {
     await decodeBase85Case(report, 'Adobe Wrapper Decode', '<~87cURDZ~>', 'Adobe ASCII85', '48656c6c6f');
     await decodeBase85Case(report, 'Adobe Bare Decode Compatibility', '87cURDZ', 'Adobe ASCII85', '48656c6c6f');
     await decodeBase85Case(report, 'Adobe Space Decode', '<~+<VdL~>', 'Adobe ASCII85', '20202020');
+    await decodeBase85Case(report, 'btoa Block Decode', "!!*-'", 'btoa ASCII85', '00010203');
+    await decodeBase85Case(report, 'btoa Zero Decode', 'z', 'btoa ASCII85', '00000000');
+    await decodeBase85Case(report, 'btoa Space Decode', 'y', 'btoa ASCII85', '20202020');
+    await decodeBase85Case(report, 'btoa Padded Decode', '87cURDZBb;', 'btoa ASCII85', '48656c6c6f000000');
+    await decodeBase85Case(report, 'btoa Hello Envelope Decode', 'xbtoa Begin\n87cURDZBb;\nxbtoa End N 5 5 E 42 S 1f9 R a9f', 'btoa ASCII85', '48656c6c6f');
+    await decodeBase85Case(report, 'btoa Empty Envelope Decode', 'xbtoa Begin\nxbtoa End N 0 0 E 0 S 0 R 0', 'btoa ASCII85', '');
+    await decodeBase85Case(report, 'btoa Reject Length Mismatch', 'xbtoa Begin\n87cURDZBb;\nxbtoa End N 5 6 E 42 S 1f9 R a9f', 'btoa ASCII85', null);
+    await decodeBase85Case(report, 'btoa Reject Checksum', 'xbtoa Begin\n87cURDZBb;\nxbtoa End N 5 5 E 43 S 1f9 R a9f', 'btoa ASCII85', null);
+    await decodeBase85Case(report, 'btoa Reject Nonzero Padding', 'xbtoa Begin\n87cURDZBb<\nxbtoa End N 5 5 E 42 S 1f9 R a9f', 'btoa ASCII85', null);
+    await decodeBase85Case(report, 'btoa Reject Empty Length', 'xbtoa Begin\nxbtoa End N 1 1 E 0 S 0 R 0', 'btoa ASCII85', null);
+    await decodeBase85Case(report, 'btoa Reject Empty E', 'xbtoa Begin\nxbtoa End N 0 0 E 1 S 0 R 0', 'btoa ASCII85', null);
+    await decodeBase85Case(report, 'btoa Reject Empty S', 'xbtoa Begin\nxbtoa End N 0 0 E 0 S 1 R 0', 'btoa ASCII85', null);
+    await decodeBase85Case(report, 'btoa Reject Empty R', 'xbtoa Begin\nxbtoa End N 0 0 E 0 S 0 R 1', 'btoa ASCII85', null);
+    await decodeBase85Case(report, 'btoa Reject E Overflow', 'xbtoa Begin\n87cURDZBb;\nxbtoa End N 5 5 E 100000042 S 1f9 R a9f', 'btoa ASCII85', null);
+    await decodeBase85Case(report, 'btoa Reject S Overflow', 'xbtoa Begin\n87cURDZBb;\nxbtoa End N 5 5 E 42 S 1000001f9 R a9f', 'btoa ASCII85', null);
+    await decodeBase85Case(report, 'btoa Reject R Overflow', 'xbtoa Begin\n87cURDZBb;\nxbtoa End N 5 5 E 42 S 1f9 R 100000a9f', 'btoa ASCII85', null);
+    const btoaDetectRawY = await Base85Detect.detectVariants('y');
+    await add(report, 'BASE85', 'btoa Raw y Auto-detect', btoaDetectRawY.includes('btoa ASCII85'), true);
+    await add(report, 'BASE85', 'btoa Raw y Unique Auto-detect', btoaDetectRawY.join(','), 'btoa ASCII85');
+    const btoaDetectEnvelope = await Base85Detect.detectVariants('xbtoa Begin\n87cURDZBb;\nxbtoa End N 5 5 E 42 S 1f9 R a9f');
+    await add(report, 'BASE85', 'btoa Envelope Auto-detect', btoaDetectEnvelope.includes('btoa ASCII85'), true);
+    for (const widthCase of [77,78,79,155,156,157]) {
+      const wrapped = BaseCodec.wrapBtoaPayload(new Uint8Array(0), 'A'.repeat(widthCase));
+      const lines = wrapped.split('\n').slice(1, -1);
+      await add(report, 'BASE85', `btoa Wrap ${widthCase} Max Line`, Math.max(0, ...lines.map(line => line.length)) <= 78, true);
+      await add(report, 'BASE85', `btoa Wrap ${widthCase} Joined`, lines.join('').length, widthCase);
+    }
     await decodeBase85Case(report, 'ZeroMQ Vector Decode', 'HelloWorld', 'ZeroMQ (Z85)', '864fd26fb559f75b');
-    await decodeBase85Case(report, 'RFC 1924 Alphabet Decode', '009C6', 'RFC 1924 Alphabet', '00010203');
+    await decodeBase85Case(report, 'RFC 1924 Alphabet (Block) Decode', '009C6', 'RFC 1924 Alphabet (Block)', '00010203');
 
     await decodeBase85Case(report, 'Standard Reject Length 1', '!', 'Standard ASCII85', null);
     await decodeBase85Case(report, 'Standard Reject Overflow', 'uuuuu', 'Standard ASCII85', null);
     await decodeBase85Case(report, 'Standard Reject Mid-group z', '!z!!!', 'Standard ASCII85', null);
     await decodeBase85Case(report, 'Standard Reject y', 'y', 'Standard ASCII85', null);
     await decodeBase85Case(report, 'Adobe Reject y', '<~y~>', 'Adobe ASCII85', null);
+    await decodeBase85Case(report, 'btoa Reject Mid-group y', '!y!!!', 'btoa ASCII85', null);
+    await decodeBase85Case(report, 'btoa Reject Partial Group', '87cURDZ', 'btoa ASCII85', null);
     await decodeBase85Case(report, 'Adobe Reject Unterminated Wrapper', '<~87cURDZ', 'Adobe ASCII85', null);
     await decodeBase85Case(report, 'Adobe Reject Missing Start Wrapper', '87cURDZ~>', 'Adobe ASCII85', null);
     await decodeBase85Case(report, 'Adobe Reject Broken Start Wrapper', '< ~87cURDZ~>', 'Adobe ASCII85', null);
@@ -5862,36 +6467,36 @@ const SelfTest = (() => {
     await decodeBase85Case(report, 'Adobe Reject Trailing Data', '<~87cURDZ~>x', 'Adobe ASCII85', null);
     await decodeBase85Case(report, 'ZeroMQ Reject Length', 'abcd', 'ZeroMQ (Z85)', null);
     await decodeBase85Case(report, 'ZeroMQ Reject Character', '~~~~~', 'ZeroMQ (Z85)', null);
-    await decodeBase85Case(report, 'RFC 1924 Alphabet Reject Length', '0000', 'RFC 1924 Alphabet', null);
+    await decodeBase85Case(report, 'RFC 1924 Alphabet (Block) Reject Length', '0000', 'RFC 1924 Alphabet (Block)', null);
 
     await step(control, 'BASE85', 'Owned Transfer');
     const owned = new Uint8Array([0x00,0x01,0x02,0x03]);
     const ownedResult = await Base85Engine.encodeStreamOwned(owned, 'Standard ASCII85');
-    add(report, 'BASE85', 'Owned Buffer Detached', owned.byteLength, 0);
+    await add(report, 'BASE85', 'Owned Buffer Detached', owned.byteLength, 0);
     if (!ownedResult || ownedResult.type !== 'binary' || !ownedResult.bytes) {
-      addFailure(report, 'BASE85', 'Owned Transfer Result', ownedResult?.message || 'Encode Error');
+      await addFailure(report, 'BASE85', 'Owned Transfer Result', ownedResult?.message || 'Encode Error');
     } else {
-      addBytes(report, 'BASE85', 'Owned Transfer Result', ownedResult.bytes, Core.utf8Encode("!!*-'"));
+      await addBytes(report, 'BASE85', 'Owned Transfer Result', ownedResult.bytes, Core.utf8Encode("!!*-'"));
     }
 
     const backing = new Uint8Array([0xff,0x00,0x01,0x02,0x03,0xff]);
     const subview = backing.subarray(1, 5);
     const subviewResult = await Base85Engine.encodeStreamOwned(subview, 'Standard ASCII85');
-    add(report, 'BASE85', 'Subview Buffer Preserved', backing.byteLength, 6);
-    addBytes(report, 'BASE85', 'Subview Source Preserved', backing, new Uint8Array([0xff,0x00,0x01,0x02,0x03,0xff]));
+    await add(report, 'BASE85', 'Subview Buffer Preserved', backing.byteLength, 6);
+    await addBytes(report, 'BASE85', 'Subview Source Preserved', backing, new Uint8Array([0xff,0x00,0x01,0x02,0x03,0xff]));
     if (!subviewResult || subviewResult.type !== 'binary' || !subviewResult.bytes) {
-      addFailure(report, 'BASE85', 'Subview Fallback Result', subviewResult?.message || 'Encode Error');
+      await addFailure(report, 'BASE85', 'Subview Fallback Result', subviewResult?.message || 'Encode Error');
     } else {
-      addBytes(report, 'BASE85', 'Subview Fallback Result', subviewResult.bytes, Core.utf8Encode("!!*-'"));
+      await addBytes(report, 'BASE85', 'Subview Fallback Result', subviewResult.bytes, Core.utf8Encode("!!*-'"));
     }
 
     await step(control, 'BASE85', 'Auto File Detect');
     const validText = await Base85Engine.decode(BaseCodec.encodeBase85(Core.utf8Encode('𠮷'), 'Standard ASCII85'), 'Standard ASCII85', true);
-    add(report, 'BASE85', 'Auto Detect Valid UTF-8', validText?.type, 'text');
+    await add(report, 'BASE85', 'Auto Detect Valid UTF-8', validText?.type, 'text');
     for (const item of INVALID_UTF8_CASES) {
       const encoded = BaseCodec.encodeBase85(new Uint8Array(item.bytes), 'Standard ASCII85');
       const detected = await Base85Engine.decode(encoded, 'Standard ASCII85', true);
-      add(report, 'BASE85', `Auto Detect ${item.name}`, detected?.type, 'binary');
+      await add(report, 'BASE85', `Auto Detect ${item.name}`, detected?.type, 'binary');
     }
 
     for (const variant of ['Standard ASCII85','Adobe ASCII85']) {
@@ -5901,23 +6506,35 @@ const SelfTest = (() => {
         const encoded = BaseCodec.encodeBase85(bytes, variant);
         const decoded = await Base85Engine.decodeBytes(encoded, variant);
         if (!decoded || decoded.type !== 'binary' || !decoded.bytes) {
-          addFailure(report, 'BASE85', `${variant} Roundtrip ${length} Bytes`, decoded?.message || 'Decode Error');
+          await addFailure(report, 'BASE85', `${variant} Roundtrip ${length} Bytes`, decoded?.message || 'Decode Error');
         } else {
-          addBytes(report, 'BASE85', `${variant} Roundtrip ${length} Bytes`, decoded.bytes, bytes);
+          await addBytes(report, 'BASE85', `${variant} Roundtrip ${length} Bytes`, decoded.bytes, bytes);
         }
       }
     }
 
-    for (const variant of ['ZeroMQ (Z85)','RFC 1924 Alphabet']) {
+    for (const length of [0,1,2,3,4,5,7,8,11,12,31,32,33]) {
+      await step(control, 'BASE85', `btoa ASCII85 / ${length} Bytes`);
+      const bytes = makeBytes(length);
+      const encoded = BaseCodec.encodeBase85(bytes, 'btoa ASCII85');
+      const decoded = await Base85Engine.decodeBytes(encoded, 'btoa ASCII85');
+      if (!decoded || decoded.type !== 'binary' || !decoded.bytes) {
+        await addFailure(report, 'BASE85', `btoa ASCII85 Roundtrip ${length} Bytes`, decoded?.message || 'Decode Error');
+      } else {
+        await addBytes(report, 'BASE85', `btoa ASCII85 Roundtrip ${length} Bytes`, decoded.bytes, bytes);
+      }
+    }
+
+    for (const variant of ['ZeroMQ (Z85)','RFC 1924 Alphabet (Block)']) {
       for (const length of [0,4,8,12,32]) {
         await step(control, 'BASE85', `${variant} / ${length} Bytes`);
         const bytes = makeBytes(length);
         const encoded = BaseCodec.encodeBase85(bytes, variant);
         const decoded = await Base85Engine.decodeBytes(encoded, variant);
         if (!decoded || decoded.type !== 'binary' || !decoded.bytes) {
-          addFailure(report, 'BASE85', `${variant} Roundtrip ${length} Bytes`, decoded?.message || 'Decode Error');
+          await addFailure(report, 'BASE85', `${variant} Roundtrip ${length} Bytes`, decoded?.message || 'Decode Error');
         } else {
-          addBytes(report, 'BASE85', `${variant} Roundtrip ${length} Bytes`, decoded.bytes, bytes);
+          await addBytes(report, 'BASE85', `${variant} Roundtrip ${length} Bytes`, decoded.bytes, bytes);
         }
       }
     }
@@ -5927,7 +6544,7 @@ const SelfTest = (() => {
     const checkType = async (name, bytes, expectedType) => {
       await step(control, 'FILE', name);
       const info = await Core.analyzeFileStructure(new Blob([bytes]));
-      add(report, 'FILE', name, info.type, expectedType);
+      await add(report, 'FILE', name, info.type, expectedType);
       return info;
     };
 
@@ -5979,18 +6596,18 @@ const SelfTest = (() => {
     polyglot.set([0x89,0x50,0x4e,0x47], 0);
     polyglot.set([0x50,0x4b,0x05,0x06], polyglot.length - 4);
     const polyInfo = await checkType('Polyglot Type', polyglot, 'PNG Image');
-    add(report, 'FILE', 'Polyglot Flag', polyInfo.isPolyglot, true);
+    await add(report, 'FILE', 'Polyglot Flag', polyInfo.isPolyglot, true);
   }
 
   async function runWorkerTests(report, control) {
     await step(control, 'WORKER', 'History / Runtime');
     const result = await Engine.runWorkerSelfTest('runtime');
     if (!result) {
-      addSkip(report, 'WORKER', 'History / Runtime', 'Worker未対応');
+      await addSkip(report, 'WORKER', 'History / Runtime', 'Worker未対応');
     } else if (result.status !== 'ok') {
-      addFailure(report, 'WORKER', 'History / Runtime', result.failed?.join(', ') || result.error || 'Worker Error');
+      await addFailure(report, 'WORKER', 'History / Runtime', result.failed?.join(', ') || result.error || 'Worker Error');
     } else {
-      add(report, 'WORKER', 'History / Runtime', true, true);
+      await add(report, 'WORKER', 'History / Runtime', true, true);
     }
   }
 
@@ -6001,8 +6618,9 @@ const SelfTest = (() => {
       { name:'Base64 Hex', outputOrder:['base64'], handoff:'hex', base85Variant:'Standard ASCII85' },
       { name:'Base85 Raw', outputOrder:['base85'], handoff:'raw', base85Variant:'Standard ASCII85' },
       { name:'ZeroMQ (Z85) Raw', outputOrder:['base85'], handoff:'raw', base85Variant:'ZeroMQ (Z85)' },
-      { name:'RFC 1924 Alphabet Raw', outputOrder:['base85'], handoff:'raw', base85Variant:'RFC 1924 Alphabet' },
+      { name:'RFC 1924 Alphabet (Block) Raw', outputOrder:['base85'], handoff:'raw', base85Variant:'RFC 1924 Alphabet (Block)' },
       { name:'Adobe ASCII85 Raw', outputOrder:['base85'], handoff:'raw', base85Variant:'Adobe ASCII85' },
+      { name:'btoa ASCII85 Raw', outputOrder:['base85'], handoff:'raw', base85Variant:'btoa ASCII85' },
       { name:'Base64 → Base85 Raw', outputOrder:['base64','base85'], handoff:'raw', base85Variant:'Standard ASCII85' },
       { name:'Base64 → Base85 Hex', outputOrder:['base64','base85'], handoff:'hex', base85Variant:'Standard ASCII85' },
       { name:'Base85 → Base64 Raw', outputOrder:['base85','base64'], handoff:'raw', base85Variant:'Standard ASCII85' },
@@ -6024,9 +6642,9 @@ const SelfTest = (() => {
       try {
         const value = HashOutputFilter.apply('SHA-256', canonical, context);
         const target = await HashOutputFilter.resolveCompareTarget(value, context);
-        add(report, 'FILTER', item.name, target?.algId === 'SHA-256' ? target.hex : '', canonical);
+        await add(report, 'FILTER', item.name, target?.algId === 'SHA-256' ? target.hex : '', canonical);
       } catch (e) {
-        addFailure(report, 'FILTER', item.name, e);
+        await addFailure(report, 'FILTER', item.name, e);
       }
     }
 
@@ -6045,9 +6663,9 @@ const SelfTest = (() => {
       const actual = HashOutputFilter.apply('SHA-256', canonical, visualContext);
       const visual = Core.formatForDisplay(actual, false, 4, true, '-');
       const target = await HashOutputFilter.resolveCompareTarget(visual, visualContext);
-      add(report, 'FILTER', 'Visual Copy', target?.algId === 'SHA-256' ? target.hex : '', canonical);
+      await add(report, 'FILTER', 'Visual Copy', target?.algId === 'SHA-256' ? target.hex : '', canonical);
     } catch (e) {
-      addFailure(report, 'FILTER', 'Visual Copy', e);
+      await addFailure(report, 'FILTER', 'Visual Copy', e);
     }
 
     const digestCases = [
@@ -6076,9 +6694,9 @@ const SelfTest = (() => {
       try {
         const value = HashOutputFilter.apply(algId, hex, digestContext);
         const target = await HashOutputFilter.resolveCompareTarget(value, digestContext);
-        add(report, 'FILTER', `Digest Size / ${algId}`, target?.algId === algId ? target.hex : '', hex);
+        await add(report, 'FILTER', `Digest Size / ${algId}`, target?.algId === algId ? target.hex : '', hex);
       } catch (e) {
-        addFailure(report, 'FILTER', `Digest Size / ${algId}`, e);
+        await addFailure(report, 'FILTER', `Digest Size / ${algId}`, e);
       }
     }
 
@@ -6099,12 +6717,12 @@ const SelfTest = (() => {
       ['Reject Unsupported Digest Size', '000000']
     ]) {
       const target = await HashOutputFilter.resolveCompareTarget(value, rawContext);
-      add(report, 'FILTER', name, target === null, true);
+      await add(report, 'FILTER', name, target === null, true);
     }
 
     const malformedBase64Context = { ...digestContext };
     const malformedBase64 = HashOutputFilter.apply('SHA-256', canonical, malformedBase64Context) + '!';
-    add(
+    await add(
       report,
       'FILTER',
       'Reject Malformed Encoded Output',
@@ -6119,14 +6737,14 @@ const SelfTest = (() => {
       separator:'-'
     };
     const groupedHex = Core.formatForDisplay(canonical, false, 4, false, '-');
-    add(
+    await add(
       report,
       'FILTER',
       'Reject Wrong Separator',
       await HashOutputFilter.resolveCompareTarget(groupedHex.replace('-', ':'), groupedHexContext) === null,
       true
     );
-    add(
+    await add(
       report,
       'FILTER',
       'Reject Wrong Visual Case',
@@ -6135,23 +6753,280 @@ const SelfTest = (() => {
     );
   }
 
-  async function runAll(control = null) {
-    const report = [];
-    await runHashTests(report, control);
-    await runHmacTests(report, control);
-    await runHexTests(report, control);
-    await runUtf8Tests(report, control);
-    await runBase64Tests(report, control);
-    await runBase85Tests(report, control);
-    await runFileTests(report, control);
-    await runWorkerTests(report, control);
-    await runFilterTests(report, control);
-    return report;
+  async function runContractTests(report, control) {
+    await step(control, 'CONTRACT', 'Runtime Integrity');
+    const issues = IntegrityGuard.validate();
+    if (issues.length === 0) await add(report, 'CONTRACT', 'Runtime Integrity', true, true);
+    else await addFailure(report, 'CONTRACT', 'Runtime Integrity', issues.join(' / '));
+
+    await step(control, 'CONTRACT', 'Algorithm Metadata');
+    await add(report, 'CONTRACT', 'Algorithm Count', InternalContract.HASH_IDS.length, 8);
+    await add(report, 'CONTRACT', 'Algorithm IDs Unique', new Set(InternalContract.HASH_IDS).size, InternalContract.HASH_IDS.length);
+    for (const id of InternalContract.HASH_IDS) {
+      const meta = InternalContract.HASH_ALGORITHMS[id];
+      await add(report, 'CONTRACT', `Digest Width / ${id}`, meta.digestBytes * 2, meta.digestHex);
+      await add(report, 'CONTRACT', `Filter Width / ${id}`, HashOutputFilter.digestHexLength(id), meta.digestHex);
+    }
+
+    const crcExpectedKeys = Object.keys(CRC64_CHECK);
+    await add(report, 'CONTRACT', 'CRC64 Check Registry Count', crcExpectedKeys.length, CRC64_VARIANTS.length);
+    await add(report, 'CONTRACT', 'CRC64 Check Registry Names', JSON.stringify(crcExpectedKeys), JSON.stringify(Array.from(CRC64_VARIANTS)));
+    await add(report, 'CONTRACT', 'Base85 Registry Names', JSON.stringify(Array.from(InternalContract.BASE85_VARIANTS)), JSON.stringify(['Standard ASCII85','Adobe ASCII85','btoa ASCII85','ZeroMQ (Z85)','RFC 1924 Alphabet (Block)']));
+    await add(report, 'CONTRACT', 'Base85 ASCII Classification', JSON.stringify(Array.from(InternalContract.BASE85_ASCII_VARIANTS)), JSON.stringify(['Standard ASCII85','Adobe ASCII85','btoa ASCII85']));
+    await add(report, 'CONTRACT', 'Base85 Partial Classification', JSON.stringify(Array.from(InternalContract.BASE85_PARTIAL_VARIANTS)), JSON.stringify(['Standard ASCII85','Adobe ASCII85']));
+    await add(report, 'CONTRACT', 'Base85 Padded Classification', JSON.stringify(Array.from(InternalContract.BASE85_PADDED_VARIANTS)), JSON.stringify(['btoa ASCII85']));
+    await add(report, 'CONTRACT', 'Base85 Block4 Classification', JSON.stringify(Array.from(InternalContract.BASE85_BLOCK4_VARIANTS)), JSON.stringify(['ZeroMQ (Z85)','RFC 1924 Alphabet (Block)']));
+    await add(report, 'CONTRACT', 'Stream Quantum / Base64', StreamBlock.QUANTUM % 3, 0);
+    await add(report, 'CONTRACT', 'Stream Quantum / Base85', StreamBlock.QUANTUM % 4, 0);
+
+    await step(control, 'CONTRACT', 'Worker Contract');
+    const worker = await Engine.runWorkerSelfTest('contract');
+    if (!worker || worker.status !== 'ok') {
+      await addFailure(report, 'CONTRACT', 'Worker Contract', worker?.error || 'Worker Error');
+    } else {
+      await add(report, 'CONTRACT', 'Worker Hash IDs', JSON.stringify(worker.hashIds), JSON.stringify(Array.from(InternalContract.HASH_IDS)));
+      await add(report, 'CONTRACT', 'Worker Generic Iteration IDs', JSON.stringify(worker.genericIterationIds), JSON.stringify(Array.from(InternalContract.GENERIC_ITERATION_IDS)));
+      await add(report, 'CONTRACT', 'Worker CRC64 Variants', JSON.stringify(worker.crc64Variants), JSON.stringify(Array.from(CRC64_VARIANTS)));
+      const expectedDigestBytes = Object.fromEntries(InternalContract.GENERIC_ITERATION_IDS.map(id => [id, InternalContract.HASH_ALGORITHMS[id].digestBytes]));
+      await add(report, 'CONTRACT', 'Worker Digest Widths', JSON.stringify(worker.digestBytes), JSON.stringify(expectedDigestBytes));
+      await add(report, 'CONTRACT', 'Worker Action Registry', JSON.stringify(worker.engineActions), JSON.stringify(InternalContract.ENGINE_ACTIONS));
+      await add(report, 'CONTRACT', 'Worker Message Registry', JSON.stringify(worker.engineMessages), JSON.stringify(InternalContract.ENGINE_MESSAGES));
+    }
   }
 
-  return { runAll };
-})();
+  function makeDeterministicBytes(length, seed = 0xD5568100) {
+    const out = new Uint8Array(length);
+    let state = seed >>> 0;
+    for (let i = 0; i < length; i++) {
+      state ^= state << 13; state >>>= 0;
+      state ^= state >>> 17; state >>>= 0;
+      state ^= state << 5; state >>>= 0;
+      out[i] = state & 0xff;
+    }
+    return out;
+  }
 
+  function splitByPattern(bytes, pattern) {
+    const chunks = [];
+    let offset = 0;
+    let index = 0;
+    while (offset < bytes.length) {
+      const size = Math.max(1, pattern[index % pattern.length] | 0);
+      const end = Math.min(bytes.length, offset + size);
+      chunks.push(bytes.slice(offset, end));
+      offset = end;
+      index++;
+    }
+    if (bytes.length === 0) chunks.push(new Uint8Array(0));
+    return chunks;
+  }
+
+  function sameHashResults(a, b) {
+    for (const [alg, key] of Object.entries({
+      'CRC32':'crc', 'CRC64':'crc64', 'MD5':'md5', 'SHA-1':'sha1',
+      'SHA-224':'sha224', 'SHA-256':'sha256', 'SHA-384':'sha384', 'SHA-512':'sha512'
+    })) {
+      if (String(a?.[key] || '') !== String(b?.[key] || '')) return { ok:false, alg };
+    }
+    for (const variant of CRC64_VARIANTS) {
+      if (String(a?.crc64All?.[variant] || '') !== String(b?.crc64All?.[variant] || '')) return { ok:false, alg:`CRC64 ${variant}` };
+    }
+    return { ok:true, alg:'' };
+  }
+
+  async function runRegressionTests(report, control) {
+    await step(control, 'REGRESSION', 'Worker Reuse');
+    const workerReuse = await Engine.runWorkerSelfTest('regression');
+    if (!workerReuse) await addSkip(report, 'REGRESSION', 'Worker Reuse', 'Worker未対応');
+    else if (workerReuse.status !== 'ok') await addFailure(report, 'REGRESSION', 'Worker Reuse', workerReuse.failed?.join(', ') || workerReuse.error || 'Worker Error');
+    else await add(report, 'REGRESSION', 'Worker Reuse', true, true);
+
+    const chunkPatterns = [
+      [1],
+      [2,3,5,7,11,13],
+      [63,1,64,2,65,3],
+      [127,128,129,17]
+    ];
+    for (const length of [0,1,2,3,55,56,57,63,64,65,111,112,113,127,128,129,1025]) {
+      const bytes = makeDeterministicBytes(length, 0xD5568100 ^ length);
+      const reference = await Engine.runWorkerSelfTest('hash', { bytes, crc64Variant:CRC64_VARIANTS[0] });
+      if (!reference || reference.status !== 'ok' || !reference.results) {
+        await addFailure(report, 'REGRESSION', `Chunk Reference / ${length} Bytes`, reference?.error || 'Worker Error');
+        continue;
+      }
+      for (let p = 0; p < chunkPatterns.length; p++) {
+        await step(control, 'REGRESSION', `Chunk ${length} / P${p + 1}`);
+        const chunks = splitByPattern(bytes, chunkPatterns[p]);
+        const streamed = await Engine.runWorkerSelfTest('hash_chunks', { chunks, crc64Variant:CRC64_VARIANTS[0] });
+        if (!streamed || streamed.status !== 'ok' || !streamed.results) {
+          await addFailure(report, 'REGRESSION', `Hash Chunk P${p + 1} / ${length} Bytes`, streamed?.error || 'Worker Error');
+          continue;
+        }
+        const equal = sameHashResults(streamed.results, reference.results);
+        await add(report, 'REGRESSION', `Hash Chunk P${p + 1} / ${length} Bytes${equal.alg ? ` / ${equal.alg}` : ''}`, equal.ok, true);
+      }
+    }
+
+    await step(control, 'REGRESSION', 'Codec Differential');
+    for (const length of [0,1,2,3,4,5,7,31,32,33,63,64,65,127,128,129,257]) {
+      const bytes = makeDeterministicBytes(length, 0x85A64000 ^ length);
+      const expected = BaseCodec.encodeBase64(bytes);
+      const result = await Base64Engine.encode(bytes);
+      await add(report, 'REGRESSION', `Base64 Worker vs Core / ${length} Bytes`, result?.type === 'text' ? result.value : `ERROR:${result?.message || ''}`, expected);
+    }
+
+    for (const variant of InternalContract.BASE85_PARTIAL_VARIANTS) {
+      for (const length of [0,1,2,3,4,5,7,31,32,33,63,64,65,127,128,129]) {
+        const bytes = makeDeterministicBytes(length, 0xA8500000 ^ length);
+        const expected = BaseCodec.encodeBase85(bytes, variant);
+        const result = await Base85Engine.encode(bytes, variant);
+        await add(report, 'REGRESSION', `${variant} Worker vs Core / ${length} Bytes`, result?.type === 'text' ? result.value : `ERROR:${result?.message || ''}`, expected);
+      }
+    }
+    for (const variant of InternalContract.BASE85_PADDED_VARIANTS) {
+      for (const length of [0,1,2,3,4,5,7,31,32,33,63,64,65,127,128,129,257]) {
+        const bytes = makeDeterministicBytes(length, 0xB70A0000 ^ length);
+        const expected = BaseCodec.encodeBase85(bytes, variant);
+        const result = await Base85Engine.encode(bytes, variant);
+        await add(report, 'REGRESSION', `${variant} Worker vs Core / ${length} Bytes`, result?.type === 'text' ? result.value : `ERROR:${result?.message || ''}`, expected);
+      }
+    }
+    for (const variant of InternalContract.BASE85_BLOCK4_VARIANTS) {
+      for (const length of [0,4,8,12,32,64,128,256]) {
+        const bytes = makeDeterministicBytes(length, 0x19240000 ^ length);
+        const expected = BaseCodec.encodeBase85(bytes, variant);
+        const result = await Base85Engine.encode(bytes, variant);
+        await add(report, 'REGRESSION', `${variant} Worker vs Core / ${length} Bytes`, result?.type === 'text' ? result.value : `ERROR:${result?.message || ''}`, expected);
+      }
+    }
+  }
+
+  async function streamEncodeWithCarry(bytes, incomingPattern, kind, variant = '') {
+    const incoming = splitByPattern(bytes, incomingPattern);
+    let leftover = new Uint8Array(0);
+    const output = [];
+
+    for (let i = 0; i < incoming.length; i++) {
+      const value = incoming[i];
+      const done = i === incoming.length - 1;
+      const block = StreamBlock.partition(leftover, value, done);
+      const toProcess = block.toProcess;
+      leftover = block.leftover;
+      if (toProcess.length === 0) continue;
+
+      if (kind === 'base64') {
+        const result = await Base64Engine.encodeStreamOwned(toProcess.slice());
+        if (!result || result.type !== 'binary' || !result.bytes) throw new Error(result?.message || 'Base64 Stream Error');
+        output.push(result.bytes);
+      } else {
+        const result = await Base85Engine.encodeStreamOwned(toProcess.slice(), variant);
+        if (!result || result.type !== 'binary' || !result.bytes) throw new Error(result?.message || 'Base85 Stream Error');
+        output.push(result.bytes);
+      }
+    }
+
+    let total = 0;
+    for (const part of output) total += part.length;
+    const merged = new Uint8Array(total);
+    let pos = 0;
+    for (const part of output) { merged.set(part, pos); pos += part.length; }
+    return new TextDecoder().decode(merged);
+  }
+
+  async function runStreamingTests(report, control) {
+    const patterns = [
+      [1],
+      [2,3,5,7,11,13],
+      [11,1,12,13,23,5],
+      [655,17,3,89]
+    ];
+
+    for (const length of [0,1,2,3,4,5,11,12,13,23,24,25,127,128,129,1025]) {
+      const bytes = makeDeterministicBytes(length, 0x51000000 ^ length);
+      for (let p = 0; p < patterns.length; p++) {
+        await step(control, 'STREAM', `Base64 ${length} / P${p + 1}`);
+        try {
+          const actual = await streamEncodeWithCarry(bytes, patterns[p], 'base64');
+          await add(report, 'STREAM', `Base64 P${p + 1} / ${length} Bytes`, actual, BaseCodec.encodeBase64(bytes));
+        } catch (e) {
+          await addFailure(report, 'STREAM', `Base64 P${p + 1} / ${length} Bytes`, e);
+        }
+      }
+    }
+
+    for (const variant of InternalContract.BASE85_PARTIAL_VARIANTS) {
+      for (const length of [0,1,2,3,4,5,11,12,13,23,24,25,127,128,129,1025]) {
+        const bytes = makeDeterministicBytes(length, 0x52000000 ^ length);
+        for (let p = 0; p < patterns.length; p++) {
+          await step(control, 'STREAM', `${variant} ${length} / P${p + 1}`);
+          try {
+            let actual = await streamEncodeWithCarry(bytes, patterns[p], 'base85', variant);
+            if (variant === 'Adobe ASCII85') actual = `<~${actual}~>`;
+            await add(report, 'STREAM', `${variant} P${p + 1} / ${length} Bytes`, actual, BaseCodec.encodeBase85(bytes, variant));
+          } catch (e) {
+            await addFailure(report, 'STREAM', `${variant} P${p + 1} / ${length} Bytes`, e);
+          }
+        }
+      }
+    }
+
+    for (const variant of InternalContract.BASE85_PADDED_VARIANTS) {
+      for (const length of [0,1,2,3,4,5,11,12,13,23,24,25,127,128,129,1025]) {
+        const bytes = makeDeterministicBytes(length, 0xB70A5000 ^ length);
+        for (let p = 0; p < patterns.length; p++) {
+          await step(control, 'STREAM', `${variant} ${length} / P${p + 1}`);
+          try {
+            let actual = await streamEncodeWithCarry(bytes, patterns[p], 'base85', variant);
+            if (variant === 'btoa ASCII85') actual = BaseCodec.wrapBtoaPayload(bytes, actual);
+            await add(report, 'STREAM', `${variant} P${p + 1} / ${length} Bytes`, actual, BaseCodec.encodeBase85(bytes, variant));
+          } catch (e) {
+            await addFailure(report, 'STREAM', `${variant} P${p + 1} / ${length} Bytes`, e);
+          }
+        }
+      }
+    }
+
+    for (const variant of InternalContract.BASE85_BLOCK4_VARIANTS) {
+      for (const length of [0,4,8,12,24,128,256,1024]) {
+        const bytes = makeDeterministicBytes(length, 0x53000000 ^ length);
+        for (let p = 0; p < patterns.length; p++) {
+          await step(control, 'STREAM', `${variant} ${length} / P${p + 1}`);
+          try {
+            const actual = await streamEncodeWithCarry(bytes, patterns[p], 'base85', variant);
+            await add(report, 'STREAM', `${variant} P${p + 1} / ${length} Bytes`, actual, BaseCodec.encodeBase85(bytes, variant));
+          } catch (e) {
+            await addFailure(report, 'STREAM', `${variant} P${p + 1} / ${length} Bytes`, e);
+          }
+        }
+      }
+    }
+  }
+
+  async function runAll(control = null) {
+    const report = [];
+    const previousObserver = resultObserver;
+    resultObserver = control && typeof control.onResult === 'function' ? control.onResult : null;
+    try {
+      await runContractTests(report, control);
+      await runHashTests(report, control);
+      await runHmacTests(report, control);
+      await runHexTests(report, control);
+      await runUtf8Tests(report, control);
+      await runBase64Tests(report, control);
+      await runBase85Tests(report, control);
+      await runFileTests(report, control);
+      await runWorkerTests(report, control);
+      await runFilterTests(report, control);
+      await runRegressionTests(report, control);
+      await runStreamingTests(report, control);
+      return report;
+    } finally {
+      resultObserver = previousObserver;
+    }
+  }
+
+  return { runAll, expectedCount };
+})();
 /* =========================================================
    UI LAYER
 ========================================================= */
@@ -6169,7 +7044,7 @@ const UI = (() => {
 
   let forceEmptyHashOnce = false;
 
-  const AUTO_TEST_SPEED = 20;
+  const AUTO_TEST_SPEED = 100;
   const AUTO_TEST_TIMING = Object.freeze({
     afterSelect:250,
     afterApply:600,
@@ -6213,13 +7088,17 @@ const UI = (() => {
       if (requirePaint && speed <= 1) await paint(1);
       await delay(ms);
     };
+    const readable = async (ms = 300) => {
+      await paint(1);
+      await delay(ms);
+    };
     const schedule = callback => {
       if (speed <= 1) requestAnimationFrame(callback);
       else postTask(callback);
     };
     const yieldBudget = speed <= 1 ? 4 : speed >= 1000 ? 12 : 8;
 
-    return { speed, hold, schedule, yieldTask, yieldBudget };
+    return { speed, hold, readable, schedule, yieldTask, paint, yieldBudget };
   })();
 
   const AutoTestSession = (() => {
@@ -6829,6 +7708,22 @@ const UI = (() => {
         'Base85-Dec':'Hello'
       }
     },
+    btoa85Enc:{
+      label:'Base85 Enc（btoa ASCII85）',
+      text:'Hello',
+      setup:{ Base85Encode:true, base85Variant:'btoa ASCII85' },
+      surfaceExpect:{
+        'Base85-Enc':'xbtoa Begin\n87cURDZBb;\nxbtoa End N 5 5 E 42 S 1f9 R a9f'
+      }
+    },
+    btoa85Dec:{
+      label:'Base85 Dec（btoa ASCII85）',
+      text:'xbtoa Begin\n87cURDZBb;\nxbtoa End N 5 5 E 42 S 1f9 R a9f',
+      setup:{ Base85Decode:true, base85Variant:'btoa ASCII85' },
+      surfaceExpect:{
+        'Base85-Dec':'Hello'
+      }
+    },
     z85Enc:{
       label:'Base85 Enc（ZeroMQ (Z85)）',
       text:'ABCD',
@@ -6846,17 +7741,17 @@ const UI = (() => {
       }
     },
     rfc85Enc:{
-      label:'Base85 Enc（RFC 1924 Alphabet）',
+      label:'Base85 Enc（RFC 1924 Alphabet (Block)）',
       text:'ABCD',
-      setup:{ Base85Encode:true, base85Variant:'RFC 1924 Alphabet' },
+      setup:{ Base85Encode:true, base85Variant:'RFC 1924 Alphabet (Block)' },
       surfaceExpect:{
         'Base85-Enc':'K|(`B'
       }
     },
     rfc85Dec:{
-      label:'Base85 Dec（RFC 1924 Alphabet）',
+      label:'Base85 Dec（RFC 1924 Alphabet (Block)）',
       text:'K|(`B',
-      setup:{ Base85Decode:true, base85Variant:'RFC 1924 Alphabet' },
+      setup:{ Base85Decode:true, base85Variant:'RFC 1924 Alphabet (Block)' },
       surfaceExpect:{
         'Base85-Dec':'ABCD'
       }
@@ -6894,9 +7789,9 @@ const UI = (() => {
       }
     },
     rfc85RejectLength:{
-      label:'Base85 Dec（RFC 1924 Alphabet）: 入力長',
+      label:'Base85 Dec（RFC 1924 Alphabet (Block)）: 入力長',
       text:'0000',
-      setup:{ Base85Decode:true, base85Variant:'RFC 1924 Alphabet' },
+      setup:{ Base85Decode:true, base85Variant:'RFC 1924 Alphabet (Block)' },
       surfaceExpect:{
         'Base85-Dec':'デコード不可'
       }
@@ -6973,6 +7868,14 @@ const UI = (() => {
         'SHA-256':'\\p,"*NrdSl5s[cm?*5@rYQJ=/Q5=k;Zk37Gnc0E,'
       }
     },
+    hashBtoa85Raw:{
+      label:'HASH→Base85 Raw（btoa ASCII85）',
+      text:'abc',
+      setup:{ hashOutputOrder:['base85'], hashOutputHandoff:'raw', base85Variant:'btoa ASCII85' },
+      surfaceExpect:{
+        'SHA-256':'xbtoa Begin\n\\p,"*NrdSl5s[cm?*5@rYQJ=/Q5=k;Zk37Gnc0E,\nxbtoa End N 32 20 E ca S eb2 R 11d38e8'
+      }
+    },
     hashZ85Raw:{
       label:'HASH→Base85 Raw（ZeroMQ (Z85)）',
       text:'abc',
@@ -6982,9 +7885,9 @@ const UI = (() => {
       }
     },
     hashRfc85Raw:{
-      label:'HASH→Base85 Raw（RFC 1924 Alphabet）',
+      label:'HASH→Base85 Raw（RFC 1924 Alphabet (Block)）',
       text:'abc',
-      setup:{ hashOutputOrder:['base85'], hashOutputHandoff:'raw', base85Variant:'RFC 1924 Alphabet' },
+      setup:{ hashOutputOrder:['base85'], hashOutputHandoff:'raw', base85Variant:'RFC 1924 Alphabet (Block)' },
       surfaceExpect:{
         'SHA-256':'x_B19j{(o>K|w&?U9KV{umfSEmKS=Qv=IMc@&FaB'
       }
@@ -7023,6 +7926,8 @@ const UI = (() => {
     els.toastEl = document.getElementById('toast');
     els.testToggle = document.getElementById('testToggle');
     els.testOptionsContainer = document.getElementById('testOptionsContainer');
+    els.applyTestBtn = document.getElementById('apply');
+    els.verifyTestBtn = document.getElementById('verify');
     els.selfTestBtn = document.getElementById('selftest');
     els.groupingToggle = document.getElementById('groupingToggle');
     els.groupingOptionsContainer = document.getElementById('groupingOptionsContainer');
@@ -7049,6 +7954,7 @@ const UI = (() => {
     
     els.Base64EncToggleBtn = document.getElementById('Base64EncToggle');
     els.Base64DecToggleBtn = document.getElementById('Base64DecToggle');
+    els.Base64ModeSep = document.getElementById('Base64ModeSep');
     els.Base64ModeToggleBtn = document.getElementById('Base64ModeToggle');
     els.rowBase64Enc = document.getElementById('row-Base64-enc');
     els.rowBase64Dec = document.getElementById('row-Base64-dec');
@@ -7056,7 +7962,9 @@ const UI = (() => {
     els.Base85DecToggleBtn = document.getElementById('Base85DecToggle');
     els.rowBase85Enc = document.getElementById('row-Base85-enc');
     els.rowBase85Dec = document.getElementById('row-Base85-dec');
+    els.base85VariantSep = document.getElementById('base85VariantSep');
     els.base85VariantToggleBtn = document.getElementById('base85VariantToggle');
+    els.baseFileDetectSep = document.getElementById('baseFileDetectSep');
     els.hashOutputToggle = document.getElementById('hashOutputToggle');
     els.hashOutputOptionsContainer = document.getElementById('hashOutputOptionsContainer');
     els.hashOutputHandoffToggleBtn = document.getElementById('hashOutputHandoffToggle');
@@ -7362,7 +8270,9 @@ function showToast(msg, duration = TOAST_DURATION) {
       if (!AutoTestSession.active) {
         els.selfTestBtn.textContent = '自動検証';
       } else if (AutoTestSession.phase === 'internal') {
-        els.selfTestBtn.textContent = '自動検証:内部';
+        els.selfTestBtn.textContent = AutoTestSession.total
+          ? `自動検証:内部 ${AutoTestSession.current}/${AutoTestSession.total}`
+          : `自動検証:内部 ${AutoTestSession.current}`;
       } else {
         els.selfTestBtn.textContent = `自動検証 ${AutoTestSession.current}/${AutoTestSession.total}`;
       }
@@ -7499,20 +8409,20 @@ function showToast(msg, duration = TOAST_DURATION) {
     TestIdleGate.notify();
   }
 
-  EventBus.on('hash:session', data => {
+  EventBus.on(InternalContract.EVENTS.HASH_SESSION, data => {
       if (AppState.continuousCompareEnabled) clearContinuousCompareHit();
       IterationSession.begin(data);
       syncPauseControls();
       TestIdleGate.notify();
   });
-  EventBus.on('hash:sessionEnd', data => {
+  EventBus.on(InternalContract.EVENTS.HASH_SESSION_END, data => {
       if (AppState.continuousCompareEnabled) clearContinuousCompareHit();
       IterationSession.end(data && data.reason);
       if (data && data.reason === 'aborted') resetHistories();
       syncPauseControls();
       TestIdleGate.notify();
   });
-  EventBus.on('hash:render', data => {
+  EventBus.on(InternalContract.EVENTS.HASH_RENDER, data => {
       let stateChanged = false;
       if (data.taskState) {
           const before = IterationSession.get(data.algId);
@@ -7524,15 +8434,15 @@ function showToast(msg, duration = TOAST_DURATION) {
       if (stateChanged) syncPauseControls();
       TestIdleGate.notify();
   });
-  EventBus.on('hash:paused', data => {
+  EventBus.on(InternalContract.EVENTS.HASH_PAUSED, data => {
       delete renderState[data.algId];
       renderIterationAck(data);
   });
-  EventBus.on('hash:targetAck', data => {
+  EventBus.on(InternalContract.EVENTS.HASH_TARGET_ACK, data => {
       delete renderState[data.algId];
       renderIterationAck(data);
   });
-  EventBus.on('hash:match', data => {
+  EventBus.on(InternalContract.EVENTS.HASH_MATCH, data => {
       if (!isCurrentContinuousMatchMessage(data)) return;
       IterationSession.markAllPaused();
       delete renderState[data.algId];
@@ -7548,13 +8458,13 @@ function showToast(msg, duration = TOAST_DURATION) {
       const variantLabel = data.algId === 'CRC64' && data.matchCrc64Variant ? ` / ${data.matchCrc64Variant}` : '';
       showToast(`一致検出 / ${data.algId}${variantLabel} / ${data.iter}回 / 全計算一時停止`);
   });
-  EventBus.on('hash:matchClear', data => {
+  EventBus.on(InternalContract.EVENTS.HASH_MATCH_CLEAR, data => {
       if (!isCurrentContinuousMatchMessage(data)) return;
       delete renderState[data.algId];
       renderIterationAck(data);
       clearContinuousCompareHit();
   });
-  EventBus.on('hash:results', res => {
+  EventBus.on(InternalContract.EVENTS.HASH_RESULTS, res => {
       for (const [id, val] of Object.entries(res)) {
           if (typeof val === 'string' && val.includes('エラー')) queueRender(id, val, 0, 1, true);
           else queueRender(id, val, 1, 1, true);
@@ -7926,7 +8836,7 @@ function showToast(msg, duration = TOAST_DURATION) {
   }
 
   function attachEvents() {
-    const CRC64_VARIANTS = ['XZ (ECMA, Reflected)', 'WE (ECMA, Non-Reflected)', 'ISO (HDLC, Non-Reflected)', 'GO-ISO (ISO, Reflected)', 'Redis (Jones, Reflected)'];
+    const CRC64_VARIANTS = InternalContract.CRC64_VARIANTS;
 
     const syncVisualThemeControls = () => {
       els.themeBtn.textContent = AppState.showTheme
@@ -7947,6 +8857,31 @@ function showToast(msg, duration = TOAST_DURATION) {
 
     syncVisualThemeControls();
 
+    const setConditionalControlVisible = (separatorEl, controlEl, visible) => {
+      if (separatorEl) separatorEl.hidden = !visible;
+      if (controlEl) controlEl.hidden = !visible;
+    };
+
+    const syncBaseDependentControls = () => {
+      const base64DecodeActive = !!AppState.Base64Decode;
+      const base85Active = !!(
+        AppState.Base85Encode ||
+        AppState.Base85Decode ||
+        AppState.hashOutputOrder.includes('base85')
+      );
+      const anyBaseDecode = !!(AppState.Base64Decode || AppState.Base85Decode);
+
+      setConditionalControlVisible(els.Base64ModeSep, els.Base64ModeToggleBtn, base64DecodeActive);
+      setConditionalControlVisible(els.base85VariantSep, els.base85VariantToggleBtn, base85Active);
+      setConditionalControlVisible(els.baseFileDetectSep, els.baseFileDetectToggleBtn, anyBaseDecode);
+    };
+
+    const syncTestVerifyControl = () => {
+      if (els.verifyTestBtn) els.verifyTestBtn.hidden = !AppState.testVerifyArmed;
+    };
+
+    syncTestVerifyControl();
+
     const syncHashOutputControls = () => {
       const first = AppState.hashOutputOrder[0] || '';
       const base64On = AppState.hashOutputOrder.includes('base64');
@@ -7959,6 +8894,7 @@ function showToast(msg, duration = TOAST_DURATION) {
         : `HASH出力: ${HashOutputFilter.describe()} [+]`;
       if (AppState.showHashOutput) els.hashOutputOptionsContainer.classList.remove('hidden');
       else els.hashOutputOptionsContainer.classList.add('hidden');
+      syncBaseDependentControls();
     };
 
     const toggleHashOutputMode = mode => {
@@ -8156,32 +9092,7 @@ els.compareIn.addEventListener('input', () => {
 });
 
 async function detectBase85Variants(input) {
-  const compact = input.replace(/\s+/g, '');
-  const adobeFramed = compact.startsWith('<~') || compact.endsWith('~>');
-  const variants = adobeFramed
-    ? ['Adobe ASCII85']
-    : ['Standard ASCII85', 'Adobe ASCII85', 'ZeroMQ (Z85)', 'RFC 1924 Alphabet'];
-  const candidates = [];
-  for (const variant of variants) {
-    try {
-      const decoded = await Base85Engine.decode(input, variant, true);
-      if (!decoded || decoded.type === 'error') continue;
-
-      let decodedBytes;
-      if (decoded.type === 'binary' && decoded.bytes) decodedBytes = decoded.bytes;
-      else if (decoded.type === 'text') decodedBytes = Core.utf8Encode(decoded.value || '');
-      else continue;
-
-      const encoded = await Base85Engine.encode(decodedBytes, variant);
-      if (!encoded || encoded.type === 'error') continue;
-      const canonical = String(encoded.value || '').replace(/\s+/g, '');
-      if (variant === 'Adobe ASCII85') {
-        const inner = canonical.startsWith('<~') && canonical.endsWith('~>') ? canonical.slice(2, -2) : canonical;
-        if (compact === canonical || compact === inner) candidates.push(variant);
-      } else if (compact === canonical) candidates.push(variant);
-    } catch (_) {}
-  }
-  return candidates;
+  return Base85Detect.detectVariants(input);
 }
 
     syncContinuousCompareControl();
@@ -8251,8 +9162,14 @@ async function detectBase85Variants(input) {
 
     const applySelectedTest = (key = AppState.testVector) => {
       const test = TEST_VECTORS[key];
-      if (!test) return null;
+      if (!test) {
+        AppState.testVerifyArmed = false;
+        syncTestVerifyControl();
+        return null;
+      }
 
+      AppState.testVerifyArmed = false;
+      syncTestVerifyControl();
       fileLoadRevision++;
       AppState.testVector = key;
       AppState.showTest = false;
@@ -8263,6 +9180,8 @@ async function detectBase85Variants(input) {
       AppState.currentFile = null;
       syncTestOptionControls(test.setup);
       scheduleUpdate();
+      AppState.testVerifyArmed = true;
+      syncTestVerifyControl();
       return test;
     };
 
@@ -8304,7 +9223,7 @@ async function detectBase85Variants(input) {
         'SHA-384':'処理中…',
         'SHA-512':'処理中…'
       };
-      EventBus.emit('hash:results', tempRes);
+      EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, tempRes);
 
       const resultsRaw = await Engine.verifyTestBytes(bytes, AppState.crc64Variant);
       if (!resultsRaw) {
@@ -8349,7 +9268,7 @@ async function detectBase85Variants(input) {
         showToast(`検証失敗 ${ok}/${total}［${failedNames}］${skipped ? `｜未対応 ${skipped}` : ''}`);
         console.warn('Self-test failures:', failed);
       }
-      EventBus.emit('hash:results', results);
+      EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, results);
       return { ok:failed.length === 0, total, passed:ok, skipped, failed };
     };
 
@@ -8446,6 +9365,34 @@ async function detectBase85Variants(input) {
       const applyButton = document.querySelector('[data-action="applyTest"]');
       const verifyButton = document.querySelector('[data-action="verifyTest"]');
 
+      const verifyEmptyBaseline = async label => {
+        const emptyButton = setTestButtons.get('empty');
+        if (!emptyButton || !applyButton || !verifyButton) {
+          throw new Error('Visible Test Control Missing: empty');
+        }
+
+        await AutoTestSession.checkpoint();
+        showAutoToast(`${label}｜空｜選択`, 900, true);
+        clickAsUser(emptyButton);
+        await AutoTestClock.hold(AUTO_TEST_TIMING.afterSelect, true);
+
+        await AutoTestSession.checkpoint();
+        showAutoToast(`${label}｜空｜適用`, 900, true);
+        clickAsUser(applyButton);
+        await waitForTestIdle();
+        await AutoTestClock.hold(AUTO_TEST_TIMING.afterApply, true);
+
+        await AutoTestSession.checkpoint();
+        showAutoToast(`${label}｜空｜検証`, 900, true);
+        const token = clickAsUser(verifyButton);
+        const result = await waitForAutoVerify(token);
+        await waitForTestIdle();
+        await AutoTestClock.hold(AUTO_TEST_TIMING.afterVerify, true);
+
+        showAutoToast(`${label}｜空｜${result.ok ? 'PASS' : 'FAIL'}`, result.ok ? 1200 : 4200, true);
+        return result;
+      };
+
       try {
         for (let i = 0; i < keys.length; i++) {
           const key = keys[i];
@@ -8477,34 +9424,63 @@ async function detectBase85Variants(input) {
           await AutoTestClock.hold(AUTO_TEST_TIMING.afterVerify, true);
         }
 
-        AutoTestSession.setProgress('internal', 0, 0);
+        AutoTestSession.setProgress('visible', keys.length, keys.length);
         syncPauseControls();
-        showAutoToast('入力検証完了｜内部検証へ移行します', 1500, true);
+        showAutoToast(`入力検証 ${keys.length}/${keys.length} 完了｜内部検証前の空復元へ`, 1500, true);
         await AutoTestClock.hold(AUTO_TEST_TIMING.phaseTransition, true);
+        const preHiddenResetResult = await verifyEmptyBaseline('内部検証前復元');
+
+        showAutoToast('内部検証計画を構築中｜総項目数を実測します', 1800, true);
+        setMetaStatus('内部検証計画を構築中');
+        const hiddenPlannedTotal = await SelfTest.expectedCount();
+        AutoTestSession.setProgress('internal', 0, hiddenPlannedTotal || 0);
+        syncPauseControls();
+        showAutoToast(
+          hiddenPlannedTotal
+            ? `空復元 ${preHiddenResetResult.ok ? 'OK' : 'FAIL'}｜内部検証 0/${hiddenPlannedTotal} へ移行します`
+            : `空復元 ${preHiddenResetResult.ok ? 'OK' : 'FAIL'}｜内部検証へ移行します`,
+          preHiddenResetResult.ok ? 1500 : 4200,
+          true
+        );
+        await AutoTestClock.hold(AUTO_TEST_TIMING.phaseTransition, true);
+
+        let hiddenPassedLive = 0;
+        let hiddenFailedLive = 0;
+        let hiddenSkippedLive = 0;
 
         hidden = await SelfTest.runAll({
           checkpoint: () => AutoTestSession.checkpoint(),
-          onProgress: async (group, name) => {
+          onProgress: async () => {
             const now = performance.now();
             if (now - lastYield >= AutoTestClock.yieldBudget) {
               await AutoTestClock.yieldTask();
               lastYield = performance.now();
             }
+          },
+          onResult: async (item, count) => {
+            if (item.skip) hiddenSkippedLive++;
+            else if (item.ok) hiddenPassedLive++;
+            else hiddenFailedLive++;
+
+            const total = hiddenPlannedTotal || Math.max(count, AutoTestSession.total || 0);
+            AutoTestSession.setProgress('internal', count, total);
+            syncPauseControls();
+
+            const verdict = item.skip ? 'SKIP' : item.ok ? 'PASS' : 'FAIL';
+            const fraction = total ? `${count}/${total}` : `${count}`;
+            setMetaStatus(`内部検証 ${fraction} [${item.group}] ${item.name}`);
+            showAutoToast(`内部検証 ${fraction}｜${item.group}｜${item.name}｜${verdict}`, 900, true);
+
+            await AutoTestClock.readable();
+            await AutoTestSession.checkpoint();
           }
         });
 
         AutoTestSession.setProgress('visible', keys.length, keys.length);
         syncPauseControls();
-        const emptyButton = setTestButtons.get('empty');
-        if (!emptyButton) throw new Error('Visible Test Control Missing: empty');
-        clickAsUser(emptyButton);
-        await AutoTestClock.hold(AUTO_TEST_TIMING.afterSelect, true);
-        clickAsUser(applyButton);
-        await waitForTestIdle();
-        await AutoTestClock.hold(AUTO_TEST_TIMING.afterApply, true);
-        const resetVerifyToken = clickAsUser(verifyButton);
-        const resetResult = await waitForAutoVerify(resetVerifyToken);
-        await waitForTestIdle();
+        showAutoToast('内部検証完了｜最終の空復元へ', 1500, true);
+        await AutoTestClock.hold(AUTO_TEST_TIMING.phaseTransition, true);
+        const resetResult = await verifyEmptyBaseline('最終復元');
 
         const visibleFailed = visible.filter(x => !x.ok);
         const hiddenFailed = hidden.filter(x => !x.ok && !x.skip);
@@ -8513,6 +9489,7 @@ async function detectBase85Variants(input) {
         const visiblePassed = visible.length - visibleFailed.length;
         const visibleSkipped = visible.reduce((sum, x) => sum + (Number(x.skipped) || 0), 0);
         const skipped = visibleSkipped + hiddenSkipped;
+        const preHiddenResetFailed = !preHiddenResetResult.ok;
         const resetFailed = !resetResult.ok;
 
         AutoTestSession.end();
@@ -8523,16 +9500,18 @@ async function detectBase85Variants(input) {
         }
         syncPauseControls();
 
-        if (visibleFailed.length === 0 && hiddenFailed.length === 0 && !resetFailed) {
+        if (visibleFailed.length === 0 && hiddenFailed.length === 0 && !preHiddenResetFailed && !resetFailed) {
           setMetaStatus(skipped ? '自動検証完了（未対応あり）' : '自動検証完了');
-          showToast(`全検証成功｜入力 ${visiblePassed}/${visible.length}｜内部 ${hiddenPassed}/${hiddenPassed + hiddenFailed.length}｜復元 OK${skipped ? `｜未対応 ${skipped}` : ''}`, 6000);
+          showToast(`全検証成功｜入力 ${visiblePassed}/${visible.length}｜中間復元 OK｜内部 ${hiddenPassed}/${hidden.length}｜最終復元 OK${skipped ? `｜未対応 ${skipped}` : ''}`, 7000);
         } else {
           setMetaStatus('自動検証失敗');
           const groups = Array.from(new Set(hiddenFailed.map(x => x.group))).join(', ');
-          showToast(`全検証失敗｜入力 ${visiblePassed}/${visible.length}｜内部 ${hiddenPassed}/${hiddenPassed + hiddenFailed.length}${groups ? `［${groups}］` : ''}${resetFailed ? '｜復元 FAIL' : '｜復元 OK'}${skipped ? `｜未対応 ${skipped}` : ''}`, 6000);
+          const failurePreview = hiddenFailed.slice(0, 3).map(x => `${x.group}: ${x.name}`).join(' / ');
+          showToast(`全検証失敗｜入力 ${visiblePassed}/${visible.length}｜中間復元 ${preHiddenResetFailed ? 'FAIL' : 'OK'}｜内部 ${hiddenPassed}/${hidden.length}${groups ? `［${groups}］` : ''}${failurePreview ? `｜失敗: ${failurePreview}` : ''}｜最終復元 ${resetFailed ? 'FAIL' : 'OK'}${skipped ? `｜未対応 ${skipped}` : ''}`, 10000);
           if (visibleFailed.length) console.warn('Visible self-test failures:', visibleFailed);
+          if (preHiddenResetFailed) console.warn('Pre-hidden reset self-test failure:', preHiddenResetResult.failed);
           if (hiddenFailed.length) console.warn('Self-test failures:', hiddenFailed);
-          if (resetFailed) console.warn('Reset self-test failure:', resetResult.failed);
+          if (resetFailed) console.warn('Final reset self-test failure:', resetResult.failed);
         }
       } catch (e) {
         const aborted = !!e?.autoTestAbort || AutoTestSession.aborted;
@@ -8741,6 +9720,8 @@ async function detectBase85Variants(input) {
 
             case 'setTest': {
                 AppState.testVector = actionEl.dataset.test;
+                AppState.testVerifyArmed = false;
+                syncTestVerifyControl();
                 AppState.showTest = false;
                 const testLabel = TEST_VECTORS[AppState.testVector]?.label || AppState.testVector;
                 els.testOptionsContainer.classList.add('hidden');
@@ -8762,6 +9743,7 @@ async function detectBase85Variants(input) {
                 AppState.Base64Encode = !AppState.Base64Encode;
                 els.Base64EncToggleBtn.textContent = `Base64 Enc: ${AppState.Base64Encode ? 'オン' : 'オフ'}`;
                 els.rowBase64Enc.style.display = AppState.Base64Encode ? 'flex' : 'none';
+                syncBaseDependentControls();
                 updateBaseOnly('Base64Enc');
                 break;
             }
@@ -8769,6 +9751,7 @@ async function detectBase85Variants(input) {
                 AppState.Base64Decode = !AppState.Base64Decode;
                 els.Base64DecToggleBtn.textContent = `Base64 Dec: ${AppState.Base64Decode ? 'オン' : 'オフ'}`;
                 els.rowBase64Dec.style.display = AppState.Base64Decode ? 'flex' : 'none';
+                syncBaseDependentControls();
                 updateBaseOnly('Base64Dec');
                 break;
             }
@@ -8782,6 +9765,7 @@ async function detectBase85Variants(input) {
                 AppState.Base85Encode = !AppState.Base85Encode;
                 els.Base85EncToggleBtn.textContent = `Base85 Enc: ${AppState.Base85Encode ? 'オン' : 'オフ'}`;
                 els.rowBase85Enc.style.display = AppState.Base85Encode ? 'flex' : 'none';
+                syncBaseDependentControls();
                 updateBaseOnly('Base85Enc');
                 break;
             }
@@ -8789,6 +9773,7 @@ async function detectBase85Variants(input) {
                 AppState.Base85Decode = !AppState.Base85Decode;
                 els.Base85DecToggleBtn.textContent = `Base85 Dec: ${AppState.Base85Decode ? 'オン' : 'オフ'}`;
                 els.rowBase85Dec.style.display = AppState.Base85Decode ? 'flex' : 'none';
+                syncBaseDependentControls();
                 updateBaseOnly('Base85Dec');
                 break;
             }
@@ -8887,6 +9872,18 @@ async function detectBase85Variants(input) {
 
             case 'verifyTest': {
                 const autoToken = dispatchingAutoClickToken;
+                if (!AppState.testVerifyArmed) {
+                    const error = new Error('Test verification requires Apply');
+                    if (autoToken) {
+                        finishAutoVerify(autoToken, null, error);
+                        throw error;
+                    }
+                    showToast('先に「適用」を実行してください');
+                    break;
+                }
+
+                AppState.testVerifyArmed = false;
+                syncTestVerifyControl();
                 try {
                     if (!autoToken && TEST_VECTORS[AppState.testVector]?.surfaceExpect) await waitForTestIdle();
                     const result = await verifySelectedTest();
@@ -9198,7 +10195,7 @@ async function detectBase85Variants(input) {
             case 'cycleBase85': {
                 const hashOutputAffected = AppState.hashOutputOrder.includes('base85');
                 if (hashOutputAffected && AppState.continuousCompareEnabled) disarmContinuousCompare(true);
-                const base85Variants = ['Standard ASCII85', 'Adobe ASCII85', 'ZeroMQ (Z85)', 'RFC 1924 Alphabet'];
+                const base85Variants = InternalContract.BASE85_VARIANTS;
                 const bIdx = base85Variants.indexOf(AppState.base85Variant);
                 AppState.base85Variant = base85Variants[(bIdx + 1) % base85Variants.length];
                 els.base85VariantToggleBtn.textContent = `Base85形式: ${AppState.base85Variant}`;
@@ -9227,6 +10224,10 @@ async function detectBase85Variants(input) {
                 const iterations = Math.max(1, parseInt(els.iterIn.value, 10) || 1);
                 updateMeta(displayCount, isFile, AppState.currentStatus || '待機', iterations);
                 showToast(`CRC64 表示切替: ${AppState.crc64Variant}${continuousReleased ? ' / 連続一致判定解除' : ''}`);
+                break;
+            }
+            default: {
+                console.error(`[UI ACTION] Unknown action: ${action}`);
                 break;
             }
         }
@@ -9307,12 +10308,46 @@ async function detectBase85Variants(input) {
     });
   }
 
+  function validate() {
+    const issues = [];
+    const add = message => issues.push(String(message));
+
+    const handled = new Set();
+    const source = attachEvents.toString();
+    const casePattern = /case\s+['"]([^'"]+)['"]\s*:/g;
+    let match;
+    while ((match = casePattern.exec(source))) handled.add(match[1]);
+
+    for (const el of document.querySelectorAll('[data-action]')) {
+      const action = el.dataset.action;
+      if (!handled.has(action)) add(`UI action未処理: ${action}`);
+    }
+
+    const testButtons = Array.from(document.querySelectorAll('[data-action="setTest"][data-test]'));
+    const buttonKeys = testButtons.map(el => el.dataset.test);
+    const vectorKeys = Object.keys(TEST_VECTORS);
+    if (new Set(buttonKeys).size !== buttonKeys.length) add('テストボタンdata-test重複');
+    if (JSON.stringify(buttonKeys) !== JSON.stringify(vectorKeys)) {
+      const buttonSet = new Set(buttonKeys);
+      const vectorSet = new Set(vectorKeys);
+      for (const key of vectorKeys) if (!buttonSet.has(key)) add(`テストボタン欠落: ${key}`);
+      for (const key of buttonKeys) if (!vectorSet.has(key)) add(`TEST_VECTORS欠落: ${key}`);
+    }
+
+    for (const id of InternalContract.HASH_IDS) {
+      const result = document.getElementById(id);
+      if (!result || result.dataset.alg !== id) add(`UI HASH結果契約不一致: ${id}`);
+    }
+
+    return Array.from(new Set(issues));
+  }
+
   function init() {
     initDOM();
     attachEvents();
   }
 
-  return { init, updateSysPanel, panicReset };
+  return { init, validate, updateSysPanel, panicReset };
 })();
 
 /* =========================================================
@@ -9340,6 +10375,7 @@ const PresetLoader = (() => {
   VisualTheme.init();
   Engine.init();
   UI.init();
+  IntegrityGuard.init();
   PresetLoader.init();
   
   if (!window.__ZESS_MODE__) {
