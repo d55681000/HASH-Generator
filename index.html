@@ -10,7 +10,7 @@
     document.write('<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\' blob:; style-src \'unsafe-inline\'; worker-src blob:; img-src data:; connect-src \'none\'; frame-src \'none\'; form-action \'none\'; object-src \'none\'; base-uri \'none\'; frame-ancestors \'none\';">');
     window.__ZESS_MODE__ = true;
   } else {
-    document.write('<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\' blob:; style-src \'unsafe-inline\'; worker-src blob:; img-src data:; connect-src https://api.ipify.org https://worldtimeapi.org https://ipapi.co https://ipinfo.io https://ip-api.com https://ipwho.is https://www.cloudflare.com; frame-src \'none\'; form-action \'none\'; object-src \'none\'; base-uri \'none\'; frame-ancestors \'none\';">');
+    document.write('<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\' blob:; style-src \'unsafe-inline\'; worker-src blob:; img-src data:; connect-src https://api.ipify.org https://worldtimeapi.org https://ipapi.co https://ipinfo.io https://ipwho.is https://www.cloudflare.com; frame-src \'none\'; form-action \'none\'; object-src \'none\'; base-uri \'none\'; frame-ancestors \'none\';">');
   }
 </script>
 <meta name="referrer" content="no-referrer">
@@ -980,6 +980,7 @@ const Security = (() => {
    INTERNET GATEWAY
    外部通信は登録済みRouteのみ。Capabilityはページ外へ送信しない。
 ========================================================= */
+let InternetGatewayTestBridge = null;
 const InternetGateway = (() => {
   const MODE = Object.freeze({ TIME:'time', ON:'on', OFF:'off' });
   const LEVEL = Object.freeze({ TIME:1, STANDARD:2, SENSITIVE:3 });
@@ -991,20 +992,17 @@ const InternetGateway = (() => {
     'network.public-ip': Object.freeze({
       url:'https://api.ipify.org?format=json', method:'GET', format:'json', level:LEVEL.STANDARD, purpose:'公開IPの照会', maxResponseBytes:16384
     }),
-    'location.ipapi': Object.freeze({
-      url:'https://ipapi.co/json/', method:'GET', format:'json', level:LEVEL.SENSITIVE, purpose:'IPベース位置情報の照会', maxResponseBytes:131072
-    }),
     'location.ipwhois': Object.freeze({
-      url:'https://ipwho.is/', method:'GET', format:'json', level:LEVEL.SENSITIVE, purpose:'IPベース位置情報の照会', maxResponseBytes:131072
+      url:'https://ipwho.is/', ipTemplate:'https://ipwho.is/{ip}', method:'GET', format:'json', level:LEVEL.SENSITIVE, purpose:'IPベース位置情報の照会', maxResponseBytes:131072
+    }),
+    'location.ipapi': Object.freeze({
+      url:'https://ipapi.co/json/', ipTemplate:'https://ipapi.co/{ip}/json/', method:'GET', format:'json', level:LEVEL.SENSITIVE, purpose:'IPベース位置情報の照会', maxResponseBytes:131072
     }),
     'location.ipinfo': Object.freeze({
-      url:'https://ipinfo.io/json', method:'GET', format:'json', level:LEVEL.SENSITIVE, purpose:'IPベース位置情報の照会', maxResponseBytes:131072
+      url:'https://ipinfo.io/json', ipTemplate:'https://ipinfo.io/{ip}/json', method:'GET', format:'json', level:LEVEL.SENSITIVE, purpose:'IPベース位置情報の照会', maxResponseBytes:131072
     }),
     'location.cloudflare': Object.freeze({
       url:'https://www.cloudflare.com/cdn-cgi/trace', method:'GET', format:'text', level:LEVEL.SENSITIVE, purpose:'国コード照会', maxResponseBytes:65536
-    }),
-    'location.ip-api': Object.freeze({
-      url:'https://ip-api.com/json/?fields=status,countryCode,region,regionName,city,zip,isp,org,as', method:'GET', format:'json', level:LEVEL.SENSITIVE, purpose:'IPベース位置情報の照会', maxResponseBytes:131072
     }),
     'navigation.panic': Object.freeze({
       url:'https://www.google.com', method:'NAVIGATE', format:'none', level:LEVEL.STANDARD, purpose:'Yukikaze退避', transport:'navigate'
@@ -1020,11 +1018,19 @@ const InternetGateway = (() => {
   const MAX_TIMEOUT_MS = 30000;
   const HARD_RESPONSE_LIMIT = 4 * 1024 * 1024;
   let auditSeq = 0;
+  let nativeRequestStartCount = 0;
   let policyEpoch = 1;
   let initialized = false;
   let mode = window.__ZESS_MODE__ ? MODE.OFF : MODE.TIME;
 
   const genericNetworkError = () => new TypeError('Failed to fetch');
+  const gatewayFault = (kind, status = null) => {
+    const error = new Error(String(kind || 'transport'));
+    error.name = 'InternetGatewayFault';
+    error.kind = String(kind || 'transport');
+    error.status = status == null ? null : (Number.isFinite(Number(status)) ? Number(status) : null);
+    return error;
+  };
   const blockedFetch = () => Promise.reject(genericNetworkError());
   const blockedNetworkCtor = function() { throw genericNetworkError(); };
   const blockedWorkerCtor = function() { throw new DOMException('Worker creation is unavailable', 'SecurityError'); };
@@ -1098,6 +1104,17 @@ const InternetGateway = (() => {
     return Math.max(250, Math.min(MAX_TIMEOUT_MS, Math.trunc(n)));
   }
 
+  function resolveRouteUrl(route, options = {}) {
+    if (!route?.ipTemplate || options.ip == null || String(options.ip).trim() === '') return route.url;
+    const ip = String(options.ip).trim();
+    if (ip.length > 64 || !/^[0-9A-Fa-f:.]+$/.test(ip)) throw gatewayFault('invalid-route-param');
+    const resolved = route.ipTemplate.replace('{ip}', ip);
+    const baseOrigin = new URL(route.url).origin;
+    const resolvedUrl = new URL(resolved);
+    if (resolvedUrl.origin !== baseOrigin || resolvedUrl.protocol !== 'https:') throw gatewayFault('invalid-route-param');
+    return resolvedUrl.href;
+  }
+
   function utf8Bytes(text) {
     if (typeof TextEncoder === 'undefined') return null;
     return new TextEncoder().encode(String(text));
@@ -1126,12 +1143,12 @@ const InternetGateway = (() => {
   async function readResponseBody(response, maxBytes) {
     const limit = Math.max(1, Math.min(HARD_RESPONSE_LIMIT, Math.trunc(Number(maxBytes) || 0)));
     const contentLength = Number(response.headers?.get?.('content-length'));
-    if (Number.isFinite(contentLength) && contentLength > limit) throw genericNetworkError();
+    if (Number.isFinite(contentLength) && contentLength > limit) throw gatewayFault('response-limit');
 
     if (!response.body || typeof response.body.getReader !== 'function' || typeof TextDecoder === 'undefined') {
       const text = await response.text();
       const bytes = utf8Bytes(text);
-      if (!bytes || bytes.byteLength > limit) throw genericNetworkError();
+      if (!bytes || bytes.byteLength > limit) throw gatewayFault('response-limit');
       return { text, bytes };
     }
 
@@ -1142,11 +1159,11 @@ const InternetGateway = (() => {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        if (!(value instanceof Uint8Array)) throw genericNetworkError();
+        if (!(value instanceof Uint8Array)) throw gatewayFault('response-format');
         total += value.byteLength;
         if (total > limit) {
           try { await reader.cancel(); } catch (_) {}
-          throw genericNetworkError();
+          throw gatewayFault('response-limit');
         }
         chunks.push(value);
       }
@@ -1164,6 +1181,10 @@ const InternetGateway = (() => {
     const route = ROUTES[routeId];
     if (!route || route.transport === 'navigate') throw genericNetworkError();
 
+    let requestUrl;
+    try { requestUrl = resolveRouteUrl(route, options); }
+    catch (_) { throw genericNetworkError(); }
+
     const body = options.body ?? null;
     const maxBodyBytes = Math.max(0, Number(route.maxBodyBytes) || 0);
     if (body != null && maxBodyBytes === 0) throw genericNetworkError();
@@ -1171,9 +1192,11 @@ const InternetGateway = (() => {
     if (bodyBytes.byteLength > maxBodyBytes) throw genericNetworkError();
     const requestDigest = bodyBytes.byteLength ? await digestBytes(bodyBytes) : null;
 
+    const requestMode = mode;
+    const requestPolicyEpoch = policyEpoch;
     const ticket = issueTicket(routeId);
     if (!ticket) {
-      record({ type:'denied', routeId, level:route.level, levelLabel:LEVEL_LABEL[route.level], method:route.method, url:route.url, purpose:route.purpose });
+      record({ type:'denied', mode:requestMode, policyEpoch:requestPolicyEpoch, failureKind:!levelAllowed(route.level) ? 'policy' : !nativeFetch ? 'transport-unavailable' : 'capability-unavailable', routeId, level:route.level, levelLabel:LEVEL_LABEL[route.level], method:route.method, url:requestUrl, purpose:route.purpose });
       throw genericNetworkError();
     }
     const permit = consumeTicket(ticket, routeId);
@@ -1183,18 +1206,27 @@ const InternetGateway = (() => {
     const requestId = permit.id;
     const timeoutMs = boundedTimeout(options.timeoutMs);
     const started = performance.now();
+    const inflightEntry = { controller, routeId, level:route.level, abortReason:'' };
     let externalAbort = null;
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    inflight.set(requestId, { controller, routeId, level:route.level });
+    const timeout = setTimeout(() => {
+      if (!inflightEntry.abortReason) inflightEntry.abortReason = 'timeout';
+      controller.abort();
+    }, timeoutMs);
+    inflight.set(requestId, inflightEntry);
 
     if (options.signal) {
-      externalAbort = () => controller.abort();
-      if (options.signal.aborted) controller.abort();
+      externalAbort = () => {
+        if (!inflightEntry.abortReason) inflightEntry.abortReason = 'external-abort';
+        controller.abort();
+      };
+      if (options.signal.aborted) externalAbort();
       else options.signal.addEventListener('abort', externalAbort, { once:true });
     }
 
+    let responseStatus = null;
     try {
-      const response = await nativeFetch(route.url, {
+      nativeRequestStartCount += 1;
+      const response = await nativeFetch(requestUrl, {
         method:route.method,
         signal:controller.signal,
         credentials:'omit',
@@ -1204,19 +1236,27 @@ const InternetGateway = (() => {
         headers:route.headers || undefined,
         body:body == null ? undefined : body
       });
-      if (!response.ok) throw genericNetworkError();
+      responseStatus = response.status;
+      if (!response.ok) throw gatewayFault('http', response.status);
 
       const { text:bodyText, bytes:responseBytes } = await readResponseBody(response, route.maxResponseBytes);
+      let parsed = null;
+      if (route.format === 'text') parsed = bodyText;
+      else if (route.format === 'json') {
+        try { parsed = JSON.parse(bodyText); }
+        catch (_) { throw gatewayFault('parse', response.status); }
+      }
+
       const responseDigest = await digestBytes(responseBytes);
       const durationMs = Math.max(0, Math.round(performance.now() - started));
       record({
-        type:'transfer',
+        type:'transfer', mode:requestMode, policyEpoch:requestPolicyEpoch,
         ticketId:requestId,
         routeId,
         level:route.level,
         levelLabel:LEVEL_LABEL[route.level],
         method:route.method,
-        url:route.url,
+        url:requestUrl,
         purpose:route.purpose,
         requestBytes:bodyBytes.byteLength,
         requestDigest,
@@ -1225,23 +1265,23 @@ const InternetGateway = (() => {
         status:response.status,
         durationMs
       });
-
-      if (route.format === 'text') return bodyText;
-      if (route.format === 'json') return JSON.parse(bodyText);
-      return null;
-    } catch (_) {
+      return parsed;
+    } catch (error) {
       const durationMs = Math.max(0, Math.round(performance.now() - started));
+      const failureKind = inflightEntry.abortReason || error?.kind || (error?.name === 'AbortError' ? 'transport-abort' : 'transport');
+      const status = error?.status == null ? responseStatus : (Number.isFinite(Number(error.status)) ? Number(error.status) : responseStatus);
       record({
-        type:'failed',
+        type:'failed', mode:requestMode, policyEpoch:requestPolicyEpoch, failureKind,
         ticketId:requestId,
         routeId,
         level:route.level,
         levelLabel:LEVEL_LABEL[route.level],
         method:route.method,
-        url:route.url,
+        url:requestUrl,
         purpose:route.purpose,
         requestBytes:bodyBytes.byteLength,
         requestDigest,
+        status,
         durationMs
       });
       throw genericNetworkError();
@@ -1267,9 +1307,12 @@ const InternetGateway = (() => {
     catch (_) { return false; }
   }
 
-  function abortInflight() {
+  function abortInflight(reason = 'policy-change') {
     for (const entry of inflight.values()) {
-      try { entry.controller.abort(); } catch (_) {}
+      try {
+        if (!entry.abortReason) entry.abortReason = reason;
+        entry.controller.abort();
+      } catch (_) {}
     }
     inflight.clear();
   }
@@ -1409,6 +1452,12 @@ const InternetGateway = (() => {
     for (const [id, route] of Object.entries(ROUTES)) {
       if (!validLevels.has(route.level)) issues.push(`Internet Route levelが不正: ${id}`);
       if (!/^https:\/\//.test(route.url)) issues.push(`Internet RouteがHTTPSではありません: ${id}`);
+      if (route.ipTemplate) {
+        try {
+          const templateUrl = new URL(route.ipTemplate.replace('{ip}', '8.8.8.8'));
+          if (!route.ipTemplate.includes('{ip}') || templateUrl.protocol !== 'https:' || templateUrl.origin !== new URL(route.url).origin) issues.push(`Internet Route IPテンプレートが不正: ${id}`);
+        } catch (_) { issues.push(`Internet Route IPテンプレートが不正: ${id}`); }
+      }
       if (route.transport !== 'navigate' && !['json','text'].includes(route.format)) issues.push(`Internet Route formatが不正: ${id}`);
       if ((Number(route.maxBodyBytes) || 0) < 0) issues.push(`Internet Route body上限が不正: ${id}`);
       if (route.transport !== 'navigate') {
@@ -1437,6 +1486,10 @@ const InternetGateway = (() => {
     if (!dnsMeta || String(dnsMeta.content || '').toLowerCase() !== 'off') issues.push('DNS prefetch制御がoffではありません');
     return Array.from(new Set(issues));
   }
+
+  InternetGatewayTestBridge = Object.freeze({
+    get nativeRequestStartCount() { return nativeRequestStartCount; }
+  });
 
   return Object.freeze({
     MODE, LEVEL, init, cycle, request, navigate, modeLabel, buttonLabel,
@@ -2686,9 +2739,6 @@ const Core = (() => {
    SYSTEM UTILS LAYER
 ========================================================= */
 const SysUtils = (() => {
-  const GEO_TTL = 12*60*60*1000;
-  let _ipCache = { val:null, ts:0, ttl:120000 };
-
   const JP_PREF_MAP = {
     "Hokkaido":"北海道","Aomori":"青森県","Iwate":"岩手県","Miyagi":"宮城県","Akita":"秋田県","Yamagata":"山形県","Fukushima":"福島県",
     "Ibaraki":"茨城県","Tochigi":"栃木県","Gunma":"群馬県","Saitama":"埼玉県","Chiba":"千葉県","Tokyo":"東京都","Kanagawa":"神奈川県",
@@ -2854,45 +2904,89 @@ const SysUtils = (() => {
     });
   }
 
-  async function fetchPublicIP(timeoutMs=3000) {
-    const { ip } = await InternetGateway.request('network.public-ip', { timeoutMs });
-    if (!ip) throw new Error('ipify error');
-    const value = String(ip);
-    return Object.freeze({ ip:value, family:value.includes(':') ? 'IPv6' : 'IPv4' });
+  const GEO_PROVIDERS = Object.freeze([
+    Object.freeze({
+      route:'location.ipwhois',
+      pick:j=>({ ip:j?.ip, ok:j?.success !== false, cc:j?.country_code, region:j?.region, code:j?.region_code, city:j?.city, postal:j?.postal, isp:j?.connection?.isp||j?.connection?.org })
+    }),
+    Object.freeze({
+      route:'location.ipapi',
+      pick:j=>({ ip:j?.ip, ok:j?.error !== true, cc:j?.country_code||j?.country, region:j?.region, code:j?.region_code, city:j?.city, postal:j?.postal, isp:j?.org })
+    }),
+    Object.freeze({
+      route:'location.ipinfo',
+      pick:j=>({ ip:j?.ip, ok:true, cc:j?.country, region:j?.region, code:'', city:j?.city, postal:j?.postal, isp:j?.org })
+    }),
+    Object.freeze({
+      route:'location.cloudflare',
+      exact:false,
+      pick:t=>{
+        const ip=(/^ip=([^\r\n]+)/m.exec(String(t||''))||[])[1]||'';
+        const cc=(/^loc=([A-Z]{2})/m.exec(String(t||''))||[])[1]||'';
+        return { ip, ok:true, cc, region:'', code:'', city:'', postal:'', isp:'' };
+      }
+    })
+  ]);
+
+  function ipDataFrom(value) {
+    const ip = String(value || '').trim();
+    if (!ip || ip.length > 64 || !/^[0-9A-Fa-f:.]+$/.test(ip)) throw new Error('invalid public ip');
+    return Object.freeze({ ip, family:ip.includes(':') ? 'IPv6' : 'IPv4' });
   }
 
-  async function fetchGeo(timeoutMs=3500) {
-    const providers = [
-      { route:'location.ipapi', pick:j=>({cc:j.country_code||j.country, region:j.region, code:j.region_code, city:j.city, postal:j.postal, isp:j.org}) },
-      { route:'location.ipwhois', pick:j=>({cc:j.country_code, region:j.region, code:'', city:j.city, postal:j.postal, isp:j.connection?.isp||j.connection?.org}) },
-      { route:'location.ipinfo', pick:j=>({cc:j.country, region:j.region, code:'', city:j.city, postal:j.postal, isp:j.org}) },
-      { route:'location.cloudflare', pick:t=>{ const m=/\bloc=([A-Z]{2})/m.exec(t)||[]; return {cc:m[1]||'', region:'', code:'', city:'', postal:'', isp:''}; } },
-      { route:'location.ip-api', pick:j=>({cc:j.countryCode, region:j.regionName, code:j.region, city:j.city, postal:j.zip, isp:j.isp||j.org||j.as}) }
-    ];
+  function geoFromProviderData(data, source) {
+    if (!data?.ok) throw new Error('location provider error');
+    const observedIp = String(data.ip || '').trim();
+    const cc = String(data.cc || '').trim().toUpperCase();
+    if (!observedIp || !cc || !/^[A-Z]{2}$/.test(cc)) throw new Error('location provider incomplete');
+    const rawIsp = String(data.isp || '').trim();
+    if (cc === 'JP') {
+      const prefJa = mapPref(data.region || '', data.code || '');
+      const cityJa = jpCityLabel(prefJa, data.city || '');
+      const postal = formatPostalJP(data.postal || '');
+      let label = `日本・${prefJa}`;
+      if (cityJa) label += `・${cityJa}`;
+      if (postal) label += `（〒${postal}）`;
+      let isp = rawIsp.replace(/^AS\d+\s*/i, '').replace(/,.*/, '').trim();
+      if (isp) label += ` [${isp}]`;
+      return Object.freeze({ label, countryCode:'JP', countryName:'Japan', isp, observedIp, source });
+    }
+    return Object.freeze({ label:'圏外', countryCode:cc, countryName:countryNameEnglish(cc), isp:rawIsp, observedIp, source });
+  }
+
+  async function fetchPublicIP(timeoutMs=3000, requester=InternetGateway.request) {
+    const { ip } = await requester('network.public-ip', { timeoutMs });
+    return ipDataFrom(ip);
+  }
+
+  async function fetchGeoForIP(ip, timeoutMs=3500, requester=InternetGateway.request) {
+    const target = ipDataFrom(ip).ip;
     let lastError = null;
-    for (const p of providers) {
+    for (const p of GEO_PROVIDERS) {
+      if (p.exact === false) continue;
       try {
-        const raw = await InternetGateway.request(p.route, { timeoutMs });
-        const d = p.pick(raw);
-        const cc = String(d.cc || '').toUpperCase();
-        if (!cc) continue;
-        if (cc === 'JP') {
-          const prefJa = mapPref(d.region || '', d.code || '');
-          const cityJa = jpCityLabel(prefJa, d.city || '');
-          const postal = formatPostalJP(d.postal || '');
-          let label = `日本・${prefJa}`;
-          if (cityJa) label += `・${cityJa}`;
-          if (postal) label += `（〒${postal}）`;
-          let isp = String(d.isp || '').replace(/^AS\d+\s*/i, '').replace(/,.*/, '').trim();
-          if (isp) label += ` [${isp}]`;
-          return Object.freeze({ label, countryCode:'JP', countryName:'Japan', isp });
+        const raw = await requester(p.route, { timeoutMs, ip:target });
+        const geo = geoFromProviderData(p.pick(raw), p.route);
+        if (geo.observedIp !== target) {
+          lastError = new Error(`location IP mismatch: ${p.route}`);
+          continue;
         }
-        return Object.freeze({ label:'圏外', countryCode:cc, countryName:countryNameEnglish(cc), isp:String(d.isp || '').trim() });
-      } catch (error) {
-        lastError = error;
-      }
+        return geo;
+      } catch (error) { lastError = error; }
     }
     throw lastError || new Error('location unavailable');
+  }
+
+  async function fetchIdentityFallback(timeoutMs=3500, requester=InternetGateway.request) {
+    let lastError = null;
+    for (const p of GEO_PROVIDERS) {
+      try {
+        const raw = await requester(p.route, { timeoutMs });
+        const geo = geoFromProviderData(p.pick(raw), p.route);
+        return Object.freeze({ ipData:ipDataFrom(geo.observedIp), geo });
+      } catch (error) { lastError = error; }
+    }
+    throw lastError || new Error('identity unavailable');
   }
 
   async function fetchNetworkTimeOffset(timeoutMs=3000) {
@@ -2967,44 +3061,6 @@ const SysUtils = (() => {
     return (await deviceInfoSnapshot()).text;
   }
 
-  const NETWORK_FAILURE_TTL = 15000;
-
-  async function publicIPSnapshot(){
-    const now = performance.now();
-    if(!_ipCache.val || (now - _ipCache.ts) >= _ipCache.ttl) {
-      try{
-        const value = await fetchPublicIP(3000);
-        _ipCache = { val:value, ts:now, ttl:120000 };
-      }catch(_){
-        _ipCache = { val:Object.freeze({ ip:'', family:'' }), ts:now, ttl:NETWORK_FAILURE_TTL };
-      }
-    }
-
-    const cached = _ipCache.val;
-    if(!cached || !cached.ip) return Object.freeze({ text:'IP: N/A', baseText:'IP: N/A', ip:'', family:'', countryCode:'', countryName:'', foreign:false });
-
-    const countryCode = String(AppState.locationCountryCode || '').toUpperCase();
-    const foreign = !!countryCode && countryCode !== 'JP';
-    const countryName = foreign ? (AppState.locationCountryName || countryNameEnglish(countryCode)) : '';
-    const baseText = `IP: ${cached.ip} [${cached.family}]`;
-    const text = foreign && countryName ? `${baseText}（${countryName}）` : baseText;
-    return Object.freeze({ text, baseText, ip:cached.ip, family:cached.family, countryCode, countryName, foreign });
-  }
-
-  async function publicIP(){
-    return (await publicIPSnapshot()).text;
-  }
-
-  async function networkDetailSnapshot(){
-    const connection = connectionInfoSnapshot();
-    const ip=await publicIPSnapshot();
-    return Object.freeze({ text:`${connection.line}\n${ip.text}`, connectionLine:connection.line, connection, ip });
-  }
-
-  async function networkDetail(){
-    return (await networkDetailSnapshot()).text;
-  }
-
   function formatPostalJP(z){
     const s = String(z||'').replace(/\D/g,'');
     return s.length===7 ? `${s.slice(0,3)}-${s.slice(3)}` : (s||'');
@@ -3034,46 +3090,10 @@ const SysUtils = (() => {
     return r || '不明';
   }
 
-  async function detectGeo(timeoutMs=3500){
-    const now = Date.now();
-    const ttl = AppState.locationLabel === 'N/A' ? NETWORK_FAILURE_TTL : GEO_TTL;
-    if(AppState.locationLabel && AppState.locationTs && (now - AppState.locationTs) < ttl) return AppState.locationLabel;
-    try {
-      const geo = await fetchGeo(timeoutMs);
-      AppState.locationLabel = geo.label;
-      AppState.locationTs = now;
-      AppState.locationCountryCode = geo.countryCode;
-      AppState.locationCountryName = geo.countryName;
-      return geo.label;
-    } catch (_) {
-      AppState.locationLabel = 'N/A';
-      AppState.locationTs = now;
-      AppState.locationCountryCode = '';
-      AppState.locationCountryName = '';
-      return AppState.locationLabel;
-    }
-  }
-
-  async function syncNetworkTime(){
-    try { AppState.netTimeOffset = await fetchNetworkTimeOffset(3000); }
-    catch (_) { AppState.netTimeOffset = 0; }
-    return AppState.netTimeOffset;
-  }
-
-  function resetNetworkCache() {
-    _ipCache = { val:null, ts:0, ttl:120000 };
-    AppState.locationLabel = 'N/A';
-    AppState.locationTs = 0;
-    AppState.locationCountryCode = '';
-    AppState.locationCountryName = '';
-  }
-
   return {
     fmtJapaneseDate, fmtJapanTimestamp,
     deviceInfo, deviceInfoSnapshot, displayInfoSnapshot, connectionInfoSnapshot,
-    publicIP, publicIPSnapshot, networkDetail, networkDetailSnapshot,
-    fetchPublicIP, fetchGeo, fetchNetworkTimeOffset,
-    detectGeo, syncNetworkTime, resetNetworkCache,
+    fetchPublicIP, fetchGeoForIP, fetchIdentityFallback, fetchNetworkTimeOffset,
     isJapanLocale, isJapanTimeZone, countryNameEnglish
   };
 })();
@@ -3101,6 +3121,11 @@ const SystemMonitor = (() => {
   const RETRY_MS = Object.freeze([60000, 120000, 300000]);
 
   const frozen = value => Object.freeze(value);
+  const identityAllowedFor = (mode, zess=false, online=true) => !zess && online && mode === InternetGateway.MODE.ON;
+  const timeAllowedFor = (mode, zess=false, online=true) => !zess && online && (mode === InternetGateway.MODE.TIME || mode === InternetGateway.MODE.ON);
+  const identityAllowed = () => identityAllowedFor(InternetGateway.currentMode, !!window.__ZESS_MODE__, navigator.onLine !== false);
+  const timeAllowed = () => timeAllowedFor(InternetGateway.currentMode, !!window.__ZESS_MODE__, navigator.onLine !== false);
+  let identityRequester = (routeId, options) => InternetGateway.request(routeId, options);
   const emptyIdentity = (reason='') => frozen({
     ip:'', family:'', baseText:'IP: N/A', text:'IP: N/A',
     countryCode:'', countryName:'', foreign:false,
@@ -3327,7 +3352,7 @@ const SystemMonitor = (() => {
 
   function scheduleIdentity(delayMs) {
     clearIdentityTimer();
-    if (destroyed || diagnosticActive || document.hidden || window.__ZESS_MODE__ || navigator.onLine === false) return;
+    if (destroyed || diagnosticActive || document.hidden || !identityAllowed()) return;
     identityTimer = setTimeout(() => {
       identityTimer = 0;
       refreshIdentity({ force:true, reason:'ttl' });
@@ -3343,16 +3368,30 @@ const SystemMonitor = (() => {
   async function performIdentityRefresh(epoch) {
     const ipObservedAt = Date.now();
     let ipData;
+    let primaryFailed = false;
     try {
-      ipData = await SysUtils.fetchPublicIP(3000);
+      ipData = await SysUtils.fetchPublicIP(3000, identityRequester);
     } catch (_) {
-      if (epoch === identityEpoch && !destroyed) {
-        commitIdentity(emptyIdentity('unavailable'));
-        scheduleIdentityFailure();
+      primaryFailed = true;
+    }
+
+    if (epoch !== identityEpoch || destroyed) return state.identity;
+
+    if (primaryFailed) {
+      try {
+        const combined = await SysUtils.fetchIdentityFallback(3500, identityRequester);
+        if (epoch !== identityEpoch || destroyed) return state.identity;
+        identityFailureCount = 0;
+        commitIdentity(identityFrom(combined.ipData, combined.geo, ipObservedAt, Date.now()));
+        scheduleIdentity(IP_TTL_MS);
+      } catch (_) {
+        if (epoch === identityEpoch && !destroyed) {
+          commitIdentity(emptyIdentity('unavailable'));
+          scheduleIdentityFailure();
+        }
       }
       return state.identity;
     }
-    if (epoch !== identityEpoch || destroyed) return state.identity;
 
     identityFailureCount = 0;
     const previous = state.identity;
@@ -3364,29 +3403,36 @@ const SystemMonitor = (() => {
       commitIdentity(frozen({ ...previous, ipObservedAt }));
     }
 
+    let geoFailed = false;
     if (!geoFresh) {
       try {
-        const geo = await SysUtils.fetchGeo(3500);
+        const geo = await SysUtils.fetchGeoForIP(ipData.ip, 3500, identityRequester);
         if (epoch === identityEpoch && !destroyed && state.identity.ip === ipData.ip) {
           commitIdentity(identityFrom(ipData, geo, ipObservedAt, Date.now()));
         }
       } catch (_) {
+        geoFailed = true;
         if (epoch === identityEpoch && !destroyed && state.identity.ip === ipData.ip && state.identity.geoForIp !== ipData.ip) {
           commitIdentity(identityFrom(ipData, null, ipObservedAt, 0));
         }
       }
     }
 
-    if (epoch === identityEpoch && !destroyed) scheduleIdentity(IP_TTL_MS);
+    if (epoch === identityEpoch && !destroyed) {
+      if (geoFailed) scheduleIdentityFailure();
+      else scheduleIdentity(IP_TTL_MS);
+    }
     return state.identity;
   }
 
   function refreshIdentity({ force=false } = {}) {
     if (destroyed || diagnosticActive) return Promise.resolve(state.identity);
-    if (window.__ZESS_MODE__ || navigator.onLine === false) {
+    if (!identityAllowed()) {
       identityEpoch += 1;
+      identityQueued = false;
       clearIdentityTimer();
-      if (state.identity.ip || state.identity.geoLabel !== 'N/A') commitIdentity(emptyIdentity(window.__ZESS_MODE__ ? 'zess' : 'offline'));
+      const reason = window.__ZESS_MODE__ ? 'zess' : navigator.onLine === false ? 'offline' : `policy-${InternetGateway.currentMode}`;
+      if (state.identity.ip || state.identity.geoLabel !== 'N/A') commitIdentity(emptyIdentity(reason));
       return Promise.resolve(state.identity);
     }
     if (force) identityEpoch += 1;
@@ -3407,8 +3453,9 @@ const SystemMonitor = (() => {
 
   function refreshTime({ force=false } = {}) {
     if (destroyed || diagnosticActive) return Promise.resolve(AppState.netTimeOffset);
-    if (window.__ZESS_MODE__ || navigator.onLine === false) {
+    if (!timeAllowed()) {
       timeEpoch += 1;
+      timeQueued = false;
       AppState.netTimeOffset = 0;
       lastTimeSyncAt = 0;
       updateClock();
@@ -3486,14 +3533,19 @@ const SystemMonitor = (() => {
 
   function policyChanged() {
     if (diagnosticActive) return;
+    identityEpoch += 1;
+    timeEpoch += 1;
+    identityQueued = false;
+    timeQueued = false;
     clearIdentityTimer();
     identityFailureCount = 0;
-    commitIdentity(emptyIdentity('policy-change'));
+    commitIdentity(emptyIdentity(`policy-${InternetGateway.currentMode}`));
     AppState.netTimeOffset = 0;
     lastTimeSyncAt = 0;
     updateClock();
-    refreshTime({ force:true });
-    refreshIdentity({ force:true, reason:'policy-change' });
+    if (timeAllowed()) refreshTime({ force:false });
+    else scheduleClock();
+    if (identityAllowed()) refreshIdentity({ force:false, reason:'policy-change' });
   }
 
   function install(target, name, handler, options) {
@@ -3531,10 +3583,8 @@ const SystemMonitor = (() => {
     scheduleClock();
     refreshDevice();
     initPower();
-    if (!window.__ZESS_MODE__ && navigator.onLine !== false) {
-      refreshTime({ force:true });
-      refreshIdentity({ force:true, reason:'init' });
-    }
+    refreshTime({ force:true });
+    refreshIdentity({ force:true, reason:'init' });
     emit(DIRTY.SECURITY | DIRTY.ALL);
     return snapshot();
   }
@@ -3582,7 +3632,8 @@ const SystemMonitor = (() => {
         locationCountryName:AppState.locationCountryName
       }),
       lastTimeSyncAt,
-      connectionObservedAt
+      connectionObservedAt,
+      identityFailureCount
     };
     diagnosticActive = true;
     identityEpoch += 1;
@@ -3613,6 +3664,16 @@ const SystemMonitor = (() => {
     const next = identityFrom(ipData, geo, now, geo ? now : 0);
     commitIdentity(next);
     return next;
+  }
+
+  async function diagnosticAcquire(requester) {
+    requireDiagnostic();
+    if (typeof requester !== 'function') throw new Error('Diagnostic requester required');
+    const previousRequester = identityRequester;
+    identityRequester = requester;
+    const epoch = ++identityEpoch;
+    try { return await performIdentityRefresh(epoch); }
+    finally { identityRequester = previousRequester; }
   }
 
   function diagnosticDevice(device) {
@@ -3656,11 +3717,12 @@ const SystemMonitor = (() => {
     AppState.locationCountryName = saved.app.locationCountryName;
     lastTimeSyncAt = saved.lastTimeSyncAt;
     connectionObservedAt = saved.connectionObservedAt;
+    identityFailureCount = saved.identityFailureCount;
     diagnosticActive = false;
     for (const key of Object.keys(revisions)) revisions[key] += 1;
     emit(DIRTY.ALL);
     scheduleClock();
-    if (!document.hidden && !window.__ZESS_MODE__ && navigator.onLine !== false) {
+    if (!document.hidden && identityAllowed()) {
       const observed = Number(state.identity?.ipObservedAt) || 0;
       const age = observed ? Math.max(0, Date.now() - observed) : 0;
       scheduleIdentity(observed ? Math.max(1000, IP_TTL_MS - age) : IP_TTL_MS);
@@ -3709,7 +3771,7 @@ const SystemMonitor = (() => {
     const issues = [];
     const values = [DIRTY.DEVICE, DIRTY.DISPLAY, DIRTY.POWER, DIRTY.CONNECTION, DIRTY.IDENTITY, DIRTY.CLOCK, DIRTY.SECURITY];
     if (new Set(values).size !== values.length || values.some(v => v <= 0 || (v & (v - 1)) !== 0)) issues.push('SystemMonitor DIRTYビットが不正です');
-    if (typeof SysUtils.fetchPublicIP !== 'function' || typeof SysUtils.fetchGeo !== 'function') issues.push('SystemMonitor Network collectorがありません');
+    if (typeof SysUtils.fetchPublicIP !== 'function' || typeof SysUtils.fetchGeoForIP !== 'function' || typeof SysUtils.fetchIdentityFallback !== 'function') issues.push('SystemMonitor Network collectorがありません');
     if (typeof SysUtils.connectionInfoSnapshot !== 'function') issues.push('SystemMonitor Connection collectorがありません');
     return issues;
   }
@@ -3719,6 +3781,9 @@ const SystemMonitor = (() => {
     const add = (name, ok, detail='') => checks.push(frozen({ name, ok:!!ok, detail:ok ? '' : String(detail || 'failed') }));
     const dirtyValues = [DIRTY.DEVICE, DIRTY.DISPLAY, DIRTY.POWER, DIRTY.CONNECTION, DIRTY.IDENTITY, DIRTY.CLOCK, DIRTY.SECURITY];
     add('DIRTY Bits Unique', new Set(dirtyValues).size === dirtyValues.length && dirtyValues.every(v => (v & (v - 1)) === 0));
+    add('Policy / Identity ON Only', identityAllowedFor(InternetGateway.MODE.ON, false, true) && !identityAllowedFor(InternetGateway.MODE.TIME, false, true) && !identityAllowedFor(InternetGateway.MODE.OFF, false, true));
+    add('Policy / Time TIME or ON', timeAllowedFor(InternetGateway.MODE.TIME, false, true) && timeAllowedFor(InternetGateway.MODE.ON, false, true) && !timeAllowedFor(InternetGateway.MODE.OFF, false, true));
+    add('Policy / Offline & ZESS Deny', !identityAllowedFor(InternetGateway.MODE.ON, false, false) && !identityAllowedFor(InternetGateway.MODE.ON, true, true) && !timeAllowedFor(InternetGateway.MODE.ON, false, false) && !timeAllowedFor(InternetGateway.MODE.ON, true, true));
     const offline = SysUtils.connectionInfoSnapshot({ effectiveType:'4g', downlink:10, rtt:50 }, false);
     add('Connection Format / Offline Priority', offline.line === '接続: オフライン');
     const zero = SysUtils.connectionInfoSnapshot({ effectiveType:'4g', downlink:0, rtt:0, saveData:false }, true);
@@ -3739,7 +3804,7 @@ const SystemMonitor = (() => {
 
   SystemMonitorTestBridge = Object.freeze({
     begin:beginDiagnostic, restore:restoreDiagnostic, settle:diagnosticSettle,
-    connection:diagnosticConnection, identity:diagnosticIdentity, device:diagnosticDevice,
+    connection:diagnosticConnection, identity:diagnosticIdentity, acquire:diagnosticAcquire, device:diagnosticDevice,
     display:diagnosticDisplay, power:diagnosticPower, clock:diagnosticClock,
     get active() { return diagnosticActive; }
   });
@@ -10962,10 +11027,102 @@ async function detectBase85Variants(input) {
         observer.disconnect();
         return Array.from(keys).sort();
       };
+      const makeFakeRequester = plan => {
+        const calls = [];
+        const requester = async (route, options = {}) => {
+          const ip = String(options.ip || '');
+          calls.push(Object.freeze({ route, ip }));
+          const exactKey = ip ? `${route}|${ip}` : route;
+          const hasExact = Object.prototype.hasOwnProperty.call(plan, exactKey);
+          const hasRoute = Object.prototype.hasOwnProperty.call(plan, route);
+          if (!hasExact && !hasRoute) throw new TypeError('Synthetic network failure');
+          const value = plan[hasExact ? exactKey : route];
+          if (value instanceof Error || value === false) throw (value instanceof Error ? value : new TypeError('Synthetic network failure'));
+          return typeof value === 'function' ? value({ route, options, calls }) : value;
+        };
+        return Object.freeze({ requester, calls });
+      };
 
       const original = bridge.begin();
+      const gatewayStartsBefore = InternetGatewayTestBridge?.nativeRequestStartCount ?? null;
       const baseDevice = original.device;
       const cases = [
+        {
+          name:'Acquisition Primary + Exact Geo / DOM',
+          run:async expect => {
+            const fake = makeFakeRequester({
+              'network.public-ip':{ ip:'203.0.113.40' },
+              'location.ipwhois|203.0.113.40':{ ip:'203.0.113.40', success:true, country_code:'JP', region:'Tokyo', region_code:'13', city:'Chiyoda', postal:'100-0001', connection:{ isp:'TEST ISP' } }
+            });
+            await bridge.acquire(fake.requester);
+            await bridge.settle();
+            expect(lineText('ip') === 'IP: 203.0.113.40 [IPv4]', 'Primary IP must render');
+            expect(lineText('geo').includes('位置: 日本・東京都'), 'Exact-IP Geo must render');
+            expect(fake.calls.length === 2 && fake.calls[0].route === 'network.public-ip' && fake.calls[1].route === 'location.ipwhois' && fake.calls[1].ip === '203.0.113.40', 'Primary then exact Geo request order');
+          }
+        },
+        {
+          name:'Acquisition Primary Failure → Combined Fallback / DOM',
+          run:async expect => {
+            const fake = makeFakeRequester({
+              'network.public-ip':false,
+              'location.ipwhois':{ ip:'203.0.113.41', success:true, country_code:'DE', region:'Berlin', region_code:'BE', city:'Berlin', postal:'10115', connection:{ isp:'TEST ISP' } }
+            });
+            await bridge.acquire(fake.requester);
+            await bridge.settle();
+            const ip = sysLine('ip');
+            expect(lineText('ip') === 'IP: 203.0.113.41 [IPv4]（Germany）', 'Combined fallback IP/country must render');
+            expect(lineText('geo') === '位置: 圏外', 'Foreign fallback Geo must render');
+            expect(ip?.querySelector('.sys-alert')?.textContent === 'Germany', 'Fallback country alert class');
+            expect(fake.calls.length === 2 && fake.calls[1].route === 'location.ipwhois' && fake.calls[1].ip === '', 'Fallback must use provider-observed client IP');
+          }
+        },
+        {
+          name:'Acquisition Geo IP Mismatch → Next Provider / DOM',
+          run:async expect => {
+            const fake = makeFakeRequester({
+              'network.public-ip':{ ip:'203.0.113.42' },
+              'location.ipwhois|203.0.113.42':{ ip:'203.0.113.99', success:true, country_code:'DE', region:'Berlin', city:'Berlin', connection:{ isp:'BAD BIND' } },
+              'location.ipapi|203.0.113.42':{ ip:'203.0.113.42', country_code:'JP', region:'Tokyo', region_code:'13', city:'Chiyoda', postal:'100-0001', org:'TEST ISP' }
+            });
+            await bridge.acquire(fake.requester);
+            await bridge.settle();
+            expect(lineText('ip') === 'IP: 203.0.113.42 [IPv4]', 'Mismatched provider must not replace IP');
+            expect(lineText('geo').includes('位置: 日本・東京都'), 'Next matching provider Geo must render');
+            expect(!lineText('ip').includes('Germany'), 'Mismatched Geo must never bind');
+            expect(fake.calls.map(x => x.route).join(',') === 'network.public-ip,location.ipwhois,location.ipapi', 'Mismatch must continue sequential fallback');
+          }
+        },
+        {
+          name:'Acquisition Fresh Geo Skips Lookup / DOM',
+          run:async expect => {
+            bridge.identity({ ip:'203.0.113.50', family:'IPv4' }, { label:'日本・東京都', countryCode:'JP', countryName:'Japan', isp:'TEST' });
+            await bridge.settle();
+            const fake = makeFakeRequester({ 'network.public-ip':{ ip:'203.0.113.50' } });
+            await bridge.acquire(fake.requester);
+            await bridge.settle();
+            expect(fake.calls.length === 1 && fake.calls[0].route === 'network.public-ip', 'Fresh Geo must not call a Geo provider');
+            expect(lineText('geo') === '位置: 日本・東京都', 'Fresh Geo must remain visible');
+          }
+        },
+        {
+          name:'Acquisition All Providers Fail / DOM',
+          run:async expect => {
+            const fake = makeFakeRequester({ 'network.public-ip':false });
+            await bridge.acquire(fake.requester);
+            await bridge.settle();
+            expect(lineText('ip') === 'IP: N/A', 'All-provider failure must show IP N/A');
+            expect(lineText('geo') === '位置: N/A', 'All-provider failure must show Geo N/A');
+            expect(fake.calls.map(x => x.route).join(',') === 'network.public-ip,location.ipwhois,location.ipapi,location.ipinfo,location.cloudflare', 'All combined fallbacks must be attempted sequentially');
+          }
+        },
+        {
+          name:'Diagnostic Acquisition / Zero Gateway Egress',
+          run:async expect => {
+            expect(gatewayStartsBefore !== null, 'InternetGateway diagnostic counter available');
+            if (gatewayStartsBefore !== null) expect(InternetGatewayTestBridge.nativeRequestStartCount === gatewayStartsBefore, 'Synthetic acquisition must not start a native Gateway request');
+          }
+        },
         {
           name:'Japan Identity / DOM',
           run:async expect => {
@@ -11878,7 +12035,8 @@ async function detectBase85Variants(input) {
                     const outBytes = Number.isFinite(entry.requestBytes) ? `${entry.requestBytes}B` : '-';
                     const inBytes = Number.isFinite(entry.responseBytes) ? `${entry.responseBytes}B` : '-';
                     const duration = Number.isFinite(entry.durationMs) ? `${entry.durationMs}ms` : '-';
-                    return `#${entry.seq} ${stamp} ${String(entry.type || '').toUpperCase()} mode=${gatewayModeLabel(entry.mode)} route=${entry.routeId || '-'} level=${entry.levelLabel || '-'} method=${entry.method || '-'} status=${status} out=${outBytes} in=${inBytes} duration=${duration} ticket=${entry.ticketId || '-'} reqSHA256=${entry.requestDigest || '-'} resSHA256=${entry.responseDigest || '-'}`;
+                    const failure = entry.failureKind || '-';
+                    return `#${entry.seq} ${stamp} ${String(entry.type || '').toUpperCase()} mode=${gatewayModeLabel(entry.mode)} route=${entry.routeId || '-'} level=${entry.levelLabel || '-'} method=${entry.method || '-'} status=${status} failure=${failure} out=${outBytes} in=${inBytes} duration=${duration} ticket=${entry.ticketId || '-'} reqSHA256=${entry.requestDigest || '-'} resSHA256=${entry.responseDigest || '-'}`;
                 }).join('\n') : '記録なし';
 
                 const reportLines = [
