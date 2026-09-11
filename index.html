@@ -18,6 +18,7 @@
 <style>
   :root{
     --alert:#ff4747;
+    --warning:#ffd43b;
     --sys-offset:120px;
     --data-font-stack:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Cascadia Mono","Cascadia Code","Liberation Mono","DejaVu Sans Mono","Noto Sans Mono CJK JP","MS Gothic","ＭＳ ゴシック","Courier New",monospace;
     --data-font-stack-fallback:"Courier New","Liberation Mono","DejaVu Sans Mono","Noto Sans Mono CJK JP","MS Gothic","ＭＳ ゴシック",monospace;
@@ -427,20 +428,13 @@
   .toast.show{opacity:1}
   
   .sys{
-    --sys-panel-fg:var(--muted);
     position:fixed;right:10px;bottom:10px;width:max-content;max-width:calc(100vw - 20px);
-    color:var(--sys-panel-fg);font-size:.75em;line-height:1.35;white-space:pre-wrap;text-align:right;
+    color:var(--muted);font-size:.75em;line-height:1.35;white-space:pre-wrap;text-align:right;
     pointer-events:auto; user-select:text; transition: color 0.4s ease;
     view-transition-name: sys-panel;
   }
-  .sys-alert-blink {
-    font-weight:700;
-    animation:sys-alert-blink .2s steps(1,end) infinite;
-  }
-  @keyframes sys-alert-blink {
-    0%,49.999% { color:var(--sys-panel-fg); text-shadow:none; }
-    50%,100% { color:var(--alert); text-shadow:0 0 6px var(--alert); }
-  }
+  .sys .sys-warning{color:var(--warning);text-shadow:none;}
+  .sys .sys-alert{color:var(--alert);text-shadow:none;}
   .unofficial{
     position:fixed;left:10px;bottom:10px;
     color:var(--muted);font-size:.5em;line-height:1.35;white-space:nowrap;
@@ -2797,43 +2791,37 @@ const SysUtils = (() => {
     }
   }
 
-  function isJapanLocaleTag(locale) {
-    const tag = String(locale || '').trim();
-    if(!tag || tag === '不明') return false;
+  function isJapanLocale(localeTag) {
+    const raw = String(localeTag || '').trim();
+    if (!raw) return false;
     try {
-      const parsed = new Intl.Locale(tag.replace(/_/g, '-'));
-      const region = (parsed.region || parsed.maximize().region || '').toUpperCase();
-      return region === 'JP';
+      const locale = new Intl.Locale(raw);
+      if (locale.region) return String(locale.region).toUpperCase() === 'JP';
+      return String(locale.language || '').toLowerCase() === 'ja';
     } catch (_) {
-      return /(?:^|[-_])JP$/i.test(tag) || /^ja(?:[-_]|$)/i.test(tag);
+      if (/(?:^|[-_])JP(?:$|[-_])/i.test(raw)) return true;
+      return /^ja(?:$|[-_])/i.test(raw) && !/[-_][A-Z]{2}(?:$|[-_])/i.test(raw);
     }
   }
 
-  function localeProfile() {
-    const lang = navigator.language || '不明';
-    return { lang, isJapan:isJapanLocaleTag(lang) };
+  function isJapanTimeZone(timeZone) {
+    const tz = String(timeZone || '').trim();
+    return tz === 'Asia/Tokyo' || tz === 'Japan';
   }
 
-  function countryNameEnglish(countryCode, providerName='') {
+  function countryNameEnglish(countryCode) {
     const cc = String(countryCode || '').trim().toUpperCase();
-    if(!/^[A-Z]{2}$/.test(cc)) return '';
+    if (!/^[A-Z]{2}$/.test(cc)) return '';
     try {
-      if(typeof Intl.DisplayNames === 'function') {
-        const display = new Intl.DisplayNames(['en'], { type:'region', fallback:'code' }).of(cc);
-        if(display && display !== cc) return display;
+      if (typeof Intl.DisplayNames === 'function') {
+        const name = new Intl.DisplayNames(['en'], { type:'region', fallback:'code' }).of(cc);
+        if (name && name !== cc) return name;
       }
     } catch (_) {}
-    const fallback = String(providerName || '').trim();
-    return fallback || cc;
+    return cc;
   }
 
-  function locationCountryProfile() {
-    const code = String(AppState.locationCountryCode || '').toUpperCase();
-    const name = String(AppState.locationCountryName || '');
-    return { code, name, known:/^[A-Z]{2}$/.test(code), isJapan:code === 'JP', isForeign:/^[A-Z]{2}$/.test(code) && code !== 'JP' };
-  }
-
-  async function deviceInfo() {
+  async function deviceInfoSnapshot() {
     const ua = navigator.userAgent || '';
     const plat = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
     
@@ -2859,7 +2847,7 @@ const SysUtils = (() => {
     
     let timeZone = '不明';
     try { timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || '不明'; } catch(e) {}
-    const { lang } = localeProfile();
+    const lang = navigator.language || '不明';
 
     let osVersion = 'N/A';
     let architecture = 'N/A';
@@ -2874,8 +2862,14 @@ const SysUtils = (() => {
       } catch (e) {}
     }
 
-    return [
-      `システム: ${plat || 'N/A'} (OS v${osVersion} / ${architecture}-${bitness}-bit) (${lang} / ${timeZone})`,
+    const system = Object.freeze({
+      platform: plat || 'N/A',
+      osVersion, architecture, bitness, lang, timeZone,
+      localeJapan: isJapanLocale(lang),
+      timeZoneJapan: isJapanTimeZone(timeZone)
+    });
+    const lines = [
+      `システム: ${system.platform} (OS v${osVersion} / ${architecture}-${bitness}-bit) (${lang} / ${timeZone})`,
       `デバイス: ${dev} [${touchPoints}]`,
       `プロセッサ: ${cores} / 実装メモリ: ${mem}`,
       `グラフィックス: ${gpu}`,
@@ -2884,43 +2878,52 @@ const SysUtils = (() => {
       `ブラウザ: ${brands || vendor || 'N/A'}`,
       `テーマ設定: ${isDarkMode}`,
       `電源ステータス: ${typeof AppState !== 'undefined' ? AppState.battStr : 'N/A'}`
-    ].join('\n');
+    ];
+    return Object.freeze({ text:lines.join('\n'), lines:Object.freeze(lines.slice()), system });
+  }
+
+  async function deviceInfo() {
+    return (await deviceInfoSnapshot()).text;
   }
 
   const NETWORK_FAILURE_TTL = 15000;
 
-  async function publicIP(){
+  async function publicIPSnapshot(){
     const now = performance.now();
-    if(_ipCache.val && (now - _ipCache.ts) < _ipCache.ttl) return _ipCache.val;
-    try{
-      const {ip} = await InternetGateway.request('network.public-ip', { timeoutMs:3000 });
-      if(!ip) throw new Error('ipify error');
-      const isV6 = ip.includes(':');
-      _ipCache = { val:`IP: ${ip} [${isV6?'IPv6':'IPv4'}]`, ts:now, ttl:120000 };
-      return _ipCache.val;
-    }catch(_){
-      _ipCache = { val:'IP: N/A', ts:now, ttl:NETWORK_FAILURE_TTL };
-      return _ipCache.val;
+    if(!_ipCache.val || (now - _ipCache.ts) >= _ipCache.ttl) {
+      try{
+        const {ip} = await InternetGateway.request('network.public-ip', { timeoutMs:3000 });
+        if(!ip) throw new Error('ipify error');
+        _ipCache = { val:Object.freeze({ ip:String(ip), family:String(ip).includes(':') ? 'IPv6' : 'IPv4' }), ts:now, ttl:120000 };
+      }catch(_){
+        _ipCache = { val:Object.freeze({ ip:'', family:'' }), ts:now, ttl:NETWORK_FAILURE_TTL };
+      }
     }
+
+    const cached = _ipCache.val;
+    if(!cached || !cached.ip) return Object.freeze({ text:'IP: N/A', baseText:'IP: N/A', ip:'', family:'', countryCode:'', countryName:'', foreign:false });
+
+    const countryCode = String(AppState.locationCountryCode || '').toUpperCase();
+    const foreign = !!countryCode && countryCode !== 'JP';
+    const countryName = foreign ? (AppState.locationCountryName || countryNameEnglish(countryCode)) : '';
+    const baseText = `IP: ${cached.ip} [${cached.family}]`;
+    const text = foreign && countryName ? `${baseText}（${countryName}）` : baseText;
+    return Object.freeze({ text, baseText, ip:cached.ip, family:cached.family, countryCode, countryName, foreign });
   }
 
-  function formatNetworkCountry(text, profile=locationCountryProfile()){
-    const value = String(text || '');
-    if(!profile || !profile.isForeign) return value;
-    const country = String(profile.name || profile.code || '').trim();
-    if(!country) return value;
-    const suffix = `（${country}）`;
-    return value.split('\n').map(line => {
-      if(!/^IP:\s+(?!N\/A)/.test(line) || line.endsWith(suffix)) return line;
-      return line + suffix;
-    }).join('\n');
+  async function publicIP(){
+    return (await publicIPSnapshot()).text;
+  }
+
+  async function networkDetailSnapshot(){
+    const c=navigator.connection||navigator.mozConnection||navigator.webkitConnection;
+    const connectionLine=c?`接続: ${c.effectiveType||'N/A'} 下り:${c.downlink||'?'}Mbps RTT:${c.rtt||'?'}ms`:'接続: N/A';
+    const ip=await publicIPSnapshot();
+    return Object.freeze({ text:`${connectionLine}\n${ip.text}`, connectionLine, ip });
   }
 
   async function networkDetail(){
-    const c=navigator.connection||navigator.mozConnection||navigator.webkitConnection;
-    const base=c?`接続: ${c.effectiveType||'N/A'} 下り:${c.downlink||'?'}Mbps RTT:${c.rtt||'?'}ms`:'接続: N/A';
-    const ip=await publicIP();
-    return formatNetworkCountry(`${base}\n${ip}`);
+    return (await networkDetailSnapshot()).text;
   }
 
   function formatPostalJP(z){
@@ -2957,21 +2960,18 @@ const SysUtils = (() => {
     const ttl = AppState.locationLabel === 'N/A' ? NETWORK_FAILURE_TTL : GEO_TTL;
     if(AppState.locationLabel && AppState.locationTs && (now - AppState.locationTs) < ttl) return AppState.locationLabel;
     const providers = [
-      { route:'location.ipapi', pick:j=>({cc:j.country_code||j.country, countryName:j.country_name, region:j.region, code:j.region_code, city:j.city, postal:j.postal, isp:j.org}) },
-      { route:'location.ipwhois', pick:j=>({cc:j.country_code, countryName:j.country, region:j.region, code:'', city:j.city, postal:j.postal, isp:j.connection?.isp||j.connection?.org}) },
-      { route:'location.ipinfo', pick:j=>({cc:j.country, countryName:'', region:j.region, code:'', city:j.city, postal:j.postal, isp:j.org}) },
-      { route:'location.cloudflare', pick:t=>{ const m=/\bloc=([A-Z]{2})/m.exec(t)||[]; return {cc:m[1]||'', countryName:'', region:'', code:'', city:'', postal:'', isp:''}; } },
-      { route:'location.ip-api', pick:j=>({cc:j.countryCode, countryName:j.country, region:j.regionName, code:j.region, city:j.city, postal:j.zip, isp:j.isp||j.org||j.as}) }
+      { route:'location.ipapi', pick:j=>({cc:j.country_code||j.country, region:j.region, code:j.region_code, city:j.city, postal:j.postal, isp:j.org}) },
+      { route:'location.ipwhois', pick:j=>({cc:j.country_code, region:j.region, code:'', city:j.city, postal:j.postal, isp:j.connection?.isp||j.connection?.org}) },
+      { route:'location.ipinfo', pick:j=>({cc:j.country, region:j.region, code:'', city:j.city, postal:j.postal, isp:j.org}) },
+      { route:'location.cloudflare', pick:t=>{ const m=/\bloc=([A-Z]{2})/m.exec(t)||[]; return {cc:m[1]||'', region:'', code:'', city:'', postal:'', isp:''}; } },
+      { route:'location.ip-api', pick:j=>({cc:j.countryCode, region:j.regionName, code:j.region, city:j.city, postal:j.zip, isp:j.isp||j.org||j.as}) }
     ];
     for(const p of providers){
       try{
         const raw = await InternetGateway.request(p.route, { timeoutMs });
         const d = p.pick(raw);
         const cc = String(d.cc||'').toUpperCase();
-        const countryName = countryNameEnglish(cc, d.countryName);
         if(cc==='JP'){
-          AppState.locationCountryCode = 'JP';
-          AppState.locationCountryName = countryName || 'Japan';
           const prefJa = mapPref(d.region||'', d.code||'');
           const cityJa = jpCityLabel(prefJa, d.city||'');
           const postal = formatPostalJP(d.postal||'');
@@ -2984,20 +2984,22 @@ const SysUtils = (() => {
           }
           AppState.locationLabel = label;
           AppState.locationTs = now;
+          AppState.locationCountryCode = 'JP';
+          AppState.locationCountryName = 'Japan';
           return label;
         }else if(cc){
-          AppState.locationCountryCode = cc;
-          AppState.locationCountryName = countryName || cc;
           AppState.locationLabel = '圏外';
           AppState.locationTs = now;
+          AppState.locationCountryCode = cc;
+          AppState.locationCountryName = countryNameEnglish(cc);
           return AppState.locationLabel;
         }
       }catch(_){}
     }
-    AppState.locationCountryCode = '';
-    AppState.locationCountryName = '';
     AppState.locationLabel = 'N/A';
     AppState.locationTs = now;
+    AppState.locationCountryCode = '';
+    AppState.locationCountryName = '';
     return AppState.locationLabel;
   }
 
@@ -3018,7 +3020,13 @@ const SysUtils = (() => {
     AppState.locationCountryName = '';
   }
 
-  return { fmtJapaneseDate, fmtJapanTimestamp, isJapanLocaleTag, localeProfile, countryNameEnglish, locationCountryProfile, formatNetworkCountry, deviceInfo, publicIP, networkDetail, detectGeo, syncNetworkTime, resetNetworkCache };
+  return {
+    fmtJapaneseDate, fmtJapanTimestamp,
+    deviceInfo, deviceInfoSnapshot,
+    publicIP, publicIPSnapshot, networkDetail, networkDetailSnapshot,
+    detectGeo, syncNetworkTime, resetNetworkCache,
+    isJapanLocale, isJapanTimeZone, countryNameEnglish
+  };
 })();
 
 /* =========================================================
@@ -7398,17 +7406,6 @@ const SelfTest = (() => {
   }
 
   async function runContractTests(report, control) {
-    await step(control, 'CONTRACT', 'Japan Profile');
-    await add(report, 'CONTRACT', 'Locale Japan / ja-JP', SysUtils.isJapanLocaleTag('ja-JP'), true);
-    await add(report, 'CONTRACT', 'Locale Japan / ja', SysUtils.isJapanLocaleTag('ja'), true);
-    await add(report, 'CONTRACT', 'Locale Japan Region / en-JP', SysUtils.isJapanLocaleTag('en-JP'), true);
-    await add(report, 'CONTRACT', 'Locale Foreign / zh-TW', SysUtils.isJapanLocaleTag('zh-TW'), false);
-    await add(report, 'CONTRACT', 'Locale Foreign / en-US', SysUtils.isJapanLocaleTag('en-US'), false);
-    await add(report, 'CONTRACT', 'Locale Foreign Region / ja-US', SysUtils.isJapanLocaleTag('ja-US'), false);
-    await add(report, 'CONTRACT', 'Country English / TW', SysUtils.countryNameEnglish('TW', 'Taiwan'), 'Taiwan');
-    await add(report, 'CONTRACT', 'Foreign IP Country Label', SysUtils.formatNetworkCountry('IP: 8x.xx.xxx.xx9 [IPv4]', { isForeign:true, code:'TW', name:'Taiwan' }), 'IP: 8x.xx.xxx.xx9 [IPv4]（Taiwan）');
-    await add(report, 'CONTRACT', 'Japan IP No Country Label', SysUtils.formatNetworkCountry('IP: 8x.xx.xxx.xx9 [IPv4]', { isForeign:false, code:'JP', name:'Japan' }), 'IP: 8x.xx.xxx.xx9 [IPv4]');
-
     await step(control, 'CONTRACT', 'Runtime Integrity');
     const issues = IntegrityGuard.validate();
     if (issues.length === 0) await add(report, 'CONTRACT', 'Runtime Integrity', true, true);
@@ -7433,6 +7430,13 @@ const SelfTest = (() => {
     await add(report, 'CONTRACT', 'Base85 Block4 Classification', JSON.stringify(Array.from(InternalContract.BASE85_BLOCK4_VARIANTS)), JSON.stringify(['ZeroMQ (Z85)','RFC 1924 Alphabet (Block)']));
     await add(report, 'CONTRACT', 'Stream Quantum / Base64', StreamBlock.QUANTUM % 3, 0);
     await add(report, 'CONTRACT', 'Stream Quantum / Base85', StreamBlock.QUANTUM % 4, 0);
+
+    await step(control, 'CONTRACT', 'Japan Profile Classification');
+    await add(report, 'CONTRACT', 'Locale / ja-JP', SysUtils.isJapanLocale('ja-JP'), true);
+    await add(report, 'CONTRACT', 'Locale / zh-TW', SysUtils.isJapanLocale('zh-TW'), false);
+    await add(report, 'CONTRACT', 'Locale / en-JP', SysUtils.isJapanLocale('en-JP'), true);
+    await add(report, 'CONTRACT', 'Time Zone / Asia-Tokyo', SysUtils.isJapanTimeZone('Asia/Tokyo'), true);
+    await add(report, 'CONTRACT', 'Time Zone / Asia-Taipei', SysUtils.isJapanTimeZone('Asia/Taipei'), false);
 
     await step(control, 'CONTRACT', 'Worker Contract');
     const worker = await Engine.runWorkerSelfTest('contract');
@@ -9053,78 +9057,73 @@ function showToast(msg, duration = TOAST_DURATION) {
     document.documentElement.style.setProperty('--sys-offset', pad + 'px');
   }
 
+  function buildSystemPanelFragment(device, network, geoLabel, dateStr) {
+    const frag = document.createDocumentFragment();
+    let lineCount = 0;
+    const beginLine = () => { if (lineCount++ > 0) frag.appendChild(document.createTextNode('\n')); };
+    const appendPlainLine = text => { beginLine(); frag.appendChild(document.createTextNode(String(text))); };
+    const appendSpan = (text, className='') => {
+      const span = document.createElement('span');
+      if (className) span.className = className;
+      span.textContent = String(text);
+      frag.appendChild(span);
+    };
+
+    if (window.__ZESS_MODE__) {
+      const zessStorage = Security.getStorageIsolationStatus();
+      if (zessStorage.complete) {
+        appendPlainLine('【 ZESS (ZERO-EGRESS STATELESS SANDBOX) 稼働中 / Storage隔離: 正常 】');
+      } else {
+        const localState = zessStorage.localStorage ? '正常' : '失敗';
+        const sessionState = zessStorage.sessionStorage ? '正常' : '失敗';
+        appendPlainLine(`【 警告: ZESS 部分隔離 - localStorage: ${localState} / sessionStorage: ${sessionState} 】`);
+      }
+    }
+    if (!window.crypto?.subtle) appendPlainLine('【 Web Crypto は無効です 】');
+
+    appendPlainLine('製造: ソニーグループ株式会社 / インターナショナル・ビジネス・マシーンズ・コーポレーション（IBM） 2026');
+    appendPlainLine('外部検証リファレンス: GCHQ Cyber​​Chef');
+
+    const sys = device.system;
+    beginLine();
+    frag.appendChild(document.createTextNode(`システム: ${sys.platform} (OS v${sys.osVersion} / ${sys.architecture}-${sys.bitness}-bit) (`));
+    appendSpan(sys.lang, sys.localeJapan ? '' : 'sys-alert');
+    frag.appendChild(document.createTextNode(' / '));
+    appendSpan(sys.timeZone, sys.timeZoneJapan ? '' : 'sys-alert');
+    frag.appendChild(document.createTextNode(')'));
+    for (const line of device.lines.slice(1)) appendPlainLine(line);
+
+    appendPlainLine(network.connectionLine);
+    beginLine();
+    if (network.ip.foreign) {
+      appendSpan(network.ip.baseText, 'sys-warning');
+      if (network.ip.countryName) {
+        frag.appendChild(document.createTextNode('（'));
+        appendSpan(network.ip.countryName, 'sys-alert');
+        frag.appendChild(document.createTextNode('）'));
+      }
+    } else {
+      frag.appendChild(document.createTextNode(network.ip.baseText));
+    }
+
+    appendPlainLine(`位置: ${geoLabel}`);
+    appendPlainLine(`日付: ${dateStr}`);
+    return frag;
+  }
+
   async function updateSysPanel() {
     if (sysPanelUpdating) return;
     sysPanelUpdating = true;
     try {
       const now = new Date(Date.now() + AppState.netTimeOffset);
       const dateStr = SysUtils.fmtJapaneseDate(now);
-      const deviceInfo = await SysUtils.deviceInfo();
-      const geoInfo = await SysUtils.detectGeo();
-      const netInfo = await SysUtils.networkDetail();
-      const locale = SysUtils.localeProfile();
-      const country = SysUtils.locationCountryProfile();
-
-      const leading = [];
-      if (!window.crypto?.subtle) leading.push('【 Web Crypto は無効です 】');
-      if (window.__ZESS_MODE__) {
-        const zessStorage = Security.getStorageIsolationStatus();
-        if (zessStorage.complete) {
-          leading.unshift('【 ZESS (ZERO-EGRESS STATELESS SANDBOX) 稼働中 / Storage隔離: 正常 】');
-        } else {
-          const localState = zessStorage.localStorage ? '正常' : '失敗';
-          const sessionState = zessStorage.sessionStorage ? '正常' : '失敗';
-          leading.unshift(`【 警告: ZESS 部分隔離 - localStorage: ${localState} / sessionStorage: ${sessionState} 】`);
-        }
-      }
-
-      const fragment = document.createDocumentFragment();
-      let lineCount = 0;
-      const beginLine = () => { if(lineCount++) fragment.appendChild(document.createTextNode('\n')); };
-      const appendPlainLine = text => {
-        beginLine();
-        fragment.appendChild(document.createTextNode(String(text)));
-      };
-      const appendAlertLine = text => {
-        beginLine();
-        const span = document.createElement('span');
-        span.className = 'sys-alert-blink';
-        span.textContent = String(text);
-        fragment.appendChild(span);
-      };
-
-      for(const line of leading) appendPlainLine(line);
-      appendPlainLine('製造: ソニーグループ株式会社 / インターナショナル・ビジネス・マシーンズ・コーポレーション（IBM） 2026');
-      appendPlainLine('外部検証リファレンス: GCHQ Cyber​​Chef');
-
-      const deviceLines = String(deviceInfo).split('\n');
-      for(let i=0; i<deviceLines.length; i++) {
-        const line = deviceLines[i];
-        if(i === 0 && !locale.isJapan && locale.lang && locale.lang !== '不明') {
-          const marker = `(${locale.lang} / `;
-          const markerIndex = line.lastIndexOf(marker);
-          if(markerIndex >= 0) {
-            beginLine();
-            fragment.appendChild(document.createTextNode(line.slice(0, markerIndex + 1)));
-            const span = document.createElement('span');
-            span.className = 'sys-alert-blink';
-            span.textContent = locale.lang;
-            fragment.appendChild(span);
-            fragment.appendChild(document.createTextNode(line.slice(markerIndex + 1 + locale.lang.length)));
-            continue;
-          }
-        }
-        appendPlainLine(line);
-      }
-
-      for(const line of String(netInfo).split('\n')) {
-        if(country.isForeign && /^IP:\s+(?!N\/A)/.test(line)) appendAlertLine(line);
-        else appendPlainLine(line);
-      }
-      appendPlainLine(`位置: ${geoInfo}`);
-      appendPlainLine(`日付: ${dateStr}`);
-
-      els.sysEl.replaceChildren(fragment);
+      const [device, , geoLabel] = await Promise.all([
+        SysUtils.deviceInfoSnapshot(),
+        SysUtils.networkDetailSnapshot(),
+        SysUtils.detectGeo()
+      ]);
+      const network = await SysUtils.networkDetailSnapshot();
+      els.sysEl.replaceChildren(buildSystemPanelFragment(device, network, geoLabel, dateStr));
       setSysOffset();
     } finally {
       sysPanelUpdating = false;
@@ -10767,11 +10766,11 @@ async function detectBase85Variants(input) {
                 const fetchWithTimeout = (promise, ms = 3000, fallback = '取得タイムアウト') => 
                     Promise.race([promise, new Promise(resolve => setTimeout(() => resolve(fallback), ms))]);
 
-                const [geoInfo, netInfoRaw] = await Promise.all([
+                const [geoInfo] = await Promise.all([
                     fetchWithTimeout(SysUtils.detectGeo(), 3000),
                     fetchWithTimeout(SysUtils.networkDetail(), 3000)
                 ]);
-                const netInfo = SysUtils.formatNetworkCountry(netInfoRaw);
+                const netInfo = await fetchWithTimeout(SysUtils.networkDetail(), 1000);
 
                 const metaText = document.getElementById('meta').textContent || '';
                 const currentStatus = AppState.currentStatus || '待機';
