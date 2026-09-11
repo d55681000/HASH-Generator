@@ -2821,6 +2821,87 @@ const SysUtils = (() => {
     return cc;
   }
 
+  function displayInfoSnapshot() {
+    const dpr = window.devicePixelRatio || 1;
+    const vw = Math.round(window.innerWidth || 0);
+    const vh = Math.round(window.innerHeight || 0);
+    const sw = Number(screen?.width) || 0;
+    const sh = Number(screen?.height) || 0;
+    const colorDepth = screen?.colorDepth ? `${screen.colorDepth}-bit` : 'N/A';
+    const hdr = window.matchMedia?.('(dynamic-range: high)')?.matches ? 'HDR対応' : 'SDR';
+    const theme = window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ? 'ダークモード' : 'ライトモード';
+    return Object.freeze({
+      dpr, vw, vh, sw, sh, colorDepth, hdr, theme,
+      screenLine:`スクリーン: ${sw}×${sh} @${dpr}x [深度: ${colorDepth} / 色域: ${hdr}]`,
+      viewportLine:`ビューポート: ${vw}×${vh}`,
+      themeLine:`テーマ設定: ${theme}`
+    });
+  }
+
+  function connectionInfoSnapshot(connection = (navigator.connection || navigator.mozConnection || navigator.webkitConnection), online = navigator.onLine !== false) {
+    if (!online) return Object.freeze({ online:false, type:'', effectiveType:'', downlink:null, rtt:null, saveData:false, line:'接続: オフライン' });
+    if (!connection) return Object.freeze({ online:true, type:'', effectiveType:'', downlink:null, rtt:null, saveData:false, line:'接続: N/A' });
+    const effectiveType = String(connection.effectiveType || 'N/A');
+    const type = String(connection.type || '');
+    const downlink = Number.isFinite(Number(connection.downlink)) ? Number(connection.downlink) : null;
+    const rtt = Number.isFinite(Number(connection.rtt)) ? Number(connection.rtt) : null;
+    const saveData = !!connection.saveData;
+    const downlinkText = downlink === null ? '?' : String(downlink);
+    const rttText = rtt === null ? '?' : String(rtt);
+    return Object.freeze({
+      online:true, type, effectiveType, downlink, rtt, saveData,
+      line:`接続: ${effectiveType} 下り:${downlinkText}Mbps RTT:${rttText}ms`
+    });
+  }
+
+  async function fetchPublicIP(timeoutMs=3000) {
+    const { ip } = await InternetGateway.request('network.public-ip', { timeoutMs });
+    if (!ip) throw new Error('ipify error');
+    const value = String(ip);
+    return Object.freeze({ ip:value, family:value.includes(':') ? 'IPv6' : 'IPv4' });
+  }
+
+  async function fetchGeo(timeoutMs=3500) {
+    const providers = [
+      { route:'location.ipapi', pick:j=>({cc:j.country_code||j.country, region:j.region, code:j.region_code, city:j.city, postal:j.postal, isp:j.org}) },
+      { route:'location.ipwhois', pick:j=>({cc:j.country_code, region:j.region, code:'', city:j.city, postal:j.postal, isp:j.connection?.isp||j.connection?.org}) },
+      { route:'location.ipinfo', pick:j=>({cc:j.country, region:j.region, code:'', city:j.city, postal:j.postal, isp:j.org}) },
+      { route:'location.cloudflare', pick:t=>{ const m=/\bloc=([A-Z]{2})/m.exec(t)||[]; return {cc:m[1]||'', region:'', code:'', city:'', postal:'', isp:''}; } },
+      { route:'location.ip-api', pick:j=>({cc:j.countryCode, region:j.regionName, code:j.region, city:j.city, postal:j.zip, isp:j.isp||j.org||j.as}) }
+    ];
+    let lastError = null;
+    for (const p of providers) {
+      try {
+        const raw = await InternetGateway.request(p.route, { timeoutMs });
+        const d = p.pick(raw);
+        const cc = String(d.cc || '').toUpperCase();
+        if (!cc) continue;
+        if (cc === 'JP') {
+          const prefJa = mapPref(d.region || '', d.code || '');
+          const cityJa = jpCityLabel(prefJa, d.city || '');
+          const postal = formatPostalJP(d.postal || '');
+          let label = `日本・${prefJa}`;
+          if (cityJa) label += `・${cityJa}`;
+          if (postal) label += `（〒${postal}）`;
+          let isp = String(d.isp || '').replace(/^AS\d+\s*/i, '').replace(/,.*/, '').trim();
+          if (isp) label += ` [${isp}]`;
+          return Object.freeze({ label, countryCode:'JP', countryName:'Japan', isp });
+        }
+        return Object.freeze({ label:'圏外', countryCode:cc, countryName:countryNameEnglish(cc), isp:String(d.isp || '').trim() });
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError || new Error('location unavailable');
+  }
+
+  async function fetchNetworkTimeOffset(timeoutMs=3000) {
+    const j = await InternetGateway.request('time.jst', { timeoutMs });
+    const server = new Date(j.datetime).getTime();
+    if (!Number.isFinite(server)) throw new Error('time api error');
+    return server - Date.now();
+  }
+
   async function deviceInfoSnapshot() {
     const ua = navigator.userAgent || '';
     const plat = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
@@ -2892,9 +2973,8 @@ const SysUtils = (() => {
     const now = performance.now();
     if(!_ipCache.val || (now - _ipCache.ts) >= _ipCache.ttl) {
       try{
-        const {ip} = await InternetGateway.request('network.public-ip', { timeoutMs:3000 });
-        if(!ip) throw new Error('ipify error');
-        _ipCache = { val:Object.freeze({ ip:String(ip), family:String(ip).includes(':') ? 'IPv6' : 'IPv4' }), ts:now, ttl:120000 };
+        const value = await fetchPublicIP(3000);
+        _ipCache = { val:value, ts:now, ttl:120000 };
       }catch(_){
         _ipCache = { val:Object.freeze({ ip:'', family:'' }), ts:now, ttl:NETWORK_FAILURE_TTL };
       }
@@ -2916,10 +2996,9 @@ const SysUtils = (() => {
   }
 
   async function networkDetailSnapshot(){
-    const c=navigator.connection||navigator.mozConnection||navigator.webkitConnection;
-    const connectionLine=c?`接続: ${c.effectiveType||'N/A'} 下り:${c.downlink||'?'}Mbps RTT:${c.rtt||'?'}ms`:'接続: N/A';
+    const connection = connectionInfoSnapshot();
     const ip=await publicIPSnapshot();
-    return Object.freeze({ text:`${connectionLine}\n${ip.text}`, connectionLine, ip });
+    return Object.freeze({ text:`${connection.line}\n${ip.text}`, connectionLine:connection.line, connection, ip });
   }
 
   async function networkDetail(){
@@ -2959,57 +3038,26 @@ const SysUtils = (() => {
     const now = Date.now();
     const ttl = AppState.locationLabel === 'N/A' ? NETWORK_FAILURE_TTL : GEO_TTL;
     if(AppState.locationLabel && AppState.locationTs && (now - AppState.locationTs) < ttl) return AppState.locationLabel;
-    const providers = [
-      { route:'location.ipapi', pick:j=>({cc:j.country_code||j.country, region:j.region, code:j.region_code, city:j.city, postal:j.postal, isp:j.org}) },
-      { route:'location.ipwhois', pick:j=>({cc:j.country_code, region:j.region, code:'', city:j.city, postal:j.postal, isp:j.connection?.isp||j.connection?.org}) },
-      { route:'location.ipinfo', pick:j=>({cc:j.country, region:j.region, code:'', city:j.city, postal:j.postal, isp:j.org}) },
-      { route:'location.cloudflare', pick:t=>{ const m=/\bloc=([A-Z]{2})/m.exec(t)||[]; return {cc:m[1]||'', region:'', code:'', city:'', postal:'', isp:''}; } },
-      { route:'location.ip-api', pick:j=>({cc:j.countryCode, region:j.regionName, code:j.region, city:j.city, postal:j.zip, isp:j.isp||j.org||j.as}) }
-    ];
-    for(const p of providers){
-      try{
-        const raw = await InternetGateway.request(p.route, { timeoutMs });
-        const d = p.pick(raw);
-        const cc = String(d.cc||'').toUpperCase();
-        if(cc==='JP'){
-          const prefJa = mapPref(d.region||'', d.code||'');
-          const cityJa = jpCityLabel(prefJa, d.city||'');
-          const postal = formatPostalJP(d.postal||'');
-          let label = `日本・${prefJa}`;
-          if(cityJa) label += `・${cityJa}`;
-          if(postal) label += `（〒${postal}）`;
-          if(d.isp) {
-            let ispClean = String(d.isp).replace(/^AS\d+\s*/i, '').replace(/,.*/, '').trim();
-            if(ispClean) label += ` [${ispClean}]`;
-          }
-          AppState.locationLabel = label;
-          AppState.locationTs = now;
-          AppState.locationCountryCode = 'JP';
-          AppState.locationCountryName = 'Japan';
-          return label;
-        }else if(cc){
-          AppState.locationLabel = '圏外';
-          AppState.locationTs = now;
-          AppState.locationCountryCode = cc;
-          AppState.locationCountryName = countryNameEnglish(cc);
-          return AppState.locationLabel;
-        }
-      }catch(_){}
+    try {
+      const geo = await fetchGeo(timeoutMs);
+      AppState.locationLabel = geo.label;
+      AppState.locationTs = now;
+      AppState.locationCountryCode = geo.countryCode;
+      AppState.locationCountryName = geo.countryName;
+      return geo.label;
+    } catch (_) {
+      AppState.locationLabel = 'N/A';
+      AppState.locationTs = now;
+      AppState.locationCountryCode = '';
+      AppState.locationCountryName = '';
+      return AppState.locationLabel;
     }
-    AppState.locationLabel = 'N/A';
-    AppState.locationTs = now;
-    AppState.locationCountryCode = '';
-    AppState.locationCountryName = '';
-    return AppState.locationLabel;
   }
 
   async function syncNetworkTime(){
-    try{
-      const j = await InternetGateway.request('time.jst', { timeoutMs:3000 });
-      const server = new Date(j.datetime).getTime();
-      if(!Number.isFinite(server)) throw new Error('time api error');
-      AppState.netTimeOffset = server - Date.now();
-    }catch(_){ AppState.netTimeOffset=0; }
+    try { AppState.netTimeOffset = await fetchNetworkTimeOffset(3000); }
+    catch (_) { AppState.netTimeOffset = 0; }
+    return AppState.netTimeOffset;
   }
 
   function resetNetworkCache() {
@@ -3022,11 +3070,686 @@ const SysUtils = (() => {
 
   return {
     fmtJapaneseDate, fmtJapanTimestamp,
-    deviceInfo, deviceInfoSnapshot,
+    deviceInfo, deviceInfoSnapshot, displayInfoSnapshot, connectionInfoSnapshot,
     publicIP, publicIPSnapshot, networkDetail, networkDetailSnapshot,
+    fetchPublicIP, fetchGeo, fetchNetworkTimeOffset,
     detectGeo, syncNetworkTime, resetNetworkCache,
     isJapanLocale, isJapanTimeZone, countryNameEnglish
   };
+})();
+
+/* =========================================================
+   SYSTEM MONITOR LAYER
+   右下システム表示の単一状態源。ローカル情報はイベント駆動、
+   外部情報はInternetGateway経由で低頻度・single-flight更新。
+========================================================= */
+let SystemMonitorTestBridge = null;
+const SystemMonitor = (() => {
+  const DIRTY = Object.freeze({
+    DEVICE:1 << 0,
+    DISPLAY:1 << 1,
+    POWER:1 << 2,
+    CONNECTION:1 << 3,
+    IDENTITY:1 << 4,
+    CLOCK:1 << 5,
+    SECURITY:1 << 6,
+    ALL:(1 << 7) - 1
+  });
+  const IP_TTL_MS = 120000;
+  const GEO_TTL_MS = 12 * 60 * 60 * 1000;
+  const TIME_STALE_MS = 60 * 60 * 1000;
+  const RETRY_MS = Object.freeze([60000, 120000, 300000]);
+
+  const frozen = value => Object.freeze(value);
+  const emptyIdentity = (reason='') => frozen({
+    ip:'', family:'', baseText:'IP: N/A', text:'IP: N/A',
+    countryCode:'', countryName:'', foreign:false,
+    geoLabel:'N/A', isp:'', geoForIp:'',
+    ipObservedAt:0, geoObservedAt:0, reason
+  });
+  const connectionEqual = (a, b) => !!a && !!b &&
+    a.online === b.online && a.type === b.type && a.effectiveType === b.effectiveType &&
+    a.downlink === b.downlink && a.rtt === b.rtt && a.saveData === b.saveData && a.line === b.line;
+  const displayEqual = (a, b) => !!a && !!b &&
+    a.dpr === b.dpr && a.vw === b.vw && a.vh === b.vh && a.sw === b.sw && a.sh === b.sh &&
+    a.colorDepth === b.colorDepth && a.hdr === b.hdr && a.theme === b.theme;
+
+  let state = {
+    device:null,
+    display:SysUtils.displayInfoSnapshot(),
+    power:frozen({ text:AppState.battStr || 'N/A', observedAt:Date.now() }),
+    connection:SysUtils.connectionInfoSnapshot(),
+    identity:emptyIdentity(),
+    clock:frozen({ text:SysUtils.fmtJapaneseDate(new Date(Date.now() + AppState.netTimeOffset)), observedAt:Date.now(), syncedAt:0 })
+  };
+  const revisions = { device:0, display:0, power:0, connection:0, identity:0, clock:0 };
+  const listeners = new Set();
+  const cleanup = [];
+  let initialized = false;
+  let destroyed = false;
+  let pendingMask = 0;
+  let notifyRaf = 0;
+  let clockTimer = 0;
+  let identityTimer = 0;
+  let identityInflight = null;
+  let identityQueued = false;
+  let identityEpoch = 0;
+  let identityFailureCount = 0;
+  let timeInflight = null;
+  let timeQueued = false;
+  let timeEpoch = 0;
+  let deviceEpoch = 0;
+  let lastTimeSyncAt = 0;
+  let connectionObservedAt = Date.now();
+  let diagnosticActive = false;
+  let diagnosticSaved = null;
+
+  function snapshot() {
+    return frozen({
+      device:state.device,
+      display:state.display,
+      power:state.power,
+      connection:state.connection,
+      identity:state.identity,
+      clock:state.clock,
+      revisions:frozen({ ...revisions })
+    });
+  }
+
+  function emit(mask) {
+    pendingMask |= mask;
+    if (notifyRaf || destroyed) return;
+    const flush = () => {
+      notifyRaf = 0;
+      if (destroyed) return;
+      const nextMask = pendingMask;
+      pendingMask = 0;
+      const snap = snapshot();
+      for (const listener of Array.from(listeners)) {
+        try { listener(snap, nextMask); } catch (error) { console.error('[SYSTEM MONITOR]', error); }
+      }
+    };
+    if (typeof requestAnimationFrame === 'function') notifyRaf = requestAnimationFrame(flush);
+    else notifyRaf = setTimeout(flush, 0);
+  }
+
+  function subscribe(listener) {
+    if (typeof listener !== 'function') return () => {};
+    listeners.add(listener);
+    listener(snapshot(), DIRTY.ALL);
+    return () => listeners.delete(listener);
+  }
+
+  function commit(key, value, mask) {
+    state[key] = value;
+    revisions[key] += 1;
+    emit(mask);
+  }
+
+  function updateClock() {
+    if (diagnosticActive) return state.clock;
+    const at = Date.now();
+    const next = frozen({
+      text:SysUtils.fmtJapaneseDate(new Date(at + AppState.netTimeOffset)),
+      observedAt:at,
+      syncedAt:lastTimeSyncAt
+    });
+    if (!state.clock || state.clock.text !== next.text || state.clock.syncedAt !== next.syncedAt) commit('clock', next, DIRTY.CLOCK);
+  }
+
+  function stopClock() {
+    if (clockTimer) clearTimeout(clockTimer);
+    clockTimer = 0;
+  }
+
+  function scheduleClock() {
+    stopClock();
+    if (destroyed || diagnosticActive || document.hidden) return;
+    const correctedNow = Date.now() + AppState.netTimeOffset;
+    const delay = Math.max(25, 1000 - (correctedNow % 1000) + 2);
+    clockTimer = setTimeout(() => {
+      clockTimer = 0;
+      updateClock();
+      scheduleClock();
+    }, delay);
+  }
+
+  function refreshDisplay() {
+    if (diagnosticActive) return state.display;
+    const next = SysUtils.displayInfoSnapshot();
+    if (!displayEqual(state.display, next)) commit('display', next, DIRTY.DISPLAY);
+    return state.display;
+  }
+
+  function refreshConnection() {
+    if (diagnosticActive) return state.connection;
+    const previous = state.connection;
+    const next = SysUtils.connectionInfoSnapshot();
+    connectionObservedAt = Date.now();
+    if (!connectionEqual(previous, next)) {
+      commit('connection', next, DIRTY.CONNECTION);
+      if (previous?.type && next.type && previous.type !== next.type && next.online) refreshIdentity({ force:true, reason:'connection-type' });
+    }
+    return state.connection;
+  }
+
+  function refreshLocal() {
+    refreshDisplay();
+    refreshConnection();
+    updateClock();
+    return snapshot();
+  }
+
+  async function refreshDevice() {
+    if (diagnosticActive) return state.device;
+    const epoch = ++deviceEpoch;
+    try {
+      const device = await SysUtils.deviceInfoSnapshot();
+      if (destroyed || epoch !== deviceEpoch) return state.device;
+      commit('device', device, DIRTY.DEVICE);
+      return device;
+    } catch (_) {
+      return state.device;
+    }
+  }
+
+  function setPower(text) {
+    if (diagnosticActive) return state.power;
+    const value = String(text || 'N/A');
+    if (state.power?.text === value) return state.power;
+    const next = frozen({ text:value, observedAt:Date.now() });
+    AppState.battStr = value;
+    commit('power', next, DIRTY.POWER);
+    return next;
+  }
+
+  async function initPower() {
+    if (window.__ZESS_MODE__) {
+      setPower('N/A（ZESS）');
+      return;
+    }
+    if (!('getBattery' in navigator)) {
+      setPower('N/A');
+      return;
+    }
+    try {
+      const battery = await navigator.getBattery();
+      if (destroyed) return;
+      const apply = () => setPower(`${Math.round(battery.level * 100)}%${battery.charging ? ' （充電状態）' : ''}`);
+      apply();
+      battery.addEventListener('levelchange', apply);
+      battery.addEventListener('chargingchange', apply);
+      cleanup.push(() => {
+        battery.removeEventListener('levelchange', apply);
+        battery.removeEventListener('chargingchange', apply);
+      });
+    } catch (_) {
+      setPower('N/A');
+    }
+  }
+
+  function identityFrom(ipData, geo, ipObservedAt, geoObservedAt) {
+    const ip = String(ipData?.ip || '');
+    const family = String(ipData?.family || '');
+    if (!ip) return emptyIdentity();
+    const countryCode = String(geo?.countryCode || '').toUpperCase();
+    const countryName = countryCode ? String(geo?.countryName || SysUtils.countryNameEnglish(countryCode) || '') : '';
+    const foreign = !!countryCode && countryCode !== 'JP';
+    const baseText = `IP: ${ip} [${family || (ip.includes(':') ? 'IPv6' : 'IPv4')}]`;
+    const text = foreign && countryName ? `${baseText}（${countryName}）` : baseText;
+    return frozen({
+      ip, family:family || (ip.includes(':') ? 'IPv6' : 'IPv4'), baseText, text,
+      countryCode, countryName, foreign,
+      geoLabel:String(geo?.label || 'N/A'), isp:String(geo?.isp || ''),
+      geoForIp:countryCode ? ip : '',
+      ipObservedAt:Number(ipObservedAt) || Date.now(),
+      geoObservedAt:countryCode ? (Number(geoObservedAt) || Date.now()) : 0,
+      reason:''
+    });
+  }
+
+  function syncIdentityCompat(identity) {
+    AppState.locationLabel = identity.geoLabel || 'N/A';
+    AppState.locationTs = identity.geoObservedAt || identity.ipObservedAt || 0;
+    AppState.locationCountryCode = identity.countryCode || '';
+    AppState.locationCountryName = identity.countryName || '';
+  }
+
+  function commitIdentity(identity) {
+    syncIdentityCompat(identity);
+    commit('identity', identity, DIRTY.IDENTITY);
+  }
+
+  function clearIdentityTimer() {
+    if (identityTimer) clearTimeout(identityTimer);
+    identityTimer = 0;
+  }
+
+  function scheduleIdentity(delayMs) {
+    clearIdentityTimer();
+    if (destroyed || diagnosticActive || document.hidden || window.__ZESS_MODE__ || navigator.onLine === false) return;
+    identityTimer = setTimeout(() => {
+      identityTimer = 0;
+      refreshIdentity({ force:true, reason:'ttl' });
+    }, Math.max(1000, Number(delayMs) || IP_TTL_MS));
+  }
+
+  function scheduleIdentityFailure() {
+    const index = Math.min(identityFailureCount, RETRY_MS.length - 1);
+    scheduleIdentity(RETRY_MS[index]);
+    identityFailureCount += 1;
+  }
+
+  async function performIdentityRefresh(epoch) {
+    const ipObservedAt = Date.now();
+    let ipData;
+    try {
+      ipData = await SysUtils.fetchPublicIP(3000);
+    } catch (_) {
+      if (epoch === identityEpoch && !destroyed) {
+        commitIdentity(emptyIdentity('unavailable'));
+        scheduleIdentityFailure();
+      }
+      return state.identity;
+    }
+    if (epoch !== identityEpoch || destroyed) return state.identity;
+
+    identityFailureCount = 0;
+    const previous = state.identity;
+    const sameIp = previous.ip === ipData.ip;
+    const geoFresh = sameIp && previous.geoForIp === ipData.ip && previous.geoObservedAt > 0 && (Date.now() - previous.geoObservedAt) < GEO_TTL_MS;
+
+    if (!sameIp || !previous.ip || !geoFresh) commitIdentity(identityFrom(ipData, null, ipObservedAt, 0));
+    else if (previous.ipObservedAt !== ipObservedAt) {
+      commitIdentity(frozen({ ...previous, ipObservedAt }));
+    }
+
+    if (!geoFresh) {
+      try {
+        const geo = await SysUtils.fetchGeo(3500);
+        if (epoch === identityEpoch && !destroyed && state.identity.ip === ipData.ip) {
+          commitIdentity(identityFrom(ipData, geo, ipObservedAt, Date.now()));
+        }
+      } catch (_) {
+        if (epoch === identityEpoch && !destroyed && state.identity.ip === ipData.ip && state.identity.geoForIp !== ipData.ip) {
+          commitIdentity(identityFrom(ipData, null, ipObservedAt, 0));
+        }
+      }
+    }
+
+    if (epoch === identityEpoch && !destroyed) scheduleIdentity(IP_TTL_MS);
+    return state.identity;
+  }
+
+  function refreshIdentity({ force=false } = {}) {
+    if (destroyed || diagnosticActive) return Promise.resolve(state.identity);
+    if (window.__ZESS_MODE__ || navigator.onLine === false) {
+      identityEpoch += 1;
+      clearIdentityTimer();
+      if (state.identity.ip || state.identity.geoLabel !== 'N/A') commitIdentity(emptyIdentity(window.__ZESS_MODE__ ? 'zess' : 'offline'));
+      return Promise.resolve(state.identity);
+    }
+    if (force) identityEpoch += 1;
+    if (identityInflight) {
+      if (force) identityQueued = true;
+      return identityInflight;
+    }
+    const epoch = identityEpoch;
+    identityInflight = performIdentityRefresh(epoch).finally(() => {
+      identityInflight = null;
+      if (identityQueued && !destroyed) {
+        identityQueued = false;
+        refreshIdentity({ force:false });
+      }
+    });
+    return identityInflight;
+  }
+
+  function refreshTime({ force=false } = {}) {
+    if (destroyed || diagnosticActive) return Promise.resolve(AppState.netTimeOffset);
+    if (window.__ZESS_MODE__ || navigator.onLine === false) {
+      timeEpoch += 1;
+      AppState.netTimeOffset = 0;
+      lastTimeSyncAt = 0;
+      updateClock();
+      scheduleClock();
+      return Promise.resolve(0);
+    }
+    if (force) timeEpoch += 1;
+    if (timeInflight) {
+      if (force) timeQueued = true;
+      return timeInflight;
+    }
+    const epoch = timeEpoch;
+    timeInflight = SysUtils.fetchNetworkTimeOffset(3000).then(offset => {
+      if (epoch !== timeEpoch || destroyed) return AppState.netTimeOffset;
+      AppState.netTimeOffset = offset;
+      lastTimeSyncAt = Date.now();
+      updateClock();
+      scheduleClock();
+      return offset;
+    }).catch(() => {
+      if (epoch === timeEpoch && !destroyed) {
+        AppState.netTimeOffset = 0;
+        lastTimeSyncAt = 0;
+        updateClock();
+        scheduleClock();
+      }
+      return AppState.netTimeOffset;
+    }).finally(() => {
+      timeInflight = null;
+      if (timeQueued && !destroyed) {
+        timeQueued = false;
+        refreshTime({ force:false });
+      }
+    });
+    return timeInflight;
+  }
+
+  function onOnline() {
+    if (diagnosticActive) return;
+    refreshConnection();
+    identityFailureCount = 0;
+    refreshTime({ force:true });
+    refreshIdentity({ force:true, reason:'online' });
+  }
+
+  function onOffline() {
+    if (diagnosticActive) return;
+    timeEpoch += 1;
+    identityEpoch += 1;
+    identityQueued = false;
+    timeQueued = false;
+    clearIdentityTimer();
+    AppState.netTimeOffset = 0;
+    lastTimeSyncAt = 0;
+    commitIdentity(emptyIdentity('offline'));
+    refreshConnection();
+    updateClock();
+    scheduleClock();
+  }
+
+  function onVisibilityChange() {
+    if (diagnosticActive) return;
+    if (document.hidden) {
+      stopClock();
+      clearIdentityTimer();
+      return;
+    }
+    refreshLocal();
+    scheduleClock();
+    const now = Date.now();
+    if (!state.identity.ip || !state.identity.ipObservedAt || (now - state.identity.ipObservedAt) >= IP_TTL_MS) refreshIdentity({ force:true, reason:'resume' });
+    else scheduleIdentity(Math.max(1000, IP_TTL_MS - (now - state.identity.ipObservedAt)));
+    if (!lastTimeSyncAt || (now - lastTimeSyncAt) >= TIME_STALE_MS) refreshTime({ force:true });
+  }
+
+  function policyChanged() {
+    if (diagnosticActive) return;
+    clearIdentityTimer();
+    identityFailureCount = 0;
+    commitIdentity(emptyIdentity('policy-change'));
+    AppState.netTimeOffset = 0;
+    lastTimeSyncAt = 0;
+    updateClock();
+    refreshTime({ force:true });
+    refreshIdentity({ force:true, reason:'policy-change' });
+  }
+
+  function install(target, name, handler, options) {
+    if (!target?.addEventListener) return;
+    target.addEventListener(name, handler, options);
+    cleanup.push(() => target.removeEventListener(name, handler, options));
+  }
+
+  function installEvents() {
+    install(window, 'online', onOnline);
+    install(window, 'offline', onOffline);
+    install(document, 'visibilitychange', onVisibilityChange);
+    install(window, 'resize', refreshDisplay, { passive:true });
+    install(window, 'orientationchange', refreshDisplay, { passive:true });
+    if (window.visualViewport) install(window.visualViewport, 'resize', refreshDisplay, { passive:true });
+
+    const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    if (connection?.addEventListener) install(connection, 'change', refreshConnection);
+
+    for (const query of ['(prefers-color-scheme: dark)', '(dynamic-range: high)']) {
+      try {
+        const media = window.matchMedia(query);
+        install(media, 'change', refreshDisplay);
+      } catch (_) {}
+    }
+  }
+
+  function init() {
+    if (initialized || destroyed) return snapshot();
+    initialized = true;
+    installEvents();
+    refreshDisplay();
+    refreshConnection();
+    updateClock();
+    scheduleClock();
+    refreshDevice();
+    initPower();
+    if (!window.__ZESS_MODE__ && navigator.onLine !== false) {
+      refreshTime({ force:true });
+      refreshIdentity({ force:true, reason:'init' });
+    }
+    emit(DIRTY.SECURITY | DIRTY.ALL);
+    return snapshot();
+  }
+
+  function destroy() {
+    if (destroyed) return;
+    destroyed = true;
+    stopClock();
+    clearIdentityTimer();
+    if (notifyRaf) {
+      if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(notifyRaf);
+      else clearTimeout(notifyRaf);
+    }
+    notifyRaf = 0;
+    while (cleanup.length) {
+      try { cleanup.pop()(); } catch (_) {}
+    }
+    listeners.clear();
+  }
+
+  function diagnosticFrame() {
+    return new Promise(resolve => {
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => resolve());
+      else setTimeout(resolve, 0);
+    });
+  }
+
+  async function diagnosticSettle() {
+    await diagnosticFrame();
+    await diagnosticFrame();
+    return snapshot();
+  }
+
+  function beginDiagnostic() {
+    if (destroyed || !initialized) throw new Error('SystemMonitor diagnostic unavailable');
+    if (diagnosticActive) throw new Error('SystemMonitor diagnostic already active');
+    diagnosticSaved = {
+      state:{ ...state },
+      app:Object.freeze({
+        battStr:AppState.battStr,
+        netTimeOffset:AppState.netTimeOffset,
+        locationLabel:AppState.locationLabel,
+        locationTs:AppState.locationTs,
+        locationCountryCode:AppState.locationCountryCode,
+        locationCountryName:AppState.locationCountryName
+      }),
+      lastTimeSyncAt,
+      connectionObservedAt
+    };
+    diagnosticActive = true;
+    identityEpoch += 1;
+    timeEpoch += 1;
+    deviceEpoch += 1;
+    identityQueued = false;
+    timeQueued = false;
+    clearIdentityTimer();
+    stopClock();
+    return snapshot();
+  }
+
+  function requireDiagnostic() {
+    if (!diagnosticActive || !diagnosticSaved) throw new Error('SystemMonitor diagnostic is not active');
+  }
+
+  function diagnosticConnection(connection, online=true) {
+    requireDiagnostic();
+    const next = SysUtils.connectionInfoSnapshot(connection, online);
+    connectionObservedAt = Date.now();
+    commit('connection', next, DIRTY.CONNECTION);
+    return next;
+  }
+
+  function diagnosticIdentity(ipData, geo=null) {
+    requireDiagnostic();
+    const now = Date.now();
+    const next = identityFrom(ipData, geo, now, geo ? now : 0);
+    commitIdentity(next);
+    return next;
+  }
+
+  function diagnosticDevice(device) {
+    requireDiagnostic();
+    commit('device', device, DIRTY.DEVICE);
+    return device;
+  }
+
+  function diagnosticDisplay(display) {
+    requireDiagnostic();
+    commit('display', display, DIRTY.DISPLAY);
+    return display;
+  }
+
+  function diagnosticPower(text) {
+    requireDiagnostic();
+    const value = String(text || 'N/A');
+    const next = frozen({ text:value, observedAt:Date.now() });
+    AppState.battStr = value;
+    commit('power', next, DIRTY.POWER);
+    return next;
+  }
+
+  function diagnosticClock(text) {
+    requireDiagnostic();
+    const next = frozen({ text:String(text || ''), observedAt:Date.now(), syncedAt:lastTimeSyncAt });
+    commit('clock', next, DIRTY.CLOCK);
+    return next;
+  }
+
+  function restoreDiagnostic() {
+    if (!diagnosticActive || !diagnosticSaved) return snapshot();
+    const saved = diagnosticSaved;
+    diagnosticSaved = null;
+    state = { ...saved.state };
+    AppState.battStr = saved.app.battStr;
+    AppState.netTimeOffset = saved.app.netTimeOffset;
+    AppState.locationLabel = saved.app.locationLabel;
+    AppState.locationTs = saved.app.locationTs;
+    AppState.locationCountryCode = saved.app.locationCountryCode;
+    AppState.locationCountryName = saved.app.locationCountryName;
+    lastTimeSyncAt = saved.lastTimeSyncAt;
+    connectionObservedAt = saved.connectionObservedAt;
+    diagnosticActive = false;
+    for (const key of Object.keys(revisions)) revisions[key] += 1;
+    emit(DIRTY.ALL);
+    scheduleClock();
+    if (!document.hidden && !window.__ZESS_MODE__ && navigator.onLine !== false) {
+      const observed = Number(state.identity?.ipObservedAt) || 0;
+      const age = observed ? Math.max(0, Date.now() - observed) : 0;
+      scheduleIdentity(observed ? Math.max(1000, IP_TTL_MS - age) : IP_TTL_MS);
+    }
+    return snapshot();
+  }
+
+  function formatObserved(at) {
+    return at ? SysUtils.fmtJapaneseDate(new Date(at + AppState.netTimeOffset)) : '未取得';
+  }
+
+  function reportSnapshot() {
+    const snap = snapshot();
+    const d = snap.device;
+    const display = snap.display;
+    const deviceLines = d ? [
+      d.lines[0],
+      d.lines[1],
+      d.lines[2],
+      d.lines[3],
+      display.screenLine,
+      display.viewportLine,
+      d.lines[6],
+      display.themeLine,
+      `電源ステータス: ${snap.power.text}`
+    ] : [
+      'システム: N/A', 'デバイス: N/A', 'プロセッサ: N/A', 'グラフィックス: N/A',
+      display.screenLine, display.viewportLine, 'ブラウザ: N/A', display.themeLine,
+      `電源ステータス: ${snap.power.text}`
+    ];
+    return frozen({
+      deviceText:deviceLines.join('\n'),
+      networkText:`${snap.connection.line}\n${snap.identity.text}`,
+      geoText:snap.identity.geoLabel || 'N/A',
+      observed:frozen({
+        connection:formatObserved(connectionObservedAt),
+        ip:formatObserved(snap.identity.ipObservedAt),
+        geo:formatObserved(snap.identity.geoObservedAt),
+        timeSync:formatObserved(lastTimeSyncAt)
+      }),
+      snapshot:snap
+    });
+  }
+
+  function validate() {
+    const issues = [];
+    const values = [DIRTY.DEVICE, DIRTY.DISPLAY, DIRTY.POWER, DIRTY.CONNECTION, DIRTY.IDENTITY, DIRTY.CLOCK, DIRTY.SECURITY];
+    if (new Set(values).size !== values.length || values.some(v => v <= 0 || (v & (v - 1)) !== 0)) issues.push('SystemMonitor DIRTYビットが不正です');
+    if (typeof SysUtils.fetchPublicIP !== 'function' || typeof SysUtils.fetchGeo !== 'function') issues.push('SystemMonitor Network collectorがありません');
+    if (typeof SysUtils.connectionInfoSnapshot !== 'function') issues.push('SystemMonitor Connection collectorがありません');
+    return issues;
+  }
+
+  function selfTest() {
+    const checks = [];
+    const add = (name, ok, detail='') => checks.push(frozen({ name, ok:!!ok, detail:ok ? '' : String(detail || 'failed') }));
+    const dirtyValues = [DIRTY.DEVICE, DIRTY.DISPLAY, DIRTY.POWER, DIRTY.CONNECTION, DIRTY.IDENTITY, DIRTY.CLOCK, DIRTY.SECURITY];
+    add('DIRTY Bits Unique', new Set(dirtyValues).size === dirtyValues.length && dirtyValues.every(v => (v & (v - 1)) === 0));
+    const offline = SysUtils.connectionInfoSnapshot({ effectiveType:'4g', downlink:10, rtt:50 }, false);
+    add('Connection Format / Offline Priority', offline.line === '接続: オフライン');
+    const zero = SysUtils.connectionInfoSnapshot({ effectiveType:'4g', downlink:0, rtt:0, saveData:false }, true);
+    add('Connection Format / Zero Metrics', zero.line.includes('下り:0Mbps') && zero.line.includes('RTT:0ms'));
+    const japan = identityFrom({ ip:'8.8.8.8', family:'IPv4' }, { label:'日本', countryCode:'JP', countryName:'Japan', isp:'' }, 1, 2);
+    add('Identity Model / Japan', !japan.foreign && japan.text === japan.baseText);
+    const germany = identityFrom({ ip:'8.8.8.8', family:'IPv4' }, { label:'圏外', countryCode:'DE', countryName:'Germany', isp:'' }, 1, 2);
+    add('Identity Model / Germany', germany.foreign && germany.text.endsWith('（Germany）'));
+    const italy = identityFrom({ ip:'8.8.8.8', family:'IPv4' }, { label:'圏外', countryCode:'IT', countryName:'Italy', isp:'' }, 1, 2);
+    add('Identity Model / Italy', italy.foreign && italy.text.endsWith('（Italy）'));
+    add('Identity Binding / Geo To IP', japan.geoForIp === japan.ip && germany.geoForIp === germany.ip && italy.geoForIp === italy.ip);
+    add('Snapshot Frozen', Object.isFrozen(snapshot()) && Object.isFrozen(snapshot().revisions));
+    const report = reportSnapshot();
+    add('Report Snapshot Synchronous', !!report && typeof report.then === 'undefined' && Object.isFrozen(report));
+    add('Validation Clean', validate().length === 0, validate().join(' / '));
+    return Object.freeze(checks);
+  }
+
+  SystemMonitorTestBridge = Object.freeze({
+    begin:beginDiagnostic, restore:restoreDiagnostic, settle:diagnosticSettle,
+    connection:diagnosticConnection, identity:diagnosticIdentity, device:diagnosticDevice,
+    display:diagnosticDisplay, power:diagnosticPower, clock:diagnosticClock,
+    get active() { return diagnosticActive; }
+  });
+
+  return Object.freeze({
+    DIRTY,
+    init, destroy, subscribe, snapshot, reportSnapshot,
+    refreshLocal, refreshDisplay, refreshConnection, refreshIdentity, refreshTime, refreshDevice,
+    policyChanged, validate, selfTest
+  });
 })();
 
 /* =========================================================
@@ -4029,8 +4752,11 @@ const IntegrityGuard = (() => {
 
     if (!Object.isFrozen(InternetGateway)) add('Internet Gateway APIが固定されていません');
     if (typeof InternetGateway.selfTest !== 'function') add('Internet Gateway self-testがありません');
+    if (!Object.isFrozen(SystemMonitor)) add('System Monitor APIが固定されていません');
+    if (typeof SystemMonitor.selfTest !== 'function') add('System Monitor self-testがありません');
     if (!Object.isFrozen(WorkerBroker)) add('Worker Broker APIが固定されていません');
     for (const issue of InternetGateway.validate()) add(issue);
+    for (const issue of SystemMonitor.validate()) add(issue);
     for (const issue of WorkerBroker.validate()) add(issue);
 
     if (typeof UI !== 'undefined' && UI && typeof UI.validate === 'function') {
@@ -6665,6 +7391,21 @@ const SelfTest = (() => {
       await addFailure(report, 'SECURITY', 'Internet Gateway Capability', e);
     }
 
+    await step(control, 'SECURITY', 'System Monitor');
+    try {
+      const checks = SystemMonitor.selfTest();
+      if (!Array.isArray(checks) || checks.length === 0) {
+        await addFailure(report, 'SECURITY', 'System Monitor', 'Self-test result is empty');
+      } else {
+        for (const check of checks) {
+          if (check.ok) await add(report, 'SECURITY', `System Monitor / ${check.name}`, true, true);
+          else await addFailure(report, 'SECURITY', `System Monitor / ${check.name}`, check.detail || 'Monitor check failed');
+        }
+      }
+    } catch (e) {
+      await addFailure(report, 'SECURITY', 'System Monitor', e);
+    }
+
     await step(control, 'SECURITY', 'Worker Network Guard');
     if (!WorkerBroker.available) {
       await addSkip(report, 'SECURITY', 'Worker Network Guard', 'Worker未対応');
@@ -7432,11 +8173,13 @@ const SelfTest = (() => {
     await add(report, 'CONTRACT', 'Stream Quantum / Base85', StreamBlock.QUANTUM % 4, 0);
 
     await step(control, 'CONTRACT', 'Japan Profile Classification');
+    await add(report, 'CONTRACT', 'Locale / de-DE', SysUtils.isJapanLocale('de-DE'), false);
+    await add(report, 'CONTRACT', 'Locale / it-IT', SysUtils.isJapanLocale('it-IT'), false);
     await add(report, 'CONTRACT', 'Locale / ja-JP', SysUtils.isJapanLocale('ja-JP'), true);
-    await add(report, 'CONTRACT', 'Locale / zh-TW', SysUtils.isJapanLocale('zh-TW'), false);
     await add(report, 'CONTRACT', 'Locale / en-JP', SysUtils.isJapanLocale('en-JP'), true);
+    await add(report, 'CONTRACT', 'Time Zone / Europe-Berlin', SysUtils.isJapanTimeZone('Europe/Berlin'), false);
+    await add(report, 'CONTRACT', 'Time Zone / Europe-Rome', SysUtils.isJapanTimeZone('Europe/Rome'), false);
     await add(report, 'CONTRACT', 'Time Zone / Asia-Tokyo', SysUtils.isJapanTimeZone('Asia/Tokyo'), true);
-    await add(report, 'CONTRACT', 'Time Zone / Asia-Taipei', SysUtils.isJapanTimeZone('Asia/Taipei'), false);
 
     await step(control, 'CONTRACT', 'Worker Contract');
     const worker = await Engine.runWorkerSelfTest('contract');
@@ -7696,7 +8439,6 @@ const UI = (() => {
   let updateRunning = false;
   let continuousCompareRevision = 0;
   let fileLoadRevision = 0;
-  let sysPanelUpdating = false;
 
   const renderState = {};
   let isRendering = false;
@@ -7836,6 +8578,13 @@ const UI = (() => {
       skipped:Math.max(0, Number(item?.skipped) || 0),
       failed:copyFailures(item?.failed)
     });
+    const copySystem = item => Object.freeze({
+      name:String(item?.name || ''),
+      ok:!!item?.ok,
+      total:Math.max(0, Number(item?.total) || 0),
+      passed:Math.max(0, Number(item?.passed) || 0),
+      failed:copyFailures(item?.failed)
+    });
     const copyInternal = item => Object.freeze({
       group:String(item?.group || ''),
       name:String(item?.name || ''),
@@ -7858,6 +8607,7 @@ const UI = (() => {
         endedAt:null,
         visibleTotal:Math.max(0, Number(visibleTotal) || 0),
         visible:[],
+        system:[],
         internal:[],
         preHiddenReset:null,
         finalReset:null,
@@ -7865,6 +8615,7 @@ const UI = (() => {
       };
     };
     const addVisible = item => { if (latest?.status === 'running') latest.visible.push(copyVisible(item)); };
+    const addSystem = item => { if (latest?.status === 'running') latest.system.push(copySystem(item)); };
     const addInternal = item => { if (latest?.status === 'running') latest.internal.push(copyInternal(item)); };
     const setPreHiddenReset = item => { if (latest?.status === 'running') latest.preHiddenReset = copyVerify(item); };
     const setFinalReset = item => { if (latest?.status === 'running') latest.finalReset = copyVerify(item); };
@@ -7882,6 +8633,7 @@ const UI = (() => {
         endedAt:latest.endedAt,
         visibleTotal:latest.visibleTotal,
         visible:Object.freeze(latest.visible.map(copyVisible)),
+        system:Object.freeze(latest.system.map(copySystem)),
         internal:Object.freeze(latest.internal.map(copyInternal)),
         preHiddenReset:copyVerify(latest.preHiddenReset),
         finalReset:copyVerify(latest.finalReset),
@@ -7889,7 +8641,7 @@ const UI = (() => {
       });
     };
 
-    return Object.freeze({ begin, addVisible, addInternal, setPreHiddenReset, setFinalReset, finish, snapshot });
+    return Object.freeze({ begin, addVisible, addSystem, addInternal, setPreHiddenReset, setFinalReset, finish, snapshot });
   })();
 
   const TEST_VECTORS = {
@@ -8999,6 +9751,10 @@ function showToast(msg, duration = TOAST_DURATION) {
     if (els.selfTestBtn) {
       if (!AutoTestSession.active) {
         els.selfTestBtn.textContent = '自動検証';
+      } else if (AutoTestSession.phase === 'system') {
+        els.selfTestBtn.textContent = AutoTestSession.total
+          ? `自動検証:表示 ${AutoTestSession.current}/${AutoTestSession.total}`
+          : `自動検証:表示 ${AutoTestSession.current}`;
       } else if (AutoTestSession.phase === 'internal') {
         els.selfTestBtn.textContent = AutoTestSession.total
           ? `自動検証:内部 ${AutoTestSession.current}/${AutoTestSession.total}`
@@ -9051,83 +9807,180 @@ function showToast(msg, duration = TOAST_DURATION) {
     syncPauseControls();
   }
 
-  function setSysOffset() {
-    const h = els.sysEl.getBoundingClientRect().height || 0;
-    const pad = Math.ceil(h + 24);
-    document.documentElement.style.setProperty('--sys-offset', pad + 'px');
-  }
+  const SystemPanelRenderer = (() => {
+    const nodes = Object.create(null);
+    let resizeObserver = null;
+    let initialized = false;
+    let last = Object.create(null);
 
-  function buildSystemPanelFragment(device, network, geoLabel, dateStr) {
-    const frag = document.createDocumentFragment();
-    let lineCount = 0;
-    const beginLine = () => { if (lineCount++ > 0) frag.appendChild(document.createTextNode('\n')); };
-    const appendPlainLine = text => { beginLine(); frag.appendChild(document.createTextNode(String(text))); };
-    const appendSpan = (text, className='') => {
-      const span = document.createElement('span');
-      if (className) span.className = className;
-      span.textContent = String(text);
-      frag.appendChild(span);
+    const patchText = (node, value, key) => {
+      const text = String(value ?? '');
+      if (!node || last[key] === text) return false;
+      last[key] = text;
+      node.textContent = text;
+      return true;
     };
 
-    if (window.__ZESS_MODE__) {
-      const zessStorage = Security.getStorageIsolationStatus();
-      if (zessStorage.complete) {
-        appendPlainLine('【 ZESS (ZERO-EGRESS STATELESS SANDBOX) 稼働中 / Storage隔離: 正常 】');
+    const makeLine = (key, className='') => {
+      const line = document.createElement('div');
+      line.dataset.sysLine = key;
+      if (className) line.className = className;
+      els.sysEl.appendChild(line);
+      nodes[key] = line;
+      return line;
+    };
+
+    function setOffsetHeight(height) {
+      const h = Number(height) || 0;
+      document.documentElement.style.setProperty('--sys-offset', Math.ceil(h + 24) + 'px');
+    }
+
+    function measureFallback() {
+      if (!els.sysEl) return;
+      setOffsetHeight(els.sysEl.getBoundingClientRect().height || 0);
+    }
+
+    function init() {
+      if (initialized || !els.sysEl) return;
+      initialized = true;
+      els.sysEl.replaceChildren();
+
+      makeLine('zess');
+      makeLine('crypto');
+      makeLine('manufacture');
+      makeLine('reference');
+      makeLine('system');
+      makeLine('device');
+      makeLine('processor');
+      makeLine('graphics');
+      makeLine('screen');
+      makeLine('viewport');
+      makeLine('browser');
+      makeLine('theme');
+      makeLine('power');
+      makeLine('connection');
+      makeLine('ip');
+      makeLine('geo');
+      makeLine('clock');
+
+      patchText(nodes.manufacture, '製造: ソニーグループ株式会社 / インターナショナル・ビジネス・マシーンズ・コーポレーション（IBM） 2026', 'manufacture');
+      patchText(nodes.reference, '外部検証リファレンス: GCHQ Cyber​​Chef', 'reference');
+
+      if (typeof ResizeObserver === 'function') {
+        resizeObserver = new ResizeObserver(entries => {
+          const entry = entries[entries.length - 1];
+          if (entry) setOffsetHeight(entry.contentRect.height || 0);
+        });
+        resizeObserver.observe(els.sysEl);
+      }
+      measureFallback();
+    }
+
+    function renderSecurity() {
+      if (window.__ZESS_MODE__) {
+        const zessStorage = Security.getStorageIsolationStatus();
+        if (zessStorage.complete) patchText(nodes.zess, '【 ZESS (ZERO-EGRESS STATELESS SANDBOX) 稼働中 / Storage隔離: 正常 】', 'zess');
+        else {
+          const localState = zessStorage.localStorage ? '正常' : '失敗';
+          const sessionState = zessStorage.sessionStorage ? '正常' : '失敗';
+          patchText(nodes.zess, `【 警告: ZESS 部分隔離 - localStorage: ${localState} / sessionStorage: ${sessionState} 】`, 'zess');
+        }
+        nodes.zess.hidden = false;
       } else {
-        const localState = zessStorage.localStorage ? '正常' : '失敗';
-        const sessionState = zessStorage.sessionStorage ? '正常' : '失敗';
-        appendPlainLine(`【 警告: ZESS 部分隔離 - localStorage: ${localState} / sessionStorage: ${sessionState} 】`);
+        nodes.zess.hidden = true;
+        last.zess = '';
+        nodes.zess.textContent = '';
+      }
+      if (!window.crypto?.subtle) {
+        patchText(nodes.crypto, '【 Web Crypto は無効です 】', 'crypto');
+        nodes.crypto.hidden = false;
+      } else {
+        nodes.crypto.hidden = true;
+        last.crypto = '';
+        nodes.crypto.textContent = '';
       }
     }
-    if (!window.crypto?.subtle) appendPlainLine('【 Web Crypto は無効です 】');
 
-    appendPlainLine('製造: ソニーグループ株式会社 / インターナショナル・ビジネス・マシーンズ・コーポレーション（IBM） 2026');
-    appendPlainLine('外部検証リファレンス: GCHQ Cyber​​Chef');
-
-    const sys = device.system;
-    beginLine();
-    frag.appendChild(document.createTextNode(`システム: ${sys.platform} (OS v${sys.osVersion} / ${sys.architecture}-${sys.bitness}-bit) (`));
-    appendSpan(sys.lang, sys.localeJapan ? '' : 'sys-alert');
-    frag.appendChild(document.createTextNode(' / '));
-    appendSpan(sys.timeZone, sys.timeZoneJapan ? '' : 'sys-alert');
-    frag.appendChild(document.createTextNode(')'));
-    for (const line of device.lines.slice(1)) appendPlainLine(line);
-
-    appendPlainLine(network.connectionLine);
-    beginLine();
-    if (network.ip.foreign) {
-      appendSpan(network.ip.baseText, 'sys-warning');
-      if (network.ip.countryName) {
-        frag.appendChild(document.createTextNode('（'));
-        appendSpan(network.ip.countryName, 'sys-alert');
-        frag.appendChild(document.createTextNode('）'));
+    function renderDevice(device) {
+      const sys = device?.system;
+      const line = nodes.system;
+      const signature = sys ? `${sys.platform}\u0000${sys.osVersion}\u0000${sys.architecture}\u0000${sys.bitness}\u0000${sys.lang}\u0000${sys.timeZone}\u0000${sys.localeJapan}\u0000${sys.timeZoneJapan}` : 'N/A';
+      if (last.systemSignature !== signature) {
+        last.systemSignature = signature;
+        line.replaceChildren();
+        if (!sys) {
+          line.textContent = 'システム: N/A';
+        } else {
+          line.appendChild(document.createTextNode(`システム: ${sys.platform} (OS v${sys.osVersion} / ${sys.architecture}-${sys.bitness}-bit) (`));
+          const lang = document.createElement('span');
+          lang.textContent = sys.lang;
+          if (!sys.localeJapan) lang.className = 'sys-alert';
+          line.appendChild(lang);
+          line.appendChild(document.createTextNode(' / '));
+          const zone = document.createElement('span');
+          zone.textContent = sys.timeZone;
+          if (!sys.timeZoneJapan) zone.className = 'sys-alert';
+          line.appendChild(zone);
+          line.appendChild(document.createTextNode(')'));
+        }
       }
-    } else {
-      frag.appendChild(document.createTextNode(network.ip.baseText));
+      patchText(nodes.device, device?.lines?.[1] || 'デバイス: N/A', 'device');
+      patchText(nodes.processor, device?.lines?.[2] || 'プロセッサ: N/A / 実装メモリ: N/A', 'processor');
+      patchText(nodes.graphics, device?.lines?.[3] || 'グラフィックス: N/A', 'graphics');
+      patchText(nodes.browser, device?.lines?.[6] || 'ブラウザ: N/A', 'browser');
     }
 
-    appendPlainLine(`位置: ${geoLabel}`);
-    appendPlainLine(`日時: ${dateStr}`);
-    return frag;
-  }
-
-  async function updateSysPanel() {
-    if (sysPanelUpdating) return;
-    sysPanelUpdating = true;
-    try {
-      const now = new Date(Date.now() + AppState.netTimeOffset);
-      const dateStr = SysUtils.fmtJapaneseDate(now);
-      const [device, , geoLabel] = await Promise.all([
-        SysUtils.deviceInfoSnapshot(),
-        SysUtils.networkDetailSnapshot(),
-        SysUtils.detectGeo()
-      ]);
-      const network = await SysUtils.networkDetailSnapshot();
-      els.sysEl.replaceChildren(buildSystemPanelFragment(device, network, geoLabel, dateStr));
-      setSysOffset();
-    } finally {
-      sysPanelUpdating = false;
+    function renderIdentity(identity) {
+      const line = nodes.ip;
+      const signature = `${identity.baseText}\u0000${identity.foreign}\u0000${identity.countryName}`;
+      if (last.ipSignature === signature) return;
+      last.ipSignature = signature;
+      line.replaceChildren();
+      const base = document.createElement('span');
+      base.textContent = identity.baseText || 'IP: N/A';
+      if (identity.foreign) base.className = 'sys-warning';
+      line.appendChild(base);
+      if (identity.foreign && identity.countryName) {
+        line.appendChild(document.createTextNode('（'));
+        const country = document.createElement('span');
+        country.className = 'sys-alert';
+        country.textContent = identity.countryName;
+        line.appendChild(country);
+        line.appendChild(document.createTextNode('）'));
+      }
     }
+
+    function render(snapshot, mask = SystemMonitor.DIRTY.ALL) {
+      if (!initialized) init();
+      if (!initialized) return;
+      const D = SystemMonitor.DIRTY;
+      if (mask & D.SECURITY) renderSecurity();
+      if (mask & D.DEVICE) renderDevice(snapshot.device);
+      if (mask & D.DISPLAY) {
+        patchText(nodes.screen, snapshot.display.screenLine, 'screen');
+        patchText(nodes.viewport, snapshot.display.viewportLine, 'viewport');
+        patchText(nodes.theme, snapshot.display.themeLine, 'theme');
+      }
+      if (mask & D.POWER) patchText(nodes.power, `電源ステータス: ${snapshot.power.text}`, 'power');
+      if (mask & D.CONNECTION) patchText(nodes.connection, snapshot.connection.line, 'connection');
+      if (mask & D.IDENTITY) {
+        renderIdentity(snapshot.identity);
+        patchText(nodes.geo, `位置: ${snapshot.identity.geoLabel || 'N/A'}`, 'geo');
+      }
+      if (mask & D.CLOCK) patchText(nodes.clock, `日時: ${snapshot.clock.text}`, 'clock');
+      if (!resizeObserver) measureFallback();
+    }
+
+    function destroy() {
+      try { resizeObserver?.disconnect(); } catch (_) {}
+      resizeObserver = null;
+    }
+
+    return Object.freeze({ init, render, destroy });
+  })();
+
+  function updateSysPanel() {
+    return SystemMonitor.refreshLocal();
   }
 
   function renderHashOutputValue(id, canonicalHex, isPreview = false) {
@@ -9954,90 +10807,40 @@ async function detectBase85Variants(input) {
       return test;
     };
 
+    const expectedSurfaceForTest = test => {
+      if (test?.surfaceExpect) return test.surfaceExpect;
+      const expected = test?.expect || {};
+      const surface = Object.create(null);
+      for (const id of InternalContract.HASH_IDS) {
+        const value = id === 'CRC64' ? expected.CRC64?.[AppState.crc64Variant] : expected[id];
+        if (value !== undefined) surface[id] = value;
+      }
+      return surface;
+    };
+
     const verifySelectedTest = async (key = AppState.testVector) => {
       const test = TEST_VECTORS[key];
-      if (!test) return { ok:false, total:0, failed:['Unknown Test'] };
+      if (!test) return { ok:false, total:0, passed:0, skipped:0, failed:['Unknown Test'] };
 
-      if (test.surfaceExpect) {
-        let ok = 0;
-        let total = 0;
-        let skipped = 0;
-        const failed = [];
-        for (const [id, expectedValue] of Object.entries(test.surfaceExpect)) {
-          total++;
-          const el = document.getElementById(id);
-          const actualValue = el ? ResultSurface.actual(el) : '';
-          if (String(actualValue) === String(expectedValue)) ok++;
-          else failed.push(`${id}: ${actualValue} != ${expectedValue}`);
-        }
-        if (failed.length === 0) showToast(`検証成功 ${ok}/${total}｜${test.label}${skipped ? `｜未対応 ${skipped}` : ''}`);
-        else {
-          showToast(`検証失敗 ${ok}/${total}［${test.label}］${skipped ? `｜未対応 ${skipped}` : ''}`);
-          console.warn('Self-test failures:', failed);
-        }
-        return { ok:failed.length === 0, total, passed:ok, skipped, failed };
-      }
-
-      const testText = AppState.sanitizeText ? Core.sanitizeText(test.text) : test.text;
-      const vT = Core.normalizeText(testText, AppState.normalization);
-      const bytes = Core.utf8Encode(vT);
-      const expected = test.expect;
-      const tempRes = {
-        'CRC32':'処理中…',
-        'CRC64':'処理中…',
-        'MD5':'処理中…',
-        'SHA-1':'処理中…',
-        'SHA-224':'処理中…',
-        'SHA-256':'処理中…',
-        'SHA-384':'処理中…',
-        'SHA-512':'処理中…'
-      };
-      EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, tempRes);
-
-      const resultsRaw = await Engine.verifyTestBytes(bytes, AppState.crc64Variant);
-      if (!resultsRaw) {
-        showToast('検証エラー: Workerが利用できません');
-        return { ok:false, total:0, passed:0, failed:['Workerが利用できません'] };
-      }
-
-      const results = {
-        'CRC32': resultsRaw.crc,
-        'CRC64': resultsRaw.crc64,
-        'MD5': resultsRaw.md5,
-        'SHA-1': resultsRaw.sha1,
-        'SHA-224': resultsRaw.sha224,
-        'SHA-256': resultsRaw.sha256,
-        'SHA-384': resultsRaw.sha384,
-        'SHA-512': resultsRaw.sha512
-      };
-      if (window.crypto?.subtle) {
-        results['SHA-384'] = await Core.safeAsync(() => Core.digestHex('SHA-384', bytes), resultsRaw.sha384);
-        results['SHA-512'] = await Core.safeAsync(() => Core.digestHex('SHA-512', bytes), resultsRaw.sha512);
-      }
-
+      const expectedSurface = expectedSurfaceForTest(test);
       let ok = 0;
       let total = 0;
-      let skipped = 0;
+      const skipped = 0;
       const failed = [];
-      for (const k of ['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512']) {
-        let expectedValue;
-        if (k === 'CRC64') expectedValue = expected.CRC64?.[AppState.crc64Variant];
-        else expectedValue = expected[k];
-        if (expectedValue === undefined) continue;
+      for (const [id, expectedValue] of Object.entries(expectedSurface)) {
         total++;
-        const actualValue = String(results[k] || '').toLowerCase();
-        const wantedValue = String(expectedValue).toLowerCase();
-        if (actualValue === wantedValue) ok++;
-        else failed.push(`${k}: ${actualValue} != ${wantedValue}`);
+        const el = document.getElementById(id);
+        const actualValue = el ? ResultSurface.actual(el) : '';
+        if (String(actualValue) === String(expectedValue)) ok++;
+        else failed.push(`${id}: ${actualValue} != ${expectedValue}`);
       }
+      if (total === 0) failed.push('Surface expectation is empty');
 
-      if (failed.length === 0) showToast(`検証成功 ${ok}/${total}｜全アルゴリズム正常${skipped ? `｜未対応 ${skipped}` : ''}`);
+      if (failed.length === 0) showToast(`検証成功 ${ok}/${total}｜${test.label}`);
       else {
-        const failedNames = failed.map(x => x.split(':')[0]).join(', ');
-        showToast(`検証失敗 ${ok}/${total}［${failedNames}］${skipped ? `｜未対応 ${skipped}` : ''}`);
-        console.warn('Self-test failures:', failed);
+        showToast(`検証失敗 ${ok}/${total}［${test.label}］`);
+        console.warn('Visible surface self-test failures:', failed);
       }
-      EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, results);
       return { ok:failed.length === 0, total, passed:ok, skipped, failed };
     };
 
@@ -10112,10 +10915,267 @@ async function detectBase85Variants(input) {
       showToast(message, visibleDuration);
     };
 
+    const runSystemSurfaceTests = async () => {
+      const bridge = SystemMonitorTestBridge;
+      if (!bridge || typeof bridge.begin !== 'function') {
+        const item = { name:'System Surface Bridge', ok:false, total:1, passed:0, failed:['Diagnostic bridge unavailable'] };
+        AutoTestReport.addSystem(item);
+        return [item];
+      }
+
+      const results = [];
+      const sysLine = key => els.sysEl?.querySelector(`[data-sys-line="${key}"]`) || null;
+      const lineText = key => sysLine(key)?.textContent || '';
+      const makeDevice = (base, lang, timeZone) => {
+        const lines = Array.isArray(base?.lines) ? Array.from(base.lines) : [
+          'システム: TEST', 'デバイス: テスト端末 [非タッチパネル]',
+          'プロセッサ: 8コア / 実装メモリ: 8GB', 'グラフィックス: TEST GPU',
+          'スクリーン: N/A', 'ビューポート: N/A', 'ブラウザ: TEST'
+        ];
+        while (lines.length < 7) lines.push('N/A');
+        const system = Object.freeze({
+          platform:'TEST', osVersion:'1.0', architecture:'x86_64', bitness:'64', lang, timeZone,
+          localeJapan:SysUtils.isJapanLocale(lang), timeZoneJapan:SysUtils.isJapanTimeZone(timeZone)
+        });
+        return Object.freeze({ text:lines.join('\n'), lines:Object.freeze(lines), system });
+      };
+      const displayState = Object.freeze({
+        dpr:2, vw:1111, vh:777, sw:1920, sh:1080, colorDepth:'24-bit', hdr:'HDR対応', theme:'ダークモード',
+        screenLine:'スクリーン: 1920×1080 @2x [深度: 24-bit / 色域: HDR対応]',
+        viewportLine:'ビューポート: 1111×777',
+        themeLine:'テーマ設定: ダークモード'
+      });
+      const mutationKeysFor = async action => {
+        if (typeof MutationObserver !== 'function' || !els.sysEl) return null;
+        const keys = new Set();
+        const observer = new MutationObserver(records => {
+          for (const record of records) {
+            let target = record.target;
+            if (target?.nodeType === 3) target = target.parentElement;
+            const owner = target?.closest?.('[data-sys-line]') || (target?.dataset?.sysLine ? target : null);
+            if (owner?.dataset?.sysLine) keys.add(owner.dataset.sysLine);
+          }
+        });
+        observer.observe(els.sysEl, { subtree:true, childList:true, characterData:true, attributes:true, attributeFilter:['class','hidden'] });
+        await action();
+        await bridge.settle();
+        observer.disconnect();
+        return Array.from(keys).sort();
+      };
+
+      const original = bridge.begin();
+      const baseDevice = original.device;
+      const cases = [
+        {
+          name:'Japan Identity / DOM',
+          run:async expect => {
+            bridge.identity({ ip:'203.0.113.10', family:'IPv4' }, { label:'日本・東京都・千代田区', countryCode:'JP', countryName:'Japan', isp:'TEST' });
+            await bridge.settle();
+            const ip = sysLine('ip');
+            expect(lineText('ip') === 'IP: 203.0.113.10 [IPv4]', 'Japan IP text');
+            expect(lineText('geo') === '位置: 日本・東京都・千代田区', 'Japan geo text');
+            expect(!ip?.querySelector('.sys-warning') && !ip?.querySelector('.sys-alert'), 'Japan must not be warning/alert');
+          }
+        },
+        {
+          name:'IP Change Clears Old Geo / DOM',
+          run:async expect => {
+            bridge.identity({ ip:'203.0.113.20', family:'IPv4' }, null);
+            await bridge.settle();
+            expect(lineText('ip') === 'IP: 203.0.113.20 [IPv4]', 'New IP must be visible without stale country');
+            expect(lineText('geo') === '位置: N/A', 'Old Geo must be cleared');
+            expect(!lineText('ip').includes('Japan'), 'Old country must not leak to new IP');
+          }
+        },
+        {
+          name:'Germany Identity / DOM Class',
+          run:async expect => {
+            bridge.identity({ ip:'203.0.113.20', family:'IPv4' }, { label:'圏外', countryCode:'DE', countryName:'Germany', isp:'TEST' });
+            await bridge.settle();
+            const ip = sysLine('ip');
+            expect(lineText('ip') === 'IP: 203.0.113.20 [IPv4]（Germany）', 'Germany IP text');
+            expect(lineText('geo') === '位置: 圏外', 'Germany geo text');
+            expect(!!ip?.querySelector('.sys-warning'), 'Foreign IP warning class');
+            expect(ip?.querySelector('.sys-alert')?.textContent === 'Germany', 'Germany alert class');
+          }
+        },
+        {
+          name:'Italy Same-IP Re-render / DOM',
+          run:async expect => {
+            bridge.identity({ ip:'203.0.113.20', family:'IPv4' }, { label:'圏外', countryCode:'IT', countryName:'Italy', isp:'TEST' });
+            await bridge.settle();
+            const ip = sysLine('ip');
+            expect(lineText('ip') === 'IP: 203.0.113.20 [IPv4]（Italy）', 'Italy must replace Germany on same IP');
+            expect(ip?.querySelector('.sys-alert')?.textContent === 'Italy', 'Italy alert class');
+            expect(!lineText('ip').includes('Germany'), 'Germany must not remain');
+          }
+        },
+        {
+          name:'Connection Normal / DOM',
+          run:async expect => {
+            bridge.connection({ effectiveType:'4g', downlink:12, rtt:35, saveData:false }, true);
+            await bridge.settle();
+            expect(lineText('connection') === '接続: 4g 下り:12Mbps RTT:35ms', 'Connection metrics render');
+          }
+        },
+        {
+          name:'Connection Zero Metrics / DOM',
+          run:async expect => {
+            bridge.connection({ effectiveType:'4g', downlink:0, rtt:0, saveData:false }, true);
+            await bridge.settle();
+            expect(lineText('connection') === '接続: 4g 下り:0Mbps RTT:0ms', 'Zero metrics must remain zero');
+          }
+        },
+        {
+          name:'Connection Offline Priority / DOM',
+          run:async expect => {
+            bridge.connection({ effectiveType:'4g', downlink:99, rtt:1, saveData:false }, false);
+            await bridge.settle();
+            expect(lineText('connection') === '接続: オフライン', 'Offline must override metrics');
+          }
+        },
+        {
+          name:'Japan Locale & Time Zone / DOM',
+          run:async expect => {
+            bridge.device(makeDevice(baseDevice, 'ja-JP', 'Asia/Tokyo'));
+            await bridge.settle();
+            const line = sysLine('system');
+            expect(lineText('system').includes('ja-JP / Asia/Tokyo'), 'Japan locale/timezone text');
+            expect((line?.querySelectorAll('.sys-alert').length || 0) === 0, 'Japan locale/timezone must not alert');
+          }
+        },
+        {
+          name:'Foreign Locale & Time Zone / DOM Class',
+          run:async expect => {
+            bridge.device(makeDevice(baseDevice, 'de-DE', 'Europe/Berlin'));
+            await bridge.settle();
+            const alerts = Array.from(sysLine('system')?.querySelectorAll('.sys-alert') || []).map(el => el.textContent);
+            expect(alerts.includes('de-DE'), 'Foreign locale alert');
+            expect(alerts.includes('Europe/Berlin'), 'Foreign timezone alert');
+          }
+        },
+        {
+          name:'JP Region Locale / DOM',
+          run:async expect => {
+            bridge.device(makeDevice(baseDevice, 'en-JP', 'Asia/Tokyo'));
+            await bridge.settle();
+            const line = sysLine('system');
+            expect(lineText('system').includes('en-JP / Asia/Tokyo'), 'JP region locale text');
+            expect((line?.querySelectorAll('.sys-alert').length || 0) === 0, 'en-JP must be treated as Japan locale');
+          }
+        },
+        {
+          name:'Power Level / DOM',
+          run:async expect => {
+            bridge.power('67%');
+            await bridge.settle();
+            expect(lineText('power') === '電源ステータス: 67%', 'Power level render');
+          }
+        },
+        {
+          name:'Power Charging / DOM',
+          run:async expect => {
+            bridge.power('67% （充電状態）');
+            await bridge.settle();
+            expect(lineText('power') === '電源ステータス: 67% （充電状態）', 'Charging state render');
+          }
+        },
+        {
+          name:'Display / Viewport / Theme / DOM',
+          run:async expect => {
+            bridge.display(displayState);
+            await bridge.settle();
+            expect(lineText('screen') === displayState.screenLine, 'Screen line render');
+            expect(lineText('viewport') === displayState.viewportLine, 'Viewport line render');
+            expect(lineText('theme') === displayState.themeLine, 'Theme line render');
+          }
+        },
+        {
+          name:'Clock / DOM',
+          run:async expect => {
+            bridge.clock('2099年01月02日 03:04:05');
+            await bridge.settle();
+            expect(lineText('clock') === '日時: 2099年01月02日 03:04:05', 'Clock line render');
+          }
+        },
+        {
+          name:'Connection Dirty Isolation / DOM Mutation',
+          run:async expect => {
+            bridge.connection({ effectiveType:'3g', downlink:3.5, rtt:120, saveData:false }, true);
+            await bridge.settle();
+            const keys = await mutationKeysFor(() => Promise.resolve(bridge.connection({ effectiveType:'4g', downlink:8, rtt:40, saveData:false }, true)));
+            expect(keys !== null, 'MutationObserver available');
+            if (keys) expect(keys.length === 1 && keys[0] === 'connection', `Only connection may mutate (${keys.join(',')})`);
+          }
+        },
+        {
+          name:'Same Value / Zero DOM Mutation',
+          run:async expect => {
+            bridge.connection({ effectiveType:'4g', downlink:8, rtt:40, saveData:false }, true);
+            await bridge.settle();
+            const keys = await mutationKeysFor(() => Promise.resolve(bridge.connection({ effectiveType:'4g', downlink:8, rtt:40, saveData:false }, true)));
+            expect(keys !== null, 'MutationObserver available');
+            if (keys) expect(keys.length === 0, `Same value must not mutate DOM (${keys.join(',')})`);
+          }
+        },
+        {
+          name:'Identity Dirty Isolation / DOM Mutation',
+          run:async expect => {
+            bridge.identity({ ip:'203.0.113.30', family:'IPv4' }, { label:'圏外', countryCode:'DE', countryName:'Germany', isp:'TEST' });
+            await bridge.settle();
+            const keys = await mutationKeysFor(() => Promise.resolve(bridge.identity({ ip:'203.0.113.31', family:'IPv4' }, { label:'圏外', countryCode:'IT', countryName:'Italy', isp:'TEST' })));
+            expect(keys !== null, 'MutationObserver available');
+            if (keys) expect(keys.length === 1 && keys[0] === 'ip', `Same Geo label must not be rewritten; only IP may mutate (${keys.join(',')})`);
+          }
+        }
+      ];
+
+      const total = cases.length + 1;
+      let index = 0;
+      const record = async (name, runner) => {
+        await AutoTestSession.checkpoint();
+        index++;
+        AutoTestSession.setProgress('system', index, total);
+        syncPauseControls();
+        setMetaStatus(`表示検証 ${index}/${total} ${name}`);
+        showAutoToast(`表示検証 ${index}/${total}｜${name}`, 700, true);
+        const failed = [];
+        let checks = 0;
+        const expect = (ok, detail) => { checks++; if (!ok) failed.push(String(detail || 'failed')); };
+        try { await runner(expect); } catch (error) { failed.push(String(error?.message || error)); }
+        const item = { name, ok:failed.length === 0, total:checks || 1, passed:failed.length === 0 ? (checks || 1) : Math.max(0, checks - failed.length), failed };
+        results.push(item);
+        AutoTestReport.addSystem(item);
+        await AutoTestClock.readable(80);
+        return item;
+      };
+
+      try {
+        for (const item of cases) await record(item.name, item.run);
+      } finally {
+        bridge.restore();
+        await bridge.settle();
+      }
+
+      await record('Real System State Restore / DOM', async expect => {
+        const restored = SystemMonitor.snapshot();
+        expect(restored.identity.text === original.identity.text, 'Identity state restore');
+        expect(restored.connection.line === original.connection.line, 'Connection state restore');
+        expect(restored.power.text === original.power.text, 'Power state restore');
+        expect(lineText('ip') === original.identity.text, 'IP DOM restore');
+        expect(lineText('connection') === original.connection.line, 'Connection DOM restore');
+        expect(lineText('power') === `電源ステータス: ${original.power.text}`, 'Power DOM restore');
+        expect(lineText('screen') === original.display.screenLine, 'Display DOM restore');
+      });
+
+      return results;
+    };
+
     const runAutomaticSelfTest = async () => {
       if (AutoTestSession.active) return;
       const keys = Object.keys(TEST_VECTORS);
       const visible = [];
+      let systemSurface = [];
       let hidden = [];
       let completed = 0;
       let lastYield = performance.now();
@@ -10203,6 +11263,15 @@ async function detectBase85Variants(input) {
         const preHiddenResetResult = await verifyEmptyBaseline('内部検証前復元');
         AutoTestReport.setPreHiddenReset(preHiddenResetResult);
 
+        showAutoToast('システム表示検証へ移行します', 1200, true);
+        setMetaStatus('システム表示検証');
+        await AutoTestClock.hold(AUTO_TEST_TIMING.phaseTransition, true);
+        systemSurface = await runSystemSurfaceTests();
+        const systemFailedLive = systemSurface.filter(item => !item.ok);
+        const systemPassedLive = systemSurface.length - systemFailedLive.length;
+        showAutoToast(`表示検証 ${systemPassedLive}/${systemSurface.length}${systemFailedLive.length ? `｜FAIL ${systemFailedLive.length}` : ' 完了'}`, systemFailedLive.length ? 4200 : 1200, true);
+        await AutoTestClock.hold(AUTO_TEST_TIMING.phaseTransition, true);
+
         showAutoToast('内部検証計画を構築中｜総項目数を実測します', 1800, true);
         setMetaStatus('内部検証計画を構築中');
         const hiddenPlannedTotal = await SelfTest.expectedCount();
@@ -10258,6 +11327,8 @@ async function detectBase85Variants(input) {
         AutoTestReport.setFinalReset(resetResult);
 
         const visibleFailed = visible.filter(x => !x.ok);
+        const systemFailed = systemSurface.filter(x => !x.ok);
+        const systemPassed = systemSurface.length - systemFailed.length;
         const hiddenFailed = hidden.filter(x => !x.ok && !x.skip);
         const hiddenPassed = hidden.filter(x => x.ok).length;
         const hiddenSkipped = hidden.filter(x => x.skip).length;
@@ -10267,7 +11338,7 @@ async function detectBase85Variants(input) {
         const preHiddenResetFailed = !preHiddenResetResult.ok;
         const resetFailed = !resetResult.ok;
 
-        const autoTestPassed = visibleFailed.length === 0 && hiddenFailed.length === 0 && !preHiddenResetFailed && !resetFailed;
+        const autoTestPassed = visibleFailed.length === 0 && systemFailed.length === 0 && hiddenFailed.length === 0 && !preHiddenResetFailed && !resetFailed;
         AutoTestReport.finish(autoTestPassed ? 'passed' : 'failed');
         AutoTestSession.end();
         if (autoProgressRaf) {
@@ -10277,20 +11348,24 @@ async function detectBase85Variants(input) {
         }
         syncPauseControls();
 
-        if (visibleFailed.length === 0 && hiddenFailed.length === 0 && !preHiddenResetFailed && !resetFailed) {
+        if (visibleFailed.length === 0 && systemFailed.length === 0 && hiddenFailed.length === 0 && !preHiddenResetFailed && !resetFailed) {
           setMetaStatus(skipped ? '自動検証完了（未対応あり）' : '自動検証完了');
-          showToast(`全検証成功｜入力 ${visiblePassed}/${visible.length}｜中間復元 OK｜内部 ${hiddenPassed}/${hidden.length}｜最終復元 OK${skipped ? `｜未対応 ${skipped}` : ''}`, 7000);
+          showToast(`全検証成功｜入力 ${visiblePassed}/${visible.length}｜表示 ${systemPassed}/${systemSurface.length}｜中間復元 OK｜内部 ${hiddenPassed}/${hidden.length}｜最終復元 OK${skipped ? `｜未対応 ${skipped}` : ''}`, 7000);
         } else {
           setMetaStatus('自動検証失敗');
           const groups = Array.from(new Set(hiddenFailed.map(x => x.group))).join(', ');
           const failurePreview = hiddenFailed.slice(0, 3).map(x => `${x.group}: ${x.name}`).join(' / ');
-          showToast(`全検証失敗｜入力 ${visiblePassed}/${visible.length}｜中間復元 ${preHiddenResetFailed ? 'FAIL' : 'OK'}｜内部 ${hiddenPassed}/${hidden.length}${groups ? `［${groups}］` : ''}${failurePreview ? `｜失敗: ${failurePreview}` : ''}｜最終復元 ${resetFailed ? 'FAIL' : 'OK'}${skipped ? `｜未対応 ${skipped}` : ''}`, 10000);
+          showToast(`全検証失敗｜入力 ${visiblePassed}/${visible.length}｜表示 ${systemPassed}/${systemSurface.length}｜中間復元 ${preHiddenResetFailed ? 'FAIL' : 'OK'}｜内部 ${hiddenPassed}/${hidden.length}${groups ? `［${groups}］` : ''}${failurePreview ? `｜失敗: ${failurePreview}` : ''}｜最終復元 ${resetFailed ? 'FAIL' : 'OK'}${skipped ? `｜未対応 ${skipped}` : ''}`, 10000);
           if (visibleFailed.length) console.warn('Visible self-test failures:', visibleFailed);
+          if (systemFailed.length) console.warn('System Surface self-test failures:', systemFailed);
           if (preHiddenResetFailed) console.warn('Pre-hidden reset self-test failure:', preHiddenResetResult.failed);
           if (hiddenFailed.length) console.warn('Self-test failures:', hiddenFailed);
           if (resetFailed) console.warn('Final reset self-test failure:', resetResult.failed);
         }
       } catch (e) {
+        if (SystemMonitorTestBridge?.active) {
+          try { SystemMonitorTestBridge.restore(); await SystemMonitorTestBridge.settle(); } catch (_) {}
+        }
         const aborted = !!e?.autoTestAbort || AutoTestSession.aborted;
         AutoTestReport.finish(aborted ? 'aborted' : 'error', e);
         AutoTestSession.end();
@@ -10329,6 +11404,8 @@ async function detectBase85Variants(input) {
       const fmtDate = value => value ? SysUtils.fmtJapaneseDate(new Date(value + AppState.netTimeOffset)) : '-';
       const visiblePassed = snapshot.visible.filter(item => item.ok).length;
       const visibleFailed = snapshot.visible.length - visiblePassed;
+      const systemPassed = snapshot.system.filter(item => item.ok).length;
+      const systemFailed = snapshot.system.length - systemPassed;
       const internalPassed = snapshot.internal.filter(item => item.ok).length;
       const internalSkipped = snapshot.internal.filter(item => item.skip).length;
       const internalFailed = snapshot.internal.length - internalPassed - internalSkipped;
@@ -10341,6 +11418,7 @@ async function detectBase85Variants(input) {
         `| 開始日時（日本標準時） | ${esc(fmtDate(snapshot.startedAt))} |`,
         `| 終了日時（日本標準時） | ${esc(fmtDate(snapshot.endedAt))} |`,
         `| 画面入力検証 | PASS ${visiblePassed} / FAIL ${visibleFailed} / 記録 ${snapshot.visible.length}/${snapshot.visibleTotal} |`,
+        `| システム表示検証 | PASS ${systemPassed} / FAIL ${systemFailed} / 計 ${snapshot.system.length} |`,
         `| 内部検証 | PASS ${internalPassed} / FAIL ${internalFailed} / SKIP ${internalSkipped} / 計 ${snapshot.internal.length} |`,
         `| 内部検証前の空復元 | ${verifyLabel(snapshot.preHiddenReset)} |`,
         `| 最終の空復元 | ${verifyLabel(snapshot.finalReset)} |`,
@@ -10360,7 +11438,19 @@ async function detectBase85Variants(input) {
         lines.push('');
       }
 
-      lines.push('### 5.2 復元検証', '');
+      lines.push('### 5.2 システム表示・統合検証（System Surface）', '');
+      if (!snapshot.system.length) {
+        lines.push('記録なし', '');
+      } else {
+        lines.push('| # | 項目 | 結果 | PASS | 詳細 |', '| ---: | :--- | :---: | ---: | :--- |');
+        snapshot.system.forEach((item, index) => {
+          const detail = item.failed.length ? item.failed.map(esc).join('<br>') : '-';
+          lines.push(`| ${index + 1} | ${esc(item.name)} | ${item.ok ? 'PASS' : 'FAIL'} | ${item.passed}/${item.total} | ${detail} |`);
+        });
+        lines.push('');
+      }
+
+      lines.push('### 5.3 復元検証', '');
       for (const [label, item] of [['内部検証前の空復元', snapshot.preHiddenReset], ['最終の空復元', snapshot.finalReset]]) {
         if (!item) {
           lines.push(`- **${label}:** 未実施`);
@@ -10371,7 +11461,7 @@ async function detectBase85Variants(input) {
       }
       lines.push('');
 
-      lines.push('### 5.3 内部検証（Internal）', '');
+      lines.push('### 5.4 内部検証（Internal）', '');
       if (!snapshot.internal.length) {
         lines.push('記録なし', '');
       } else {
@@ -10744,7 +11834,7 @@ async function detectBase85Variants(input) {
                 AppState.testVerifyArmed = false;
                 syncTestVerifyControl();
                 try {
-                    if (!autoToken && TEST_VECTORS[AppState.testVector]?.surfaceExpect) await waitForTestIdle();
+                    if (!autoToken) await waitForTestIdle();
                     const result = await verifySelectedTest();
                     finishAutoVerify(autoToken, result);
                 } catch (error) {
@@ -10763,14 +11853,9 @@ async function detectBase85Variants(input) {
                 const ts = new Date(Date.now() + AppState.netTimeOffset);
                 const fn = `sony-hash-audit-${SysUtils.fmtJapanTimestamp(ts)}.md`;
                 
-                const fetchWithTimeout = (promise, ms = 3000, fallback = '取得タイムアウト') => 
-                    Promise.race([promise, new Promise(resolve => setTimeout(() => resolve(fallback), ms))]);
-
-                const [geoInfo] = await Promise.all([
-                    fetchWithTimeout(SysUtils.detectGeo(), 3000),
-                    fetchWithTimeout(SysUtils.networkDetail(), 3000)
-                ]);
-                const netInfo = await fetchWithTimeout(SysUtils.networkDetail(), 1000);
+                const systemReport = SystemMonitor.reportSnapshot();
+                const geoInfo = systemReport.geoText;
+                const netInfo = systemReport.networkText;
 
                 const metaText = document.getElementById('meta').textContent || '';
                 const currentStatus = AppState.currentStatus || '待機';
@@ -10805,7 +11890,7 @@ async function detectBase85Variants(input) {
                     !window.crypto?.subtle ? '- **Web Crypto:** 無効' : '',
                     
                     '\n## 1. システム／環境情報\n```text',
-                    await SysUtils.deviceInfo(),
+                    systemReport.deviceText,
                     '',
                     netInfo,
                     `位置情報: ${geoInfo}`,
@@ -10943,11 +12028,8 @@ async function detectBase85Variants(input) {
             case 'cycleInternetMode': {
                 if (window.__ZESS_MODE__) break;
                 InternetGateway.cycle();
-                SysUtils.resetNetworkCache();
-                AppState.netTimeOffset = 0;
                 els.internetBtn.textContent = InternetGateway.buttonLabel();
-                await SysUtils.syncNetworkTime();
-                updateSysPanel();
+                SystemMonitor.policyChanged();
                 break;
             }
             case 'toggleZess': {
@@ -11117,7 +12199,7 @@ async function detectBase85Variants(input) {
     document.addEventListener('fullscreenchange', () => {
       const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
       els.fsBtn.textContent = isFs ? '通常表示' : '全画面';
-      setSysOffset();
+      SystemMonitor.refreshDisplay();
     });
 
     els.internetBtn.textContent = InternetGateway.buttonLabel();
@@ -11126,29 +12208,16 @@ async function detectBase85Variants(input) {
       els.zessBtn.classList.add('warn');
       els.internetBtn.hidden = true;
       if (els.internetSep) els.internetSep.hidden = true;
-    } else {
-      if ('getBattery' in navigator) {
-        navigator.getBattery().then(b => {
-          const upd = () => { AppState.battStr = `${Math.round(b.level*100)}%${b.charging ? ' （充電状態）' : ''}`; updateSysPanel(); };
-          upd(); b.addEventListener('levelchange', upd); b.addEventListener('chargingchange', upd);
-        }).catch(() => {});
-      }
-
-      window.addEventListener('online', async () => {
-        SysUtils.resetNetworkCache();
-        await SysUtils.syncNetworkTime();
-        updateSysPanel();
-      });
-      window.addEventListener('offline', () => {
-        AppState.netTimeOffset = 0;
-        SysUtils.resetNetworkCache();
-        updateSysPanel();
-      });
     }
 
-    window.addEventListener('resize', () => { setSysOffset(); });
-    window.addEventListener('load', () => { els.inputEl.focus(); setSysOffset(); });
-    window.addEventListener('beforeunload', () => { Engine.terminateWorker(); Base64Engine.terminate(); Base85Engine.terminate(); });
+    window.addEventListener('load', () => { els.inputEl.focus(); });
+    window.addEventListener('beforeunload', () => {
+      SystemPanelRenderer.destroy();
+      SystemMonitor.destroy();
+      Engine.terminateWorker();
+      Base64Engine.terminate();
+      Base85Engine.terminate();
+    });
   }
 
   function panicReset() {
@@ -11221,6 +12290,8 @@ async function detectBase85Variants(input) {
 
   function init() {
     initDOM();
+    SystemPanelRenderer.init();
+    SystemMonitor.subscribe((snapshot, mask) => SystemPanelRenderer.render(snapshot, mask));
     attachEvents();
   }
 
@@ -11252,12 +12323,9 @@ const PresetLoader = (() => {
   VisualTheme.init();
   Engine.init();
   UI.init();
+  SystemMonitor.init();
   IntegrityGuard.init();
   PresetLoader.init();
-  
-  await SysUtils.syncNetworkTime();
-  UI.updateSysPanel();
-  setInterval(() => UI.updateSysPanel(), 1000);
 })();
 
 </script>
