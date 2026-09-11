@@ -776,7 +776,7 @@
       <button id="save" class="link" aria-label="結果を保存" data-action="saveResults">セーブ</button>
       <span id="stop-all-wrap" style="display:none;"><span class="sep hint">|</span><button id="stop-all" class="link warn" data-action="stopAll">[全停止]</button><button id="abort-all" class="link warn" data-action="abortAll" style="display:none;">[全中止]</button></span>
       <span id="internetSep" class="sep hint">|</span>
-      <button id="internetToggle" class="link" aria-label="インターネット通信許可モードの切替" title="時間: 時刻同期のみ / オン: 登録済み通信を許可 / オフ: 外部通信を許可しません" data-action="cycleInternetMode">インターネット: 時間</button>
+      <button id="internetToggle" class="link" aria-label="インターネット通信許可モードの切替" title="日時: 時刻同期のみ / オン: 登録済み通信を許可 / オフ: 外部通信を許可しません" data-action="cycleInternetMode">インターネット: 日時</button>
       <span class="sep hint">|</span>
       <button id="zessToggle" class="link" aria-label="ZESS隔離モード" data-action="toggleZess">ZESS: オフ</button>
     </div>
@@ -1293,7 +1293,7 @@ const InternetGateway = (() => {
   }
 
   function modeLabel() {
-    return mode === MODE.ON ? 'オン' : mode === MODE.OFF ? 'オフ' : '時間';
+    return mode === MODE.ON ? 'オン' : mode === MODE.OFF ? 'オフ' : '日時';
   }
 
   function buttonLabel() { return `インターネット: ${modeLabel()}`; }
@@ -9107,7 +9107,7 @@ function showToast(msg, duration = TOAST_DURATION) {
     }
 
     appendPlainLine(`位置: ${geoLabel}`);
-    appendPlainLine(`日付: ${dateStr}`);
+    appendPlainLine(`日時: ${dateStr}`);
     return frag;
   }
 
@@ -10785,7 +10785,7 @@ async function detectBase85Variants(input) {
                     ? `localStorage=${zessStorage.localStorage ? '正常' : '失敗'}, sessionStorage=${zessStorage.sessionStorage ? '正常' : '失敗'}`
                     : '';
 
-                const gatewayModeLabel = mode => mode === 'on' ? 'オン' : mode === 'off' ? 'オフ' : '時間';
+                const gatewayModeLabel = mode => mode === 'on' ? 'オン' : mode === 'off' ? 'オフ' : '日時';
                 const gatewayAudit = InternetGateway.auditSnapshot().slice(-64);
                 const gatewayAuditText = gatewayAudit.length ? gatewayAudit.map(entry => {
                     const stamp = SysUtils.fmtJapanTimestamp(new Date(entry.at + AppState.netTimeOffset));
