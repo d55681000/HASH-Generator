@@ -7,13 +7,14 @@
 <script>
   const zessParam = new URLSearchParams(location.search).get('U-571');
   if(zessParam === '1' || location.hash === '#U-571') {
-    document.write('<meta http-equiv="Content-Security-Policy" content="default-src \'self\'; script-src \'self\' \'unsafe-inline\' blob:; style-src \'self\' \'unsafe-inline\'; worker-src \'self\' blob:; img-src \'self\' data:; connect-src \'none\'; object-src \'none\'; base-uri \'none\'; frame-ancestors \'none\';">');
+    document.write('<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\' blob:; style-src \'unsafe-inline\'; worker-src blob:; img-src data:; connect-src \'none\'; frame-src \'none\'; form-action \'none\'; object-src \'none\'; base-uri \'none\'; frame-ancestors \'none\';">');
     window.__ZESS_MODE__ = true;
   } else {
-    document.write('<meta http-equiv="Content-Security-Policy" content="default-src \'self\'; script-src \'self\' \'unsafe-inline\' blob:; style-src \'self\' \'unsafe-inline\'; worker-src \'self\' blob:; img-src \'self\' data:; connect-src \'self\' https://api.ipify.org https://worldtimeapi.org https://ipapi.co https://ipinfo.io https://ip-api.com https://ipwho.is https://www.cloudflare.com; object-src \'none\'; base-uri \'none\'; frame-ancestors \'none\';">');
+    document.write('<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\' blob:; style-src \'unsafe-inline\'; worker-src blob:; img-src data:; connect-src https://api.ipify.org https://worldtimeapi.org https://ipapi.co https://ipinfo.io https://ip-api.com https://ipwho.is https://www.cloudflare.com; frame-src \'none\'; form-action \'none\'; object-src \'none\'; base-uri \'none\'; frame-ancestors \'none\';">');
   }
 </script>
 <meta name="referrer" content="no-referrer">
+<meta http-equiv="x-dns-prefetch-control" content="off">
 <style>
   :root{
     --alert:#ff4747;
@@ -426,10 +427,19 @@
   .toast.show{opacity:1}
   
   .sys{
+    --sys-panel-fg:var(--muted);
     position:fixed;right:10px;bottom:10px;width:max-content;max-width:calc(100vw - 20px);
-    color:var(--muted);font-size:.75em;line-height:1.35;white-space:pre-wrap;text-align:right;
+    color:var(--sys-panel-fg);font-size:.75em;line-height:1.35;white-space:pre-wrap;text-align:right;
     pointer-events:auto; user-select:text; transition: color 0.4s ease;
     view-transition-name: sys-panel;
+  }
+  .sys-alert-blink {
+    font-weight:700;
+    animation:sys-alert-blink .2s steps(1,end) infinite;
+  }
+  @keyframes sys-alert-blink {
+    0%,49.999% { color:var(--sys-panel-fg); text-shadow:none; }
+    50%,100% { color:var(--alert); text-shadow:0 0 6px var(--alert); }
   }
   .unofficial{
     position:fixed;left:10px;bottom:10px;
@@ -771,8 +781,8 @@
       <span class="sep hint">/</span>
       <button id="save" class="link" aria-label="結果を保存" data-action="saveResults">セーブ</button>
       <span id="stop-all-wrap" style="display:none;"><span class="sep hint">|</span><button id="stop-all" class="link warn" data-action="stopAll">[全停止]</button><button id="abort-all" class="link warn" data-action="abortAll" style="display:none;">[全中止]</button></span>
-      <span class="sep hint">|</span>
-      <button id="geoToggle" class="link" aria-label="位置情報の照会" data-action="toggleGeo">位置: オフ</button>
+      <span id="internetSep" class="sep hint">|</span>
+      <button id="internetToggle" class="link" aria-label="インターネット通信許可モードの切替" title="時間: 時刻同期のみ / オン: 登録済み通信を許可 / オフ: 外部通信を許可しません" data-action="cycleInternetMode">インターネット: 時間</button>
       <span class="sep hint">|</span>
       <button id="zessToggle" class="link" aria-label="ZESS隔離モード" data-action="toggleZess">ZESS: オフ</button>
     </div>
@@ -886,11 +896,32 @@ const Security = (() => {
 
   const initDomGuard = () => {
     if (typeof MutationObserver === 'undefined') return;
+    const NETWORK_HINT_REL = /(?:^|\s)(?:dns-prefetch|preconnect|prefetch|prerender)(?:\s|$)/i;
+    const isMetaRefresh = el => String(el?.httpEquiv || el?.getAttribute?.('http-equiv') || '').toLowerCase() === 'refresh';
+    const stripNetworkHints = (root) => {
+      if (!root || typeof root.querySelectorAll !== 'function') return;
+      root.querySelectorAll('a[ping]').forEach(el => el.removeAttribute('ping'));
+      root.querySelectorAll('link[rel]').forEach(el => { if (NETWORK_HINT_REL.test(el.rel || '')) el.remove(); });
+      root.querySelectorAll('meta[http-equiv]').forEach(el => { if (isMetaRefresh(el)) el.remove(); });
+    };
+    stripNetworkHints(document);
+    document.addEventListener('click', event => {
+      const anchor = event.target?.closest?.('a[href]');
+      if (!anchor || anchor.hasAttribute('download')) return;
+      const href = String(anchor.getAttribute('href') || '').trim();
+      if (!href || href.startsWith('#')) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
     const observer = new MutationObserver((mutations) => {
       for (const m of mutations) {
         for (const node of m.addedNodes) {
           if (node.nodeType !== 1) continue; 
           const tag = node.tagName.toUpperCase();
+          if (tag === 'A' && node.hasAttribute('ping')) node.removeAttribute('ping');
+          if (tag === 'LINK' && NETWORK_HINT_REL.test(node.rel || '')) { node.remove(); continue; }
+          if (tag === 'META' && isMetaRefresh(node)) { node.remove(); continue; }
+          stripNetworkHints(node);
           if (tag === 'A' && node.hasAttribute('download')) continue;
           if (tag === 'TEXTAREA' && node.hasAttribute('readonly') && node.style.position === 'fixed') continue;
           if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'META') continue;
@@ -913,8 +944,6 @@ const Security = (() => {
   function init() {
     if (window.__ZESS_MODE__) {
       document.body.classList.add('U-571');
-      window.fetch = async () => { throw new Error('ZESS: Egress Network Blocked'); };
-      window.XMLHttpRequest = function() { throw new Error('ZESS: Egress Network Blocked'); };
       
       const memStore = new Map();
       const dummyStorage = new Proxy({}, {
@@ -952,6 +981,526 @@ const Security = (() => {
   }
   return { init, getStorageIsolationStatus };
 })();
+
+/* =========================================================
+   INTERNET GATEWAY
+   外部通信は登録済みRouteのみ。Capabilityはページ外へ送信しない。
+========================================================= */
+const InternetGateway = (() => {
+  const MODE = Object.freeze({ TIME:'time', ON:'on', OFF:'off' });
+  const LEVEL = Object.freeze({ TIME:1, STANDARD:2, SENSITIVE:3 });
+  const LEVEL_LABEL = Object.freeze({ 1:'T1/TIME', 2:'T2/STANDARD', 3:'T3/SENSITIVE' });
+  const ROUTES = Object.freeze({
+    'time.jst': Object.freeze({
+      url:'https://worldtimeapi.org/api/timezone/Asia/Tokyo', method:'GET', format:'json', level:LEVEL.TIME, purpose:'日本標準時の校時', maxResponseBytes:65536
+    }),
+    'network.public-ip': Object.freeze({
+      url:'https://api.ipify.org?format=json', method:'GET', format:'json', level:LEVEL.STANDARD, purpose:'公開IPの照会', maxResponseBytes:16384
+    }),
+    'location.ipapi': Object.freeze({
+      url:'https://ipapi.co/json/', method:'GET', format:'json', level:LEVEL.SENSITIVE, purpose:'IPベース位置情報の照会', maxResponseBytes:131072
+    }),
+    'location.ipwhois': Object.freeze({
+      url:'https://ipwho.is/', method:'GET', format:'json', level:LEVEL.SENSITIVE, purpose:'IPベース位置情報の照会', maxResponseBytes:131072
+    }),
+    'location.ipinfo': Object.freeze({
+      url:'https://ipinfo.io/json', method:'GET', format:'json', level:LEVEL.SENSITIVE, purpose:'IPベース位置情報の照会', maxResponseBytes:131072
+    }),
+    'location.cloudflare': Object.freeze({
+      url:'https://www.cloudflare.com/cdn-cgi/trace', method:'GET', format:'text', level:LEVEL.SENSITIVE, purpose:'国コード照会', maxResponseBytes:65536
+    }),
+    'location.ip-api': Object.freeze({
+      url:'https://ip-api.com/json/?fields=status,countryCode,region,regionName,city,zip,isp,org,as', method:'GET', format:'json', level:LEVEL.SENSITIVE, purpose:'IPベース位置情報の照会', maxResponseBytes:131072
+    }),
+    'navigation.panic': Object.freeze({
+      url:'https://www.google.com', method:'NAVIGATE', format:'none', level:LEVEL.STANDARD, purpose:'Yukikaze退避', transport:'navigate'
+    })
+  });
+
+  const nativeFetch = (!window.__ZESS_MODE__ && typeof window.fetch === 'function') ? window.fetch.bind(window) : null;
+  const tickets = new WeakMap();
+  const inflight = new Map();
+  const audit = [];
+  const AUDIT_LIMIT = 256;
+  const TICKET_TTL_MS = 2000;
+  const MAX_TIMEOUT_MS = 30000;
+  const HARD_RESPONSE_LIMIT = 4 * 1024 * 1024;
+  let auditSeq = 0;
+  let policyEpoch = 1;
+  let initialized = false;
+  let mode = window.__ZESS_MODE__ ? MODE.OFF : MODE.TIME;
+
+  const genericNetworkError = () => new TypeError('Failed to fetch');
+  const blockedFetch = () => Promise.reject(genericNetworkError());
+  const blockedNetworkCtor = function() { throw genericNetworkError(); };
+  const blockedWorkerCtor = function() { throw new DOMException('Worker creation is unavailable', 'SecurityError'); };
+  const blockedOpen = () => null;
+  const blockedBeacon = () => false;
+  const blockedServiceWorkerRegister = () => Promise.reject(new DOMException('Service Worker registration failed', 'SecurityError'));
+
+  function lockProperty(target, name, value) {
+    if (!target) return false;
+    try {
+      Object.defineProperty(target, name, { value, writable:false, configurable:false });
+      return target[name] === value;
+    } catch (_) {
+      try { target[name] = value; return target[name] === value; }
+      catch (_) { return false; }
+    }
+  }
+
+  function randomTicketId() {
+    if (!window.crypto || typeof window.crypto.getRandomValues !== 'function') return null;
+    const bytes = new Uint8Array(32);
+    window.crypto.getRandomValues(bytes);
+    let out = '';
+    for (const b of bytes) out += b.toString(16).padStart(2, '0');
+    return out;
+  }
+
+  function levelAllowedFor(policyMode, level, zess = window.__ZESS_MODE__) {
+    if (zess || policyMode === MODE.OFF) return false;
+    if (policyMode === MODE.TIME) return level === LEVEL.TIME;
+    return policyMode === MODE.ON;
+  }
+
+  function levelAllowed(level) {
+    return levelAllowedFor(mode, level);
+  }
+
+  function record(entry) {
+    const item = Object.freeze({ seq:++auditSeq, at:Date.now(), mode, ...entry });
+    audit.push(item);
+    if (audit.length > AUDIT_LIMIT) audit.splice(0, audit.length - AUDIT_LIMIT);
+    return item;
+  }
+
+  function mintTicket(routeId, level, expiresAt = performance.now() + TICKET_TTL_MS, epoch = policyEpoch) {
+    const id = randomTicketId();
+    if (!id) return null;
+    const ticket = Object.freeze(Object.create(null));
+    tickets.set(ticket, { id, routeId, level, epoch, expiresAt, used:false });
+    return ticket;
+  }
+
+  function issueTicket(routeId) {
+    const route = ROUTES[routeId];
+    if (!route || !levelAllowed(route.level)) return null;
+    if (route.transport !== 'navigate' && !nativeFetch) return null;
+    return mintTicket(routeId, route.level);
+  }
+
+  function consumeTicket(ticket, routeId) {
+    const meta = tickets.get(ticket);
+    if (!meta || meta.used || meta.routeId !== routeId || meta.epoch !== policyEpoch || performance.now() > meta.expiresAt) return null;
+    meta.used = true;
+    tickets.delete(ticket);
+    return meta;
+  }
+
+  function boundedTimeout(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 5000;
+    return Math.max(250, Math.min(MAX_TIMEOUT_MS, Math.trunc(n)));
+  }
+
+  function utf8Bytes(text) {
+    if (typeof TextEncoder === 'undefined') return null;
+    return new TextEncoder().encode(String(text));
+  }
+
+  async function requestBodyBytes(body) {
+    if (body == null) return new Uint8Array(0);
+    if (typeof body === 'string') return utf8Bytes(body);
+    if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) return utf8Bytes(body.toString());
+    if (body instanceof ArrayBuffer) return new Uint8Array(body.slice(0));
+    if (ArrayBuffer.isView(body)) return new Uint8Array(body.buffer, body.byteOffset, body.byteLength).slice();
+    if (typeof Blob !== 'undefined' && body instanceof Blob) return new Uint8Array(await body.arrayBuffer());
+    throw genericNetworkError();
+  }
+
+  async function digestBytes(bytes) {
+    if (!bytes || !window.crypto?.subtle) return null;
+    try {
+      const hash = new Uint8Array(await window.crypto.subtle.digest('SHA-256', bytes));
+      let out = '';
+      for (const b of hash) out += b.toString(16).padStart(2, '0');
+      return out;
+    } catch (_) { return null; }
+  }
+
+  async function readResponseBody(response, maxBytes) {
+    const limit = Math.max(1, Math.min(HARD_RESPONSE_LIMIT, Math.trunc(Number(maxBytes) || 0)));
+    const contentLength = Number(response.headers?.get?.('content-length'));
+    if (Number.isFinite(contentLength) && contentLength > limit) throw genericNetworkError();
+
+    if (!response.body || typeof response.body.getReader !== 'function' || typeof TextDecoder === 'undefined') {
+      const text = await response.text();
+      const bytes = utf8Bytes(text);
+      if (!bytes || bytes.byteLength > limit) throw genericNetworkError();
+      return { text, bytes };
+    }
+
+    const reader = response.body.getReader();
+    const chunks = [];
+    let total = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!(value instanceof Uint8Array)) throw genericNetworkError();
+        total += value.byteLength;
+        if (total > limit) {
+          try { await reader.cancel(); } catch (_) {}
+          throw genericNetworkError();
+        }
+        chunks.push(value);
+      }
+    } finally {
+      try { reader.releaseLock(); } catch (_) {}
+    }
+
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    return { text:new TextDecoder().decode(bytes), bytes };
+  }
+
+  async function request(routeId, options = {}) {
+    const route = ROUTES[routeId];
+    if (!route || route.transport === 'navigate') throw genericNetworkError();
+
+    const body = options.body ?? null;
+    const maxBodyBytes = Math.max(0, Number(route.maxBodyBytes) || 0);
+    if (body != null && maxBodyBytes === 0) throw genericNetworkError();
+    const bodyBytes = await requestBodyBytes(body);
+    if (bodyBytes.byteLength > maxBodyBytes) throw genericNetworkError();
+    const requestDigest = bodyBytes.byteLength ? await digestBytes(bodyBytes) : null;
+
+    const ticket = issueTicket(routeId);
+    if (!ticket) {
+      record({ type:'denied', routeId, level:route.level, levelLabel:LEVEL_LABEL[route.level], method:route.method, url:route.url, purpose:route.purpose });
+      throw genericNetworkError();
+    }
+    const permit = consumeTicket(ticket, routeId);
+    if (!permit) throw genericNetworkError();
+
+    const controller = new AbortController();
+    const requestId = permit.id;
+    const timeoutMs = boundedTimeout(options.timeoutMs);
+    const started = performance.now();
+    let externalAbort = null;
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    inflight.set(requestId, { controller, routeId, level:route.level });
+
+    if (options.signal) {
+      externalAbort = () => controller.abort();
+      if (options.signal.aborted) controller.abort();
+      else options.signal.addEventListener('abort', externalAbort, { once:true });
+    }
+
+    try {
+      const response = await nativeFetch(route.url, {
+        method:route.method,
+        signal:controller.signal,
+        credentials:'omit',
+        cache:'no-store',
+        referrerPolicy:'no-referrer',
+        redirect:'error',
+        headers:route.headers || undefined,
+        body:body == null ? undefined : body
+      });
+      if (!response.ok) throw genericNetworkError();
+
+      const { text:bodyText, bytes:responseBytes } = await readResponseBody(response, route.maxResponseBytes);
+      const responseDigest = await digestBytes(responseBytes);
+      const durationMs = Math.max(0, Math.round(performance.now() - started));
+      record({
+        type:'transfer',
+        ticketId:requestId,
+        routeId,
+        level:route.level,
+        levelLabel:LEVEL_LABEL[route.level],
+        method:route.method,
+        url:route.url,
+        purpose:route.purpose,
+        requestBytes:bodyBytes.byteLength,
+        requestDigest,
+        responseBytes:responseBytes ? responseBytes.byteLength : null,
+        responseDigest,
+        status:response.status,
+        durationMs
+      });
+
+      if (route.format === 'text') return bodyText;
+      if (route.format === 'json') return JSON.parse(bodyText);
+      return null;
+    } catch (_) {
+      const durationMs = Math.max(0, Math.round(performance.now() - started));
+      record({
+        type:'failed',
+        ticketId:requestId,
+        routeId,
+        level:route.level,
+        levelLabel:LEVEL_LABEL[route.level],
+        method:route.method,
+        url:route.url,
+        purpose:route.purpose,
+        requestBytes:bodyBytes.byteLength,
+        requestDigest,
+        durationMs
+      });
+      throw genericNetworkError();
+    } finally {
+      clearTimeout(timeout);
+      inflight.delete(requestId);
+      if (externalAbort && options.signal) options.signal.removeEventListener('abort', externalAbort);
+    }
+  }
+
+  function navigate(routeId) {
+    const route = ROUTES[routeId];
+    if (!route || route.transport !== 'navigate') return false;
+    const ticket = issueTicket(routeId);
+    if (!ticket) {
+      record({ type:'denied', routeId, level:route.level, levelLabel:LEVEL_LABEL[route.level], method:route.method, url:route.url, purpose:route.purpose });
+      return false;
+    }
+    const permit = consumeTicket(ticket, routeId);
+    if (!permit) return false;
+    record({ type:'transfer', ticketId:permit.id, routeId, level:route.level, levelLabel:LEVEL_LABEL[route.level], method:route.method, url:route.url, purpose:route.purpose, requestBytes:0, requestDigest:null, responseBytes:null, responseDigest:null, status:null, durationMs:0 });
+    try { window.location.replace(route.url); return true; }
+    catch (_) { return false; }
+  }
+
+  function abortInflight() {
+    for (const entry of inflight.values()) {
+      try { entry.controller.abort(); } catch (_) {}
+    }
+    inflight.clear();
+  }
+
+  function setMode(next) {
+    const target = window.__ZESS_MODE__ ? MODE.OFF : next;
+    if (![MODE.TIME, MODE.ON, MODE.OFF].includes(target)) return mode;
+    if (mode === target) return mode;
+    abortInflight();
+    mode = target;
+    policyEpoch++;
+    record({ type:'policy', mode });
+    return mode;
+  }
+
+  function cycle() {
+    if (window.__ZESS_MODE__) return MODE.OFF;
+    if (mode === MODE.TIME) return setMode(MODE.ON);
+    if (mode === MODE.ON) return setMode(MODE.OFF);
+    return setMode(MODE.TIME);
+  }
+
+  function modeLabel() {
+    return mode === MODE.ON ? 'オン' : mode === MODE.OFF ? 'オフ' : '時間';
+  }
+
+  function buttonLabel() { return `インターネット: ${modeLabel()}`; }
+
+  function auditSnapshot() {
+    return audit.map(entry => Object.freeze({ ...entry }));
+  }
+
+  function init() {
+    if (initialized) return;
+    initialized = true;
+    if (window.__ZESS_MODE__) mode = MODE.OFF;
+
+    lockProperty(window, 'fetch', blockedFetch);
+    lockProperty(window, 'XMLHttpRequest', blockedNetworkCtor);
+    if ('WebSocket' in window) lockProperty(window, 'WebSocket', blockedNetworkCtor);
+    if ('EventSource' in window) lockProperty(window, 'EventSource', blockedNetworkCtor);
+    if ('WebTransport' in window) lockProperty(window, 'WebTransport', blockedNetworkCtor);
+    if ('WebSocketStream' in window) lockProperty(window, 'WebSocketStream', blockedNetworkCtor);
+    if ('RTCPeerConnection' in window) lockProperty(window, 'RTCPeerConnection', blockedNetworkCtor);
+    if ('webkitRTCPeerConnection' in window) lockProperty(window, 'webkitRTCPeerConnection', blockedNetworkCtor);
+    if ('fetchLater' in window) lockProperty(window, 'fetchLater', blockedFetch);
+    if ('SharedWorker' in window) lockProperty(window, 'SharedWorker', blockedWorkerCtor);
+    if ('Worker' in window) lockProperty(window, 'Worker', blockedWorkerCtor);
+    if ('open' in window) lockProperty(window, 'open', blockedOpen);
+    if (navigator && typeof navigator.sendBeacon === 'function') lockProperty(navigator, 'sendBeacon', blockedBeacon);
+    try {
+      if (navigator.serviceWorker && typeof navigator.serviceWorker.register === 'function') {
+        lockProperty(navigator.serviceWorker, 'register', blockedServiceWorkerRegister);
+      }
+    } catch (_) {}
+
+    record({ type:'policy', mode });
+  }
+
+  function selfTest() {
+    const checks = [];
+    const add = (name, ok, detail = '') => checks.push(Object.freeze({ name, ok:!!ok, detail:String(detail || '') }));
+
+    add('Policy TIME / T1', levelAllowedFor(MODE.TIME, LEVEL.TIME, false), 'TIME must allow T1');
+    add('Policy TIME / T2 Deny', !levelAllowedFor(MODE.TIME, LEVEL.STANDARD, false), 'TIME must deny T2');
+    add('Policy TIME / T3 Deny', !levelAllowedFor(MODE.TIME, LEVEL.SENSITIVE, false), 'TIME must deny T3');
+    add('Policy ON / T1', levelAllowedFor(MODE.ON, LEVEL.TIME, false), 'ON must allow T1');
+    add('Policy ON / T2', levelAllowedFor(MODE.ON, LEVEL.STANDARD, false), 'ON must allow T2');
+    add('Policy ON / T3', levelAllowedFor(MODE.ON, LEVEL.SENSITIVE, false), 'ON must allow T3');
+    add('Policy OFF / All Deny', [LEVEL.TIME, LEVEL.STANDARD, LEVEL.SENSITIVE].every(level => !levelAllowedFor(MODE.OFF, level, false)), 'OFF must deny all levels');
+    add('Policy ZESS / All Deny', [LEVEL.TIME, LEVEL.STANDARD, LEVEL.SENSITIVE].every(level => !levelAllowedFor(MODE.ON, level, true)), 'ZESS must deny all levels');
+
+    const forged = Object.freeze(Object.create(null));
+    add('Capability Forgery Rejected', consumeTicket(forged, 'time.jst') === null, 'Unknown object must not authenticate');
+
+    const boundTicket = mintTicket('time.jst', LEVEL.TIME);
+    if (!boundTicket) {
+      add('Capability CSPRNG Available', false, '256-bit ticket ID could not be generated');
+    } else {
+      add('Capability Object Frozen', Object.isFrozen(boundTicket), 'Capability object must be immutable');
+      add('Capability Opaque', Object.keys(boundTicket).length === 0 && JSON.stringify(boundTicket) === '{}', 'Capability must expose no credential data');
+      add('Capability Route Binding', consumeTicket(boundTicket, 'network.public-ip') === null, 'Capability must reject a different route');
+      const boundPermit = consumeTicket(boundTicket, 'time.jst');
+      add('Capability Correct Route', !!boundPermit, 'Capability must authenticate its bound route');
+      add('Capability ID 256-bit', !!boundPermit && /^[0-9a-f]{64}$/.test(boundPermit.id), 'Audit ID must contain 256 random bits');
+      add('Capability Single Use', consumeTicket(boundTicket, 'time.jst') === null, 'Consumed capability must not be reusable');
+    }
+
+    const collisionA = mintTicket('time.jst', LEVEL.TIME);
+    const collisionB = mintTicket('time.jst', LEVEL.TIME);
+    const permitA = collisionA ? consumeTicket(collisionA, 'time.jst') : null;
+    const permitB = collisionB ? consumeTicket(collisionB, 'time.jst') : null;
+    add('Capability Random ID Distinct', !!permitA && !!permitB && permitA.id !== permitB.id, 'Independent capability IDs must differ');
+
+    const expiredTicket = mintTicket('time.jst', LEVEL.TIME, performance.now() - 1);
+    add('Capability Expiry', !!expiredTicket && consumeTicket(expiredTicket, 'time.jst') === null, 'Expired capability must be rejected');
+
+    const epochTicket = mintTicket('time.jst', LEVEL.TIME);
+    if (!epochTicket) {
+      add('Capability Epoch Revocation', false, 'Capability could not be generated');
+    } else {
+      policyEpoch++;
+      const revoked = consumeTicket(epochTicket, 'time.jst') === null;
+      policyEpoch--;
+      add('Capability Epoch Revocation', revoked, 'Policy epoch change must revoke older capability');
+    }
+
+    add('Unknown Route Rejected', issueTicket('__selftest_unknown__') === null, 'Unregistered route must not receive a capability');
+    return Object.freeze(checks.slice());
+  }
+
+  function validate() {
+    const issues = [];
+    if (!initialized) issues.push('Internet Gatewayが未初期化');
+    if (window.__ZESS_MODE__ && mode !== MODE.OFF) issues.push('ZESSでInternet Gatewayがオフ固定ではありません');
+    const expectLocked = (target, name, expected, label, required=false) => {
+      if (!target) return;
+      if (!required && !(name in target)) return;
+      if (target[name] !== expected) issues.push(`${label}がGateway外で使用可能`);
+    };
+    expectLocked(window, 'fetch', blockedFetch, 'グローバルfetch', true);
+    expectLocked(window, 'XMLHttpRequest', blockedNetworkCtor, 'XMLHttpRequest', true);
+    expectLocked(window, 'WebSocket', blockedNetworkCtor, 'WebSocket');
+    expectLocked(window, 'EventSource', blockedNetworkCtor, 'EventSource');
+    expectLocked(window, 'WebTransport', blockedNetworkCtor, 'WebTransport');
+    expectLocked(window, 'WebSocketStream', blockedNetworkCtor, 'WebSocketStream');
+    expectLocked(window, 'RTCPeerConnection', blockedNetworkCtor, 'RTCPeerConnection');
+    expectLocked(window, 'webkitRTCPeerConnection', blockedNetworkCtor, 'webkitRTCPeerConnection');
+    expectLocked(window, 'fetchLater', blockedFetch, 'fetchLater');
+    expectLocked(window, 'SharedWorker', blockedWorkerCtor, 'SharedWorker');
+    expectLocked(window, 'Worker', blockedWorkerCtor, 'グローバルWorker');
+    expectLocked(window, 'open', blockedOpen, 'window.open', true);
+    expectLocked(navigator, 'sendBeacon', blockedBeacon, 'sendBeacon');
+    try { expectLocked(navigator.serviceWorker, 'register', blockedServiceWorkerRegister, 'Service Worker register'); } catch (_) {}
+
+    const validLevels = new Set(Object.values(LEVEL));
+    for (const [id, route] of Object.entries(ROUTES)) {
+      if (!validLevels.has(route.level)) issues.push(`Internet Route levelが不正: ${id}`);
+      if (!/^https:\/\//.test(route.url)) issues.push(`Internet RouteがHTTPSではありません: ${id}`);
+      if (route.transport !== 'navigate' && !['json','text'].includes(route.format)) issues.push(`Internet Route formatが不正: ${id}`);
+      if ((Number(route.maxBodyBytes) || 0) < 0) issues.push(`Internet Route body上限が不正: ${id}`);
+      if (route.transport !== 'navigate') {
+        const maxResponseBytes = Number(route.maxResponseBytes);
+        if (!Number.isFinite(maxResponseBytes) || maxResponseBytes < 1 || maxResponseBytes > HARD_RESPONSE_LIMIT) issues.push(`Internet Route response上限が不正: ${id}`);
+      }
+    }
+
+    const csp = document.querySelector('meta[http-equiv="Content-Security-Policy"]')?.content || '';
+    if (window.__ZESS_MODE__) {
+      if (!/connect-src\s+'none'/.test(csp)) issues.push('ZESS CSP connect-srcがnoneではありません');
+    } else {
+      for (const route of Object.values(ROUTES)) {
+        if (route.transport === 'navigate') continue;
+        const origin = new URL(route.url).origin;
+        if (!csp.includes(origin)) issues.push(`CSPにInternet Route originがありません: ${origin}`);
+      }
+      if (/connect-src[^;]*'self'/.test(csp)) issues.push('connect-srcに不要なself許可があります');
+    }
+    if (!/default-src\s+'none'/.test(csp)) issues.push('CSP default-srcがnoneではありません');
+    if (/script-src[^;]*'self'/.test(csp)) issues.push('script-srcに不要なself許可があります');
+    if (/img-src[^;]*'self'/.test(csp)) issues.push('img-srcに不要なself許可があります');
+    if (!/form-action\s+'none'/.test(csp)) issues.push('CSP form-actionがnoneではありません');
+    if (!/frame-src\s+'none'/.test(csp)) issues.push('CSP frame-srcがnoneではありません');
+    const dnsMeta = document.querySelector('meta[http-equiv="x-dns-prefetch-control"]');
+    if (!dnsMeta || String(dnsMeta.content || '').toLowerCase() !== 'off') issues.push('DNS prefetch制御がoffではありません');
+    return Array.from(new Set(issues));
+  }
+
+  return Object.freeze({
+    MODE, LEVEL, init, cycle, request, navigate, modeLabel, buttonLabel,
+    auditSnapshot, validate, selfTest,
+    get currentMode() { return mode; },
+    get routeCount() { return Object.keys(ROUTES).length; }
+  });
+})();
+
+/* =========================================================
+   WORKER BROKER
+   計算Workerはネットワーク機能を持たない。
+========================================================= */
+const WorkerBroker = (() => {
+  const NativeWorker = typeof window.Worker === 'function' ? window.Worker : null;
+  const NETWORK_GUARD = `
+    (() => {
+      const fail = () => Promise.reject(new TypeError('Failed to fetch'));
+      const deny = function() { throw new TypeError('Network request failed'); };
+      const lock = (name, value) => {
+        try { Object.defineProperty(self, name, { value, writable:false, configurable:false }); }
+        catch (_) { try { self[name] = value; } catch (_) {} }
+      };
+      lock('fetch', fail);
+      lock('XMLHttpRequest', deny);
+      lock('WebSocket', deny);
+      lock('EventSource', deny);
+      lock('WebTransport', deny);
+      lock('WebSocketStream', deny);
+      lock('RTCPeerConnection', deny);
+      lock('webkitRTCPeerConnection', deny);
+      lock('fetchLater', fail);
+      lock('Worker', deny);
+      lock('SharedWorker', deny);
+      lock('importScripts', deny);
+    })();
+  `;
+
+  function createInline(code, options) {
+    if (!NativeWorker) throw new Error('Web Worker unavailable');
+    if (typeof code !== 'string') throw new TypeError('Worker code must be a string');
+    const blob = new Blob([NETWORK_GUARD, '\n', code], { type:'application/javascript' });
+    const url = URL.createObjectURL(blob);
+    try { return new NativeWorker(url, options); }
+    finally { URL.revokeObjectURL(url); }
+  }
+
+  function validate() {
+    const issues = [];
+    if (Engine?.hasWorker && !NativeWorker) issues.push('Worker BrokerにNative Workerがありません');
+    return issues;
+  }
+
+  return Object.freeze({ createInline, validate, get available() { return !!NativeWorker; } });
+})();
+
+// Network/Worker capability lockdown starts before the remaining application layers are evaluated.
+InternetGateway.init();
 
 /* =========================================================
 Yukikaze
@@ -998,8 +1547,10 @@ const PanicSystem = (() => {
       AppState.continuousCompareHit = null;
       AppState.copyMode = 'actual';
       AppState.hashOutputHandoff = 'hex';
-      AppState.geoLabel = window.__ZESS_MODE__ ? 'ZESS (位置情報隔離)' : '照会オフ';
-      AppState.geoTs = 0;
+      AppState.locationLabel = 'N/A';
+      AppState.locationTs = 0;
+      AppState.locationCountryCode = '';
+      AppState.locationCountryName = '';
       AppState.netTimeOffset = 0;
     } catch (e) {}
 
@@ -1032,11 +1583,8 @@ const PanicSystem = (() => {
 
   const leavePanic = () => {
     try {
-      if (window.__ZESS_MODE__) {
-        window.location.replace('about:blank');
-      } else {
-        window.location.replace('https://www.google.com');
-      }
+      if (!window.__ZESS_MODE__ && InternetGateway.navigate('navigation.panic')) return;
+      window.location.replace('about:blank');
     } catch (e) {
       sealDocument();
     }
@@ -1593,9 +2141,10 @@ const AppState = {
   hmacKey: '',
   currentFile: null,
   streamHandles: null,
-  geoEnabled: false,
-  geoLabel: '照会オフ',
-  geoTs: 0,
+  locationLabel: 'N/A',
+  locationTs: 0,
+  locationCountryCode: '',
+  locationCountryName: '',
   netTimeOffset: 0,
   battStr: window.__ZESS_MODE__ ? 'N/A（ZESS）' : 'N/A'
 };
@@ -2248,6 +2797,42 @@ const SysUtils = (() => {
     }
   }
 
+  function isJapanLocaleTag(locale) {
+    const tag = String(locale || '').trim();
+    if(!tag || tag === '不明') return false;
+    try {
+      const parsed = new Intl.Locale(tag.replace(/_/g, '-'));
+      const region = (parsed.region || parsed.maximize().region || '').toUpperCase();
+      return region === 'JP';
+    } catch (_) {
+      return /(?:^|[-_])JP$/i.test(tag) || /^ja(?:[-_]|$)/i.test(tag);
+    }
+  }
+
+  function localeProfile() {
+    const lang = navigator.language || '不明';
+    return { lang, isJapan:isJapanLocaleTag(lang) };
+  }
+
+  function countryNameEnglish(countryCode, providerName='') {
+    const cc = String(countryCode || '').trim().toUpperCase();
+    if(!/^[A-Z]{2}$/.test(cc)) return '';
+    try {
+      if(typeof Intl.DisplayNames === 'function') {
+        const display = new Intl.DisplayNames(['en'], { type:'region', fallback:'code' }).of(cc);
+        if(display && display !== cc) return display;
+      }
+    } catch (_) {}
+    const fallback = String(providerName || '').trim();
+    return fallback || cc;
+  }
+
+  function locationCountryProfile() {
+    const code = String(AppState.locationCountryCode || '').toUpperCase();
+    const name = String(AppState.locationCountryName || '');
+    return { code, name, known:/^[A-Z]{2}$/.test(code), isJapan:code === 'JP', isForeign:/^[A-Z]{2}$/.test(code) && code !== 'JP' };
+  }
+
   async function deviceInfo() {
     const ua = navigator.userAgent || '';
     const plat = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
@@ -2274,7 +2859,7 @@ const SysUtils = (() => {
     
     let timeZone = '不明';
     try { timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || '不明'; } catch(e) {}
-    const lang = navigator.language || '不明';
+    const { lang } = localeProfile();
 
     let osVersion = 'N/A';
     let architecture = 'N/A';
@@ -2302,30 +2887,40 @@ const SysUtils = (() => {
     ].join('\n');
   }
 
+  const NETWORK_FAILURE_TTL = 15000;
+
   async function publicIP(){
-    if(window.__ZESS_MODE__) return 'ZESS: ネットワーク遮断';
-    if(!navigator.onLine) return 'オフライン利用';
     const now = performance.now();
     if(_ipCache.val && (now - _ipCache.ts) < _ipCache.ttl) return _ipCache.val;
     try{
-      const ctrl = new AbortController();
-      const t = setTimeout(()=>ctrl.abort(), 3000);
-      const r = await fetch('https://api.ipify.org?format=json',{signal:ctrl.signal});
-      clearTimeout(t);
-      if(!r.ok) throw new Error('ipify error');
-      const {ip} = await r.json();
+      const {ip} = await InternetGateway.request('network.public-ip', { timeoutMs:3000 });
+      if(!ip) throw new Error('ipify error');
       const isV6 = ip.includes(':');
-      _ipCache = { val:`IP: ${ip} [${isV6?'IPv6':'IPv4'}]`, ts: now, ttl:_ipCache.ttl };
+      _ipCache = { val:`IP: ${ip} [${isV6?'IPv6':'IPv4'}]`, ts:now, ttl:120000 };
       return _ipCache.val;
-    }catch(_){ return 'ネットワーク: 不明（オンライン検出）'; }
+    }catch(_){
+      _ipCache = { val:'IP: N/A', ts:now, ttl:NETWORK_FAILURE_TTL };
+      return _ipCache.val;
+    }
+  }
+
+  function formatNetworkCountry(text, profile=locationCountryProfile()){
+    const value = String(text || '');
+    if(!profile || !profile.isForeign) return value;
+    const country = String(profile.name || profile.code || '').trim();
+    if(!country) return value;
+    const suffix = `（${country}）`;
+    return value.split('\n').map(line => {
+      if(!/^IP:\s+(?!N\/A)/.test(line) || line.endsWith(suffix)) return line;
+      return line + suffix;
+    }).join('\n');
   }
 
   async function networkDetail(){
-    if(window.__ZESS_MODE__) return '接続: ZESS Enclave (No Egress)';
     const c=navigator.connection||navigator.mozConnection||navigator.webkitConnection;
     const base=c?`接続: ${c.effectiveType||'N/A'} 下り:${c.downlink||'?'}Mbps RTT:${c.rtt||'?'}ms`:'接続: N/A';
     const ip=await publicIP();
-    return `${base}\n${ip}`;
+    return formatNetworkCountry(`${base}\n${ip}`);
   }
 
   function formatPostalJP(z){
@@ -2357,39 +2952,26 @@ const SysUtils = (() => {
     return r || '不明';
   }
 
-  async function fetchJson(url, timeoutMs){
-    if(window.__ZESS_MODE__) throw new Error('ZESS Blocked');
-    const ctrl=new AbortController(); const t=setTimeout(()=>ctrl.abort(), timeoutMs);
-    try{
-      const res = await fetch(url,{signal:ctrl.signal});
-      clearTimeout(t);
-      if(!res.ok) throw new Error('bad status');
-      const ct = res.headers.get('content-type')||'';
-      return ct.includes('application/json') ? await res.json() : await res.text();
-    }catch(e){ clearTimeout(t); throw e; }
-  }
-
   async function detectGeo(timeoutMs=3500){
-    if(window.__ZESS_MODE__) return 'ZESS (位置情報隔離)';
-    if(!AppState.geoEnabled) return '照会オフ';
-    if(!navigator.onLine) return 'オフライン利用';
     const now = Date.now();
-    if(AppState.geoLabel && (now - AppState.geoTs) < GEO_TTL && AppState.geoLabel!=='不明') return AppState.geoLabel;
+    const ttl = AppState.locationLabel === 'N/A' ? NETWORK_FAILURE_TTL : GEO_TTL;
+    if(AppState.locationLabel && AppState.locationTs && (now - AppState.locationTs) < ttl) return AppState.locationLabel;
     const providers = [
-      { url:'https://ipapi.co/json/', pick:j=>({cc:j.country_code||j.country, region:j.region, code:j.region_code, city:j.city, postal:j.postal, isp:j.org}) },
-      { url:'https://ipwho.is/',     pick:j=>({cc:j.country_code,          region:j.region, code:'',             city:j.city, postal:j.postal, isp:j.connection?.isp||j.connection?.org}) },
-      { url:'https://ipinfo.io/json',pick:j=>({cc:j.country,                region:j.region, code:'',             city:j.city, postal:j.postal, isp:j.org}) },
-      { url:'https://www.cloudflare.com/cdn-cgi/trace', pick:t=>{ const m=/\bloc=([A-Z]{2})/m.exec(t)||[]; return {cc:m[1]||'', region:'', code:'', city:'', postal:'', isp:''}; } },
-      { url:'https://ip-api.com/json/?fields=status,countryCode,region,regionName,city,zip,isp,org,as', pick:j=>({cc:j.countryCode, region:j.regionName, code:j.region, city:j.city, postal:j.zip, isp:j.isp||j.org||j.as}) }
+      { route:'location.ipapi', pick:j=>({cc:j.country_code||j.country, countryName:j.country_name, region:j.region, code:j.region_code, city:j.city, postal:j.postal, isp:j.org}) },
+      { route:'location.ipwhois', pick:j=>({cc:j.country_code, countryName:j.country, region:j.region, code:'', city:j.city, postal:j.postal, isp:j.connection?.isp||j.connection?.org}) },
+      { route:'location.ipinfo', pick:j=>({cc:j.country, countryName:'', region:j.region, code:'', city:j.city, postal:j.postal, isp:j.org}) },
+      { route:'location.cloudflare', pick:t=>{ const m=/\bloc=([A-Z]{2})/m.exec(t)||[]; return {cc:m[1]||'', countryName:'', region:'', code:'', city:'', postal:'', isp:''}; } },
+      { route:'location.ip-api', pick:j=>({cc:j.countryCode, countryName:j.country, region:j.regionName, code:j.region, city:j.city, postal:j.zip, isp:j.isp||j.org||j.as}) }
     ];
     for(const p of providers){
-      if(!AppState.geoEnabled) return '照会オフ';
       try{
-        const raw = await fetchJson(p.url, timeoutMs);
-        if(!AppState.geoEnabled) return '照会オフ';
+        const raw = await InternetGateway.request(p.route, { timeoutMs });
         const d = p.pick(raw);
         const cc = String(d.cc||'').toUpperCase();
+        const countryName = countryNameEnglish(cc, d.countryName);
         if(cc==='JP'){
+          AppState.locationCountryCode = 'JP';
+          AppState.locationCountryName = countryName || 'Japan';
           const prefJa = mapPref(d.region||'', d.code||'');
           const cityJa = jpCityLabel(prefJa, d.city||'');
           const postal = formatPostalJP(d.postal||'');
@@ -2400,35 +2982,43 @@ const SysUtils = (() => {
             let ispClean = String(d.isp).replace(/^AS\d+\s*/i, '').replace(/,.*/, '').trim();
             if(ispClean) label += ` [${ispClean}]`;
           }
-          AppState.geoLabel = label;
-          AppState.geoTs = now;
+          AppState.locationLabel = label;
+          AppState.locationTs = now;
           return label;
         }else if(cc){
-          AppState.geoLabel = '圏外';
-          AppState.geoTs = now;
-          return AppState.geoLabel;
+          AppState.locationCountryCode = cc;
+          AppState.locationCountryName = countryName || cc;
+          AppState.locationLabel = '圏外';
+          AppState.locationTs = now;
+          return AppState.locationLabel;
         }
       }catch(_){}
     }
-    if(!AppState.geoEnabled) return '照会オフ';
-    AppState.geoLabel = '不明';
-    AppState.geoTs = now;
-    return AppState.geoLabel;
+    AppState.locationCountryCode = '';
+    AppState.locationCountryName = '';
+    AppState.locationLabel = 'N/A';
+    AppState.locationTs = now;
+    return AppState.locationLabel;
   }
 
   async function syncNetworkTime(){
-    if(window.__ZESS_MODE__ || !navigator.onLine){ AppState.netTimeOffset=0; return; }
     try{
-      const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),3000);
-      const r=await fetch('https://worldtimeapi.org/api/timezone/Asia/Tokyo',{signal:ctrl.signal});clearTimeout(t);
-      if(!r.ok) throw new Error('time api error');
-      const j=await r.json();const server=new Date(j.datetime).getTime();const local=Date.now(); AppState.netTimeOffset=server-local;
+      const j = await InternetGateway.request('time.jst', { timeoutMs:3000 });
+      const server = new Date(j.datetime).getTime();
+      if(!Number.isFinite(server)) throw new Error('time api error');
+      AppState.netTimeOffset = server - Date.now();
     }catch(_){ AppState.netTimeOffset=0; }
   }
 
-  function resetIpCache() { _ipCache.ts = 0; }
+  function resetNetworkCache() {
+    _ipCache = { val:null, ts:0, ttl:120000 };
+    AppState.locationLabel = 'N/A';
+    AppState.locationTs = 0;
+    AppState.locationCountryCode = '';
+    AppState.locationCountryName = '';
+  }
 
-  return { fmtJapaneseDate, fmtJapanTimestamp, deviceInfo, publicIP, networkDetail, detectGeo, syncNetworkTime, resetIpCache };
+  return { fmtJapaneseDate, fmtJapanTimestamp, isJapanLocaleTag, localeProfile, countryNameEnglish, locationCountryProfile, formatNetworkCountry, deviceInfo, publicIP, networkDetail, detectGeo, syncNetworkTime, resetNetworkCache };
 })();
 
 /* =========================================================
@@ -2717,10 +3307,7 @@ const Base64Engine = (() => {
         }
       };
     `;
-    const blob = new Blob([code], {type:'application/javascript'});
-    const url = URL.createObjectURL(blob);
-    worker = new Worker(url);
-    URL.revokeObjectURL(url);
+    worker = WorkerBroker.createInline(code);
   }
 
   function run(action, payload, detectFile = false, strict = false, transferOwned = false) {
@@ -3023,10 +3610,7 @@ const Base85Engine = (() => {
         }
       };
     `;
-    const blob = new Blob([code], {type:'application/javascript'});
-    const url = URL.createObjectURL(blob);
-    worker = new Worker(url);
-    URL.revokeObjectURL(url);
+    worker = WorkerBroker.createInline(code);
   }
 
   function run(action, payload, variant, detectFile = false, transferOwned = false) {
@@ -3435,6 +4019,12 @@ const IntegrityGuard = (() => {
     for (const id of InternalContract.BASE85_BLOCK4_VARIANTS) if (!base85Contract.has(id) || InternalContract.BASE85_ASCII_VARIANTS.includes(id)) add(`Base85 Block4分類の不一致: ${id}`);
     if (!base85Contract.has(AppState.base85Variant)) add(`Base85規格が不明: ${AppState.base85Variant}`);
 
+    if (!Object.isFrozen(InternetGateway)) add('Internet Gateway APIが固定されていません');
+    if (typeof InternetGateway.selfTest !== 'function') add('Internet Gateway self-testがありません');
+    if (!Object.isFrozen(WorkerBroker)) add('Worker Broker APIが固定されていません');
+    for (const issue of InternetGateway.validate()) add(issue);
+    for (const issue of WorkerBroker.validate()) add(issue);
+
     if (typeof UI !== 'undefined' && UI && typeof UI.validate === 'function') {
       for (const issue of UI.validate()) add(issue);
     }
@@ -3463,7 +4053,7 @@ const Engine = (() => {
   const ACTION = InternalContract.ENGINE_ACTIONS;
   const MESSAGE = InternalContract.ENGINE_MESSAGES;
   const WORKER_THRESHOLD = 200000;
-  const hasWorker = !!window.Worker;
+  const hasWorker = WorkerBroker.available;
   let worker = null;
   let selfTestWorker = null;
   let selfTestReqSeq = 0;
@@ -5197,11 +5787,7 @@ const Engine = (() => {
         }
       };
     `;
-    const blob = new Blob([code], {type:'application/javascript'});
-    const url = URL.createObjectURL(blob);
-    const w = new Worker(url);
-    URL.revokeObjectURL(url);
-    return w;
+    return WorkerBroker.createInline(code);
   }
 
   function terminateSelfTestWorker(reason = 'Self Test Worker Terminated') {
@@ -6055,6 +6641,64 @@ const SelfTest = (() => {
     if (control && typeof control.onProgress === 'function') await control.onProgress(group, name);
   }
 
+  async function runSecurityTests(report, control) {
+    await step(control, 'SECURITY', 'Internet Gateway Capability');
+    try {
+      const checks = InternetGateway.selfTest();
+      if (!Array.isArray(checks) || checks.length === 0) {
+        await addFailure(report, 'SECURITY', 'Internet Gateway Capability', 'Self-test result is empty');
+      } else {
+        for (const check of checks) {
+          if (check.ok) await add(report, 'SECURITY', `Internet / ${check.name}`, true, true);
+          else await addFailure(report, 'SECURITY', `Internet / ${check.name}`, check.detail || 'Security check failed');
+        }
+      }
+    } catch (e) {
+      await addFailure(report, 'SECURITY', 'Internet Gateway Capability', e);
+    }
+
+    await step(control, 'SECURITY', 'Worker Network Guard');
+    if (!WorkerBroker.available) {
+      await addSkip(report, 'SECURITY', 'Worker Network Guard', 'Worker未対応');
+      return;
+    }
+
+    let worker = null;
+    try {
+      const code = `
+        self.onmessage = async () => {
+          const checks = {};
+          try { await self['fetch']('data:text/plain,ok'); checks.fetch = false; } catch (_) { checks.fetch = true; }
+          try { new self['XMLHttpRequest'](); checks.xhr = false; } catch (_) { checks.xhr = true; }
+          try { new self['WebSocket']('data:text/plain,ok'); checks.websocket = false; } catch (_) { checks.websocket = true; }
+          try { new self['EventSource']('data:text/plain,ok'); checks.eventsource = false; } catch (_) { checks.eventsource = true; }
+          try { new self['Worker']('data:text/javascript,'); checks.worker = false; } catch (_) { checks.worker = true; }
+          try { new self['SharedWorker']('data:text/javascript,'); checks.sharedWorker = false; } catch (_) { checks.sharedWorker = true; }
+          try { self['importScripts']('data:text/javascript,'); checks.importScripts = false; } catch (_) { checks.importScripts = true; }
+          try { await self['fetchLater']('data:text/plain,ok'); checks.fetchLater = false; } catch (_) { checks.fetchLater = true; }
+          self.postMessage(checks);
+        };
+      `;
+      worker = WorkerBroker.createInline(code);
+      const result = await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Worker Network Guard Timeout')), 3000);
+        worker.onmessage = event => { clearTimeout(timeout); resolve(event.data || {}); };
+        worker.onerror = event => { clearTimeout(timeout); reject(new Error(event?.message || 'Worker Network Guard Error')); };
+        worker.postMessage(null);
+      });
+      for (const [name, label] of Object.entries({
+        fetch:'fetch', xhr:'XMLHttpRequest', websocket:'WebSocket', eventsource:'EventSource',
+        worker:'Worker', sharedWorker:'SharedWorker', importScripts:'importScripts', fetchLater:'fetchLater'
+      })) {
+        await add(report, 'SECURITY', `Worker Guard / ${label}`, result[name], true);
+      }
+    } catch (e) {
+      await addFailure(report, 'SECURITY', 'Worker Network Guard', e);
+    } finally {
+      try { worker?.terminate(); } catch (_) {}
+    }
+  }
+
   async function runHashTests(report, control) {
     for (const vector of HASH_VECTORS) {
       await step(control, 'HASH', `${vector.length} Bytes`);
@@ -6754,6 +7398,17 @@ const SelfTest = (() => {
   }
 
   async function runContractTests(report, control) {
+    await step(control, 'CONTRACT', 'Japan Profile');
+    await add(report, 'CONTRACT', 'Locale Japan / ja-JP', SysUtils.isJapanLocaleTag('ja-JP'), true);
+    await add(report, 'CONTRACT', 'Locale Japan / ja', SysUtils.isJapanLocaleTag('ja'), true);
+    await add(report, 'CONTRACT', 'Locale Japan Region / en-JP', SysUtils.isJapanLocaleTag('en-JP'), true);
+    await add(report, 'CONTRACT', 'Locale Foreign / zh-TW', SysUtils.isJapanLocaleTag('zh-TW'), false);
+    await add(report, 'CONTRACT', 'Locale Foreign / en-US', SysUtils.isJapanLocaleTag('en-US'), false);
+    await add(report, 'CONTRACT', 'Locale Foreign Region / ja-US', SysUtils.isJapanLocaleTag('ja-US'), false);
+    await add(report, 'CONTRACT', 'Country English / TW', SysUtils.countryNameEnglish('TW', 'Taiwan'), 'Taiwan');
+    await add(report, 'CONTRACT', 'Foreign IP Country Label', SysUtils.formatNetworkCountry('IP: 8x.xx.xxx.xx9 [IPv4]', { isForeign:true, code:'TW', name:'Taiwan' }), 'IP: 8x.xx.xxx.xx9 [IPv4]（Taiwan）');
+    await add(report, 'CONTRACT', 'Japan IP No Country Label', SysUtils.formatNetworkCountry('IP: 8x.xx.xxx.xx9 [IPv4]', { isForeign:false, code:'JP', name:'Japan' }), 'IP: 8x.xx.xxx.xx9 [IPv4]');
+
     await step(control, 'CONTRACT', 'Runtime Integrity');
     const issues = IntegrityGuard.validate();
     if (issues.length === 0) await add(report, 'CONTRACT', 'Runtime Integrity', true, true);
@@ -7008,6 +7663,7 @@ const SelfTest = (() => {
     resultObserver = control && typeof control.onResult === 'function' ? control.onResult : null;
     try {
       await runContractTests(report, control);
+      await runSecurityTests(report, control);
       await runHashTests(report, control);
       await runHmacTests(report, control);
       await runHexTests(report, control);
@@ -7161,6 +7817,75 @@ const UI = (() => {
       get current() { return current; },
       get total() { return total; }
     };
+  })();
+
+  const AutoTestReport = (() => {
+    let latest = null;
+
+    const copyFailures = value => Object.freeze(Array.isArray(value) ? value.map(item => String(item)) : []);
+    const copyVisible = item => Object.freeze({
+      key:String(item?.key || ''),
+      label:String(item?.label || ''),
+      ok:!!item?.ok,
+      total:Math.max(0, Number(item?.total) || 0),
+      passed:Math.max(0, Number(item?.passed) || 0),
+      skipped:Math.max(0, Number(item?.skipped) || 0),
+      failed:copyFailures(item?.failed)
+    });
+    const copyInternal = item => Object.freeze({
+      group:String(item?.group || ''),
+      name:String(item?.name || ''),
+      ok:!!item?.ok,
+      skip:!!item?.skip,
+      detail:String(item?.detail || '')
+    });
+    const copyVerify = item => item ? Object.freeze({
+      ok:!!item.ok,
+      total:Math.max(0, Number(item.total) || 0),
+      passed:Math.max(0, Number(item.passed) || 0),
+      skipped:Math.max(0, Number(item.skipped) || 0),
+      failed:copyFailures(item.failed)
+    }) : null;
+
+    const begin = visibleTotal => {
+      latest = {
+        status:'running',
+        startedAt:Date.now(),
+        endedAt:null,
+        visibleTotal:Math.max(0, Number(visibleTotal) || 0),
+        visible:[],
+        internal:[],
+        preHiddenReset:null,
+        finalReset:null,
+        error:''
+      };
+    };
+    const addVisible = item => { if (latest?.status === 'running') latest.visible.push(copyVisible(item)); };
+    const addInternal = item => { if (latest?.status === 'running') latest.internal.push(copyInternal(item)); };
+    const setPreHiddenReset = item => { if (latest?.status === 'running') latest.preHiddenReset = copyVerify(item); };
+    const setFinalReset = item => { if (latest?.status === 'running') latest.finalReset = copyVerify(item); };
+    const finish = (status, error = '') => {
+      if (!latest) return;
+      latest.status = String(status || 'error');
+      latest.endedAt = Date.now();
+      latest.error = String(error?.message || error || '');
+    };
+    const snapshot = () => {
+      if (!latest) return null;
+      return Object.freeze({
+        status:latest.status,
+        startedAt:latest.startedAt,
+        endedAt:latest.endedAt,
+        visibleTotal:latest.visibleTotal,
+        visible:Object.freeze(latest.visible.map(copyVisible)),
+        internal:Object.freeze(latest.internal.map(copyInternal)),
+        preHiddenReset:copyVerify(latest.preHiddenReset),
+        finalReset:copyVerify(latest.finalReset),
+        error:latest.error
+      });
+    };
+
+    return Object.freeze({ begin, addVisible, addInternal, setPreHiddenReset, setFinalReset, finish, snapshot });
   })();
 
   const TEST_VECTORS = {
@@ -7932,7 +8657,8 @@ const UI = (() => {
     els.groupingToggle = document.getElementById('groupingToggle');
     els.groupingOptionsContainer = document.getElementById('groupingOptionsContainer');
     els.sepIn = document.getElementById('sep-in');
-    els.geoBtn = document.getElementById('geoToggle');
+    els.internetSep = document.getElementById('internetSep');
+    els.internetBtn = document.getElementById('internetToggle');
     els.zessBtn = document.getElementById('zessToggle');
     els.dropZone = document.getElementById('drop-zone');
     els.fileInput = document.getElementById('f-hidden');
@@ -8333,28 +9059,72 @@ function showToast(msg, duration = TOAST_DURATION) {
     try {
       const now = new Date(Date.now() + AppState.netTimeOffset);
       const dateStr = SysUtils.fmtJapaneseDate(now);
-      const parts = [
-        '製造: ソニーグループ株式会社 / インターナショナル・ビジネス・マシーンズ・コーポレーション（IBM） 2026',
-        '外部検証リファレンス: GCHQ Cyber​​Chef',
-        await SysUtils.deviceInfo(),
-        await SysUtils.networkDetail(),
-        `位置: ${await SysUtils.detectGeo()}`,
-        `日付: ${dateStr}`
-      ];
-      
-      if (!window.crypto?.subtle) parts.unshift('【 Web Crypto は無効です 】');
+      const deviceInfo = await SysUtils.deviceInfo();
+      const geoInfo = await SysUtils.detectGeo();
+      const netInfo = await SysUtils.networkDetail();
+      const locale = SysUtils.localeProfile();
+      const country = SysUtils.locationCountryProfile();
+
+      const leading = [];
+      if (!window.crypto?.subtle) leading.push('【 Web Crypto は無効です 】');
       if (window.__ZESS_MODE__) {
         const zessStorage = Security.getStorageIsolationStatus();
         if (zessStorage.complete) {
-          parts.unshift('【 ZESS (ZERO-EGRESS STATELESS SANDBOX) 稼働中 / Storage隔離: 正常 】');
+          leading.unshift('【 ZESS (ZERO-EGRESS STATELESS SANDBOX) 稼働中 / Storage隔離: 正常 】');
         } else {
           const localState = zessStorage.localStorage ? '正常' : '失敗';
           const sessionState = zessStorage.sessionStorage ? '正常' : '失敗';
-          parts.unshift(`【 警告: ZESS 部分隔離 - localStorage: ${localState} / sessionStorage: ${sessionState} 】`);
+          leading.unshift(`【 警告: ZESS 部分隔離 - localStorage: ${localState} / sessionStorage: ${sessionState} 】`);
         }
       }
 
-      els.sysEl.textContent = parts.join('\n');
+      const fragment = document.createDocumentFragment();
+      let lineCount = 0;
+      const beginLine = () => { if(lineCount++) fragment.appendChild(document.createTextNode('\n')); };
+      const appendPlainLine = text => {
+        beginLine();
+        fragment.appendChild(document.createTextNode(String(text)));
+      };
+      const appendAlertLine = text => {
+        beginLine();
+        const span = document.createElement('span');
+        span.className = 'sys-alert-blink';
+        span.textContent = String(text);
+        fragment.appendChild(span);
+      };
+
+      for(const line of leading) appendPlainLine(line);
+      appendPlainLine('製造: ソニーグループ株式会社 / インターナショナル・ビジネス・マシーンズ・コーポレーション（IBM） 2026');
+      appendPlainLine('外部検証リファレンス: GCHQ Cyber​​Chef');
+
+      const deviceLines = String(deviceInfo).split('\n');
+      for(let i=0; i<deviceLines.length; i++) {
+        const line = deviceLines[i];
+        if(i === 0 && !locale.isJapan && locale.lang && locale.lang !== '不明') {
+          const marker = `(${locale.lang} / `;
+          const markerIndex = line.lastIndexOf(marker);
+          if(markerIndex >= 0) {
+            beginLine();
+            fragment.appendChild(document.createTextNode(line.slice(0, markerIndex + 1)));
+            const span = document.createElement('span');
+            span.className = 'sys-alert-blink';
+            span.textContent = locale.lang;
+            fragment.appendChild(span);
+            fragment.appendChild(document.createTextNode(line.slice(markerIndex + 1 + locale.lang.length)));
+            continue;
+          }
+        }
+        appendPlainLine(line);
+      }
+
+      for(const line of String(netInfo).split('\n')) {
+        if(country.isForeign && /^IP:\s+(?!N\/A)/.test(line)) appendAlertLine(line);
+        else appendPlainLine(line);
+      }
+      appendPlainLine(`位置: ${geoInfo}`);
+      appendPlainLine(`日付: ${dateStr}`);
+
+      els.sysEl.replaceChildren(fragment);
       setSysOffset();
     } finally {
       sysPanelUpdating = false;
@@ -9355,6 +10125,7 @@ async function detectBase85Variants(input) {
       BaseRenderGate.invalidateAll();
       Engine.resetMasterTask();
       AutoTestSession.begin(keys.length);
+      AutoTestReport.begin(keys.length);
       syncPauseControls();
       showAutoToast('自動検証開始｜画面上で順番に適用・検証します', 2600, true);
 
@@ -9417,7 +10188,9 @@ async function detectBase85Variants(input) {
           showAutoToast(`自動検証 ${i + 1}/${keys.length}｜${test.label}｜検証`, 900);
           const verifyToken = clickAsUser(verifyButton);
           const result = await waitForAutoVerify(verifyToken);
-          visible.push({ key, label:test.label, ...result });
+          const visibleResult = { key, label:test.label, ...result };
+          visible.push(visibleResult);
+          AutoTestReport.addVisible(visibleResult);
           completed++;
 
           await waitForTestIdle();
@@ -9429,6 +10202,7 @@ async function detectBase85Variants(input) {
         showAutoToast(`入力検証 ${keys.length}/${keys.length} 完了｜内部検証前の空復元へ`, 1500, true);
         await AutoTestClock.hold(AUTO_TEST_TIMING.phaseTransition, true);
         const preHiddenResetResult = await verifyEmptyBaseline('内部検証前復元');
+        AutoTestReport.setPreHiddenReset(preHiddenResetResult);
 
         showAutoToast('内部検証計画を構築中｜総項目数を実測します', 1800, true);
         setMetaStatus('内部検証計画を構築中');
@@ -9458,6 +10232,7 @@ async function detectBase85Variants(input) {
             }
           },
           onResult: async (item, count) => {
+            AutoTestReport.addInternal(item);
             if (item.skip) hiddenSkippedLive++;
             else if (item.ok) hiddenPassedLive++;
             else hiddenFailedLive++;
@@ -9481,6 +10256,7 @@ async function detectBase85Variants(input) {
         showAutoToast('内部検証完了｜最終の空復元へ', 1500, true);
         await AutoTestClock.hold(AUTO_TEST_TIMING.phaseTransition, true);
         const resetResult = await verifyEmptyBaseline('最終復元');
+        AutoTestReport.setFinalReset(resetResult);
 
         const visibleFailed = visible.filter(x => !x.ok);
         const hiddenFailed = hidden.filter(x => !x.ok && !x.skip);
@@ -9492,6 +10268,8 @@ async function detectBase85Variants(input) {
         const preHiddenResetFailed = !preHiddenResetResult.ok;
         const resetFailed = !resetResult.ok;
 
+        const autoTestPassed = visibleFailed.length === 0 && hiddenFailed.length === 0 && !preHiddenResetFailed && !resetFailed;
+        AutoTestReport.finish(autoTestPassed ? 'passed' : 'failed');
         AutoTestSession.end();
         if (autoProgressRaf) {
           cancelAnimationFrame(autoProgressRaf);
@@ -9515,6 +10293,7 @@ async function detectBase85Variants(input) {
         }
       } catch (e) {
         const aborted = !!e?.autoTestAbort || AutoTestSession.aborted;
+        AutoTestReport.finish(aborted ? 'aborted' : 'error', e);
         AutoTestSession.end();
         for (const [token, waiter] of autoVerifyWaiters) {
           waiter.reject(e);
@@ -9535,6 +10314,87 @@ async function detectBase85Variants(input) {
           console.warn('Self-test error:', e);
         }
       }
+    };
+
+    const buildAutoTestReportLines = esc => {
+      const snapshot = AutoTestReport.snapshot();
+      const lines = ['## 5. 自動検証結果', ''];
+      if (!snapshot) {
+        lines.push('**状態:** 未実施（未検証）', '', '自動検証はまだ実行されていません。');
+        return lines;
+      }
+
+      const statusLabel = {
+        running:'実行中', passed:'成功', failed:'失敗', aborted:'中止', error:'エラー'
+      }[snapshot.status] || snapshot.status;
+      const fmtDate = value => value ? SysUtils.fmtJapaneseDate(new Date(value + AppState.netTimeOffset)) : '-';
+      const visiblePassed = snapshot.visible.filter(item => item.ok).length;
+      const visibleFailed = snapshot.visible.length - visiblePassed;
+      const internalPassed = snapshot.internal.filter(item => item.ok).length;
+      const internalSkipped = snapshot.internal.filter(item => item.skip).length;
+      const internalFailed = snapshot.internal.length - internalPassed - internalSkipped;
+      const verifyLabel = item => !item ? '未実施' : item.ok ? `PASS (${item.passed}/${item.total})` : `FAIL (${item.passed}/${item.total})`;
+
+      lines.push(
+        '| 項目 | 結果 |',
+        '| :--- | :--- |',
+        `| 状態 | **${esc(statusLabel)}** |`,
+        `| 開始日時（日本標準時） | ${esc(fmtDate(snapshot.startedAt))} |`,
+        `| 終了日時（日本標準時） | ${esc(fmtDate(snapshot.endedAt))} |`,
+        `| 画面入力検証 | PASS ${visiblePassed} / FAIL ${visibleFailed} / 記録 ${snapshot.visible.length}/${snapshot.visibleTotal} |`,
+        `| 内部検証 | PASS ${internalPassed} / FAIL ${internalFailed} / SKIP ${internalSkipped} / 計 ${snapshot.internal.length} |`,
+        `| 内部検証前の空復元 | ${verifyLabel(snapshot.preHiddenReset)} |`,
+        `| 最終の空復元 | ${verifyLabel(snapshot.finalReset)} |`,
+        snapshot.error ? `| エラー | ${esc(snapshot.error)} |` : '',
+        ''
+      );
+
+      lines.push('### 5.1 画面入力検証（Visible）', '');
+      if (!snapshot.visible.length) {
+        lines.push('記録なし', '');
+      } else {
+        lines.push('| # | テスト | 結果 | PASS | SKIP | 詳細 |', '| ---: | :--- | :---: | ---: | ---: | :--- |');
+        snapshot.visible.forEach((item, index) => {
+          const detail = item.failed.length ? item.failed.map(esc).join('<br>') : '-';
+          lines.push(`| ${index + 1} | ${esc(item.label || item.key)} | ${item.ok ? 'PASS' : 'FAIL'} | ${item.passed}/${item.total} | ${item.skipped} | ${detail} |`);
+        });
+        lines.push('');
+      }
+
+      lines.push('### 5.2 復元検証', '');
+      for (const [label, item] of [['内部検証前の空復元', snapshot.preHiddenReset], ['最終の空復元', snapshot.finalReset]]) {
+        if (!item) {
+          lines.push(`- **${label}:** 未実施`);
+        } else {
+          const detail = item.failed.length ? ` — ${item.failed.map(esc).join(' / ')}` : '';
+          lines.push(`- **${label}:** ${item.ok ? 'PASS' : 'FAIL'} (${item.passed}/${item.total})${item.skipped ? ` / SKIP ${item.skipped}` : ''}${detail}`);
+        }
+      }
+      lines.push('');
+
+      lines.push('### 5.3 内部検証（Internal）', '');
+      if (!snapshot.internal.length) {
+        lines.push('記録なし', '');
+      } else {
+        const groups = new Map();
+        for (const item of snapshot.internal) {
+          if (!groups.has(item.group)) groups.set(item.group, []);
+          groups.get(item.group).push(item);
+        }
+        for (const [group, items] of groups) {
+          const passed = items.filter(item => item.ok).length;
+          const skipped = items.filter(item => item.skip).length;
+          const failed = items.length - passed - skipped;
+          lines.push(`#### ${esc(group || 'OTHER')}`, '', `PASS ${passed} / FAIL ${failed} / SKIP ${skipped} / 計 ${items.length}`, '');
+          lines.push('| # | 項目 | 結果 | 詳細 |', '| ---: | :--- | :---: | :--- |');
+          items.forEach((item, index) => {
+            const verdict = item.skip ? 'SKIP' : item.ok ? 'PASS' : 'FAIL';
+            lines.push(`| ${index + 1} | ${esc(item.name)} | ${verdict} | ${item.detail ? esc(item.detail) : '-'} |`);
+          });
+          lines.push('');
+        }
+      }
+      return lines;
     };
 
     document.body.addEventListener('click', async e => {
@@ -9907,10 +10767,11 @@ async function detectBase85Variants(input) {
                 const fetchWithTimeout = (promise, ms = 3000, fallback = '取得タイムアウト') => 
                     Promise.race([promise, new Promise(resolve => setTimeout(() => resolve(fallback), ms))]);
 
-                const [geoInfo, netInfo] = await Promise.all([
+                const [geoInfo, netInfoRaw] = await Promise.all([
                     fetchWithTimeout(SysUtils.detectGeo(), 3000),
                     fetchWithTimeout(SysUtils.networkDetail(), 3000)
                 ]);
+                const netInfo = SysUtils.formatNetworkCountry(netInfoRaw);
 
                 const metaText = document.getElementById('meta').textContent || '';
                 const currentStatus = AppState.currentStatus || '待機';
@@ -9924,6 +10785,17 @@ async function detectBase85Variants(input) {
                 const zessStorageDetail = zessStorage
                     ? `localStorage=${zessStorage.localStorage ? '正常' : '失敗'}, sessionStorage=${zessStorage.sessionStorage ? '正常' : '失敗'}`
                     : '';
+
+                const gatewayModeLabel = mode => mode === 'on' ? 'オン' : mode === 'off' ? 'オフ' : '時間';
+                const gatewayAudit = InternetGateway.auditSnapshot().slice(-64);
+                const gatewayAuditText = gatewayAudit.length ? gatewayAudit.map(entry => {
+                    const stamp = SysUtils.fmtJapanTimestamp(new Date(entry.at + AppState.netTimeOffset));
+                    const status = entry.status == null ? '-' : entry.status;
+                    const outBytes = Number.isFinite(entry.requestBytes) ? `${entry.requestBytes}B` : '-';
+                    const inBytes = Number.isFinite(entry.responseBytes) ? `${entry.responseBytes}B` : '-';
+                    const duration = Number.isFinite(entry.durationMs) ? `${entry.durationMs}ms` : '-';
+                    return `#${entry.seq} ${stamp} ${String(entry.type || '').toUpperCase()} mode=${gatewayModeLabel(entry.mode)} route=${entry.routeId || '-'} level=${entry.levelLabel || '-'} method=${entry.method || '-'} status=${status} out=${outBytes} in=${inBytes} duration=${duration} ticket=${entry.ticketId || '-'} reqSHA256=${entry.requestDigest || '-'} resSHA256=${entry.responseDigest || '-'}`;
+                }).join('\n') : '記録なし';
 
                 const reportLines = [
                     '# SONY HASH 総合監査レポート\n',
@@ -9939,9 +10811,14 @@ async function detectBase85Variants(input) {
                     netInfo,
                     `位置情報: ${geoInfo}`,
                     '```\n',
+
+                    '### インターネット・ゲートウェイ監査\n```text',
+                    gatewayAuditText,
+                    '```\n',
                     
                     '## 2. 設定／パラメータ\n| 設定項目 | パラメータ値 |\n| :--- | :--- |',
                     `| 全体ステータス | **${currentStatus}** |`,
+                    `| インターネット | ${InternetGateway.modeLabel()} |`,
                     `| 詳細メタデータ（UI表示） | \`${esc(metaText)}\` |`,
                     `| 文字コード | ${isFile ? '対象外（ファイルを原データのバイト列として処理）' : 'UTF-8'} |`,
                     `| 正規化 | ${normVal} |`,
@@ -10022,7 +10899,8 @@ async function detectBase85Variants(input) {
                     tableRaw.push(`| **${prefix}** | ${progressText} | ${raw} |`);
                 }
 
-                reportLines.push(...tableFmt, '\n', ...tableRaw);
+                reportLines.push(...tableFmt, '\n', ...tableRaw, '\n');
+                reportLines.push(...buildAutoTestReportLines(esc));
                 reportLines.push('\n---\n*EOF*');
 
                 const blobParts = reportLines.filter(Boolean).map(line => line + '\n');
@@ -10063,13 +10941,13 @@ async function detectBase85Variants(input) {
                 }
                 break;
             }
-            case 'toggleGeo': {
+            case 'cycleInternetMode': {
                 if (window.__ZESS_MODE__) break;
-                AppState.geoEnabled = !AppState.geoEnabled;
-                try { localStorage.setItem('sonyHash.geo', AppState.geoEnabled ? 'on' : 'off'); } catch (_) {}
-                AppState.geoLabel = AppState.geoEnabled ? '照会中…' : '照会オフ';
-                AppState.geoTs = 0;
-                els.geoBtn.textContent = `位置: ${AppState.geoEnabled ? 'オン' : 'オフ'}`;
+                InternetGateway.cycle();
+                SysUtils.resetNetworkCache();
+                AppState.netTimeOffset = 0;
+                els.internetBtn.textContent = InternetGateway.buttonLabel();
+                await SysUtils.syncNetworkTime();
                 updateSysPanel();
                 break;
             }
@@ -10243,15 +11121,13 @@ async function detectBase85Variants(input) {
       setSysOffset();
     });
 
+    els.internetBtn.textContent = InternetGateway.buttonLabel();
     if (window.__ZESS_MODE__) {
       els.zessBtn.textContent = 'ZESS: 稼働中（解除はリロード）';
       els.zessBtn.classList.add('warn');
-      els.geoBtn.style.display = 'none';
+      els.internetBtn.hidden = true;
+      if (els.internetSep) els.internetSep.hidden = true;
     } else {
-      try { AppState.geoEnabled = (localStorage.getItem('sonyHash.geo') || 'off') === 'on'; }
-      catch (_) { AppState.geoEnabled = false; }
-      els.geoBtn.textContent = `位置: ${AppState.geoEnabled ? 'オン' : 'オフ'}`;
-
       if ('getBattery' in navigator) {
         navigator.getBattery().then(b => {
           const upd = () => { AppState.battStr = `${Math.round(b.level*100)}%${b.charging ? ' （充電状態）' : ''}`; updateSysPanel(); };
@@ -10260,14 +11136,13 @@ async function detectBase85Variants(input) {
       }
 
       window.addEventListener('online', async () => {
+        SysUtils.resetNetworkCache();
         await SysUtils.syncNetworkTime();
-        SysUtils.resetIpCache();
-        AppState.geoTs = 0;
         updateSysPanel();
       });
       window.addEventListener('offline', () => {
         AppState.netTimeOffset = 0;
-        AppState.geoLabel = 'オフライン利用';
+        SysUtils.resetNetworkCache();
         updateSysPanel();
       });
     }
@@ -10334,6 +11209,9 @@ async function detectBase85Variants(input) {
       for (const key of buttonKeys) if (!vectorSet.has(key)) add(`TEST_VECTORSに対応項目がありません: ${key}`);
     }
 
+    if (!document.getElementById('internetToggle')) add('インターネット制御DOMがありません: #internetToggle');
+    if (document.getElementById('geoToggle')) add('旧位置情報スイッチが残存: #geoToggle');
+
     for (const id of InternalContract.HASH_IDS) {
       const result = document.getElementById(id);
       if (!result || result.dataset.alg !== id) add(`UI HASH結果契約の不一致: ${id}`);
@@ -10378,9 +11256,7 @@ const PresetLoader = (() => {
   IntegrityGuard.init();
   PresetLoader.init();
   
-  if (!window.__ZESS_MODE__) {
-    await SysUtils.syncNetworkTime();
-  }
+  await SysUtils.syncNetworkTime();
   UI.updateSysPanel();
   setInterval(() => UI.updateSysPanel(), 1000);
 })();
