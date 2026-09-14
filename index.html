@@ -24,9 +24,6 @@
     --data-font-stack-fallback:"Courier New","Liberation Mono","DejaVu Sans Mono","Noto Sans Mono CJK JP","MS Gothic","ＭＳ ゴシック",monospace;
   }
 
-  /* =========================================================
-     VISUAL / SYSTEM / NORMAL (modern)
-  ========================================================= */
   body[data-system="modern"]{
     --sys-font-stack:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Cascadia Mono","Cascadia Code","Liberation Mono","DejaVu Sans Mono","Noto Sans Mono CJK JP","MS Gothic","ＭＳ ゴシック","Courier New",monospace;
     --sys-font-size:16px;
@@ -38,9 +35,6 @@
     --sys-line-height:1.55;
   }
 
-  /* =========================================================
-     VISUAL / SYSTEM / DEFAULT (terminal)
-  ========================================================= */
   body[data-system="terminal"]{
     --sys-font-stack:Consolas,"Cascadia Mono","Cascadia Code",ui-monospace,SFMono-Regular,Menlo,Monaco,"Liberation Mono","DejaVu Sans Mono","Noto Sans Mono CJK JP","MS Gothic","ＭＳ ゴシック","Courier New",monospace;
     --sys-font-size:16px;
@@ -52,17 +46,11 @@
     --sys-line-height:1.55;
   }
 
-  /* =========================================================
-     VISUAL / DISPLAY / NORMAL (modern)
-  ========================================================= */
   body[data-display="modern"]{
     --display-glow:none;
     --display-glow-bright:none;
   }
 
-  /* =========================================================
-     VISUAL / DISPLAY / DEFAULT (crt)
-  ========================================================= */
   body[data-display="crt"]{
     --display-glow:0 0 1px rgba(124,255,124,.25);
     --display-glow-bright:-1px 0 1px rgba(255,0,0,0.5), 1px 0 1px rgba(0,100,255,0.5), 0 0 2px rgba(57,255,20,0.6), 0 0 10px rgba(57,255,20,0.3);
@@ -112,9 +100,6 @@
     100% { transform: translate3d(0,140vh,0); }
   }
 
-  /* =========================================================
-     VISUAL / BACKGROUND / DEFAULT
-  ========================================================= */
   body[data-background="default"]{
     --app-bg:#0a2a45;
     --app-fg:#7cff7c;
@@ -136,9 +121,6 @@
     --app-background-animation:none;
   }
 
-  /* =========================================================
-     VISUAL / BACKGROUND / COMMAND
-  ========================================================= */
   body[data-background="cmd"]{
     --app-bg:#000000;
     --app-fg:#cccccc;
@@ -165,9 +147,6 @@
     --app-caret-shape:block;
   }
 
-  /* =========================================================
-     VISUAL / BACKGROUND / POWERSHELL
-  ========================================================= */
   body[data-background="ps"]{
     --app-bg:#012456;
     --app-fg:#eeedf0;
@@ -877,9 +856,6 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script>
-/* =========================================================
-   SECURITY LAYER
-========================================================= */
 const Security = (() => {
   const storageIsolation = { localStorage: null, sessionStorage: null };
   const getStorageIsolationStatus = () => ({
@@ -976,10 +952,6 @@ const Security = (() => {
   return { init, getStorageIsolationStatus };
 })();
 
-/* =========================================================
-   INTERNET GATEWAY
-   外部通信は登録済みRouteのみ。Capabilityはページ外へ送信しない。
-========================================================= */
 let InternetGatewayTestBridge = null;
 const InternetGateway = (() => {
   const MODE = Object.freeze({ TIME:'time', ON:'on', OFF:'off' });
@@ -1499,10 +1471,6 @@ const InternetGateway = (() => {
   });
 })();
 
-/* =========================================================
-   WORKER BROKER
-   計算Workerはネットワーク機能を持たない。
-========================================================= */
 const WorkerBroker = (() => {
   const NativeWorker = typeof window.Worker === 'function' ? window.Worker : null;
   const NETWORK_GUARD = `
@@ -1546,12 +1514,8 @@ const WorkerBroker = (() => {
   return Object.freeze({ createInline, validate, get available() { return !!NativeWorker; } });
 })();
 
-// Network/Worker capability lockdown starts before the remaining application layers are evaluated.
 InternetGateway.init();
 
-/* =========================================================
-Yukikaze
-========================================================= */
 const PanicSystem = (() => {
   const isApple = /(Mac|iPhone|iPod|iPad)/i.test(navigator.userAgent);
   let escPressCount = 0;
@@ -1715,9 +1679,6 @@ const PanicSystem = (() => {
   return { init };
 })();
 
-/* =========================================================
-   INTERNAL CONTRACT
-========================================================= */
 const InternalContract = (() => {
   const HASH_ALGORITHMS = Object.freeze({
     'CRC32': Object.freeze({ digestBytes:4, digestHex:8, genericIteration:true }),
@@ -1856,9 +1817,6 @@ const EventBus = (() => {
   };
 })();
 
-/* =========================================================
-   MONOSPACE GUARD
-========================================================= */
 const MonospaceGuard = (() => {
   const SAMPLES = Object.freeze(['iiiiiiii','WWWWWWWW','00000000','AAAAAAAA','........','        ']);
   const EPSILON = 0.125;
@@ -1937,9 +1895,6 @@ const MonospaceGuard = (() => {
   return { verify, schedule };
 })();
 
-/* =========================================================
-   VISUAL THEME LAYER
-========================================================= */
 const VisualTheme = (() => {
   const REGISTRY = Object.freeze({
     system: Object.freeze([
@@ -2196,15 +2151,7 @@ const AppState = {
   battStr: window.__ZESS_MODE__ ? 'N/A（ZESS）' : 'N/A'
 };
 
-/* =========================================================
-   JAPAN PROFILE
-   日本語入力はUTF-8、ファイルは原データのバイト列として処理。
-   日時表記および監査レポートは日本標準時（Asia/Tokyo）を基準とする。
-========================================================= */
 
-/* =========================================================
-   CORE LAYER
-========================================================= */
 const Core = (() => {
   const subtle = crypto?.subtle;
   const seg = (window.Intl?.Segmenter) ? new Intl.Segmenter('ja',{granularity:'grapheme'}) : null;
@@ -2735,9 +2682,6 @@ const Core = (() => {
   return { utf8Encode, utf8Decode, safeAsync, hexToBytes, getFileInfo, analyzeFileStructure, applyGrouping, removeGrouping, formatForDisplay, crc32Hex, md5Hex, sha224Hex, hmacMd5Hex, hmacSha224Hex, digestHex, hmacHex, countGraphemes, shannonEntropy, sanitizeText, normalizeText, HEX_LUT };
 })();
 
-/* =========================================================
-   SYSTEM UTILS LAYER
-========================================================= */
 const SysUtils = (() => {
   const JP_PREF_MAP = {
     "Hokkaido":"北海道","Aomori":"青森県","Iwate":"岩手県","Miyagi":"宮城県","Akita":"秋田県","Yamagata":"山形県","Fukushima":"福島県",
@@ -3098,11 +3042,6 @@ const SysUtils = (() => {
   };
 })();
 
-/* =========================================================
-   SYSTEM MONITOR LAYER
-   右下システム表示の単一状態源。ローカル情報はイベント駆動、
-   外部情報はInternetGateway経由で低頻度・single-flight更新。
-========================================================= */
 let SystemMonitorTestBridge = null;
 const SystemMonitor = (() => {
   const DIRTY = Object.freeze({
@@ -3817,9 +3756,6 @@ const SystemMonitor = (() => {
   });
 })();
 
-/* =========================================================
-   BASE CODEC LAYER
-========================================================= */
 const BaseCodec = (() => {
   const Base64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   const ASCII85_CHARSET = (function(){ let s=''; for(let i=33; i<=117; i++) s+=String.fromCharCode(i); return s; })();
@@ -3946,9 +3882,6 @@ const BaseCodec = (() => {
   return { encodeBase64, encodeBase85, btoaChecksum, wrapBtoaPayload, base64WorkerSource, base85WorkerSource, base85Variants };
 })();
 
-/* =========================================================
-   BASE64 ENGINE LAYER
-========================================================= */
 const Base64Engine = (() => {
   let worker = null;
   function init() {
@@ -4166,9 +4099,6 @@ const Base64Engine = (() => {
   };
 })();
 
-/* =========================================================
-   BASE85 ENGINE LAYER
-========================================================= */
 const Base85Engine = (() => {
   let worker = null;
   function init() {
@@ -4469,9 +4399,6 @@ const Base85Engine = (() => {
   };
 })();
 
-/* =========================================================
-   BASE85 DETECTION LAYER
-========================================================= */
 const Base85Detect = (() => {
   async function detectVariants(input) {
     const compact = String(input || '').replace(/\s+/g, '');
@@ -4507,9 +4434,6 @@ const Base85Detect = (() => {
   return { detectVariants };
 })();
 
-/* =========================================================
-   BASE RENDER GATE
-========================================================= */
 const BaseRenderGate = (() => {
   const revisions = {
     'Base64-Enc': 0,
@@ -4561,9 +4485,6 @@ const BaseRenderGate = (() => {
   return { issue, isCurrent, invalidateAll, track, hasPending, onChange };
 })();
 
-/* =========================================================
-   HASH OUTPUT FILTER LAYER
-========================================================= */
 const HashOutputFilter = (() => {
   const DIGEST_HEX_LENGTHS = Object.freeze(Object.fromEntries(
     InternalContract.HASH_IDS.map(id => [id, InternalContract.HASH_ALGORITHMS[id].digestHex])
@@ -4711,9 +4632,6 @@ const HashOutputFilter = (() => {
   return { ids, digestHexLength, isHashResult, apply, describe, handoffLabel, resolveCompareTarget };
 })();
 
-/* =========================================================
-   RESULT SURFACE LAYER
-========================================================= */
 const ResultSurface = (() => {
   function actual(el) {
     if (!el) return '';
@@ -4735,9 +4653,6 @@ const ResultSurface = (() => {
   return { actual, visual, selected, label };
 })();
 
-/* =========================================================
-   STREAM BLOCK LAYER
-========================================================= */
 const StreamBlock = (() => {
   const QUANTUM = 12;
 
@@ -4762,9 +4677,6 @@ const StreamBlock = (() => {
   return { QUANTUM, partition };
 })();
 
-/* =========================================================
-   INTEGRITY GUARD
-========================================================= */
 const IntegrityGuard = (() => {
   let lastIssues = Object.freeze([]);
 
@@ -4845,9 +4757,6 @@ const IntegrityGuard = (() => {
   };
 })();
 
-/* =========================================================
-   ENGINE LAYER
-========================================================= */
 const Engine = (() => {
   const ACTION = InternalContract.ENGINE_ACTIONS;
   const MESSAGE = InternalContract.ENGINE_MESSAGES;
@@ -7143,9 +7052,6 @@ const Engine = (() => {
   };
 })();
 
-/* =========================================================
-   SELF TEST LAYER
-========================================================= */
 const SelfTest = (() => {
   const CRC64_CHECK = Object.freeze({
     'XZ (ECMA, Reflected)':'995dc9bbdf1939fa',
@@ -8495,9 +8401,6 @@ const SelfTest = (() => {
 
   return { runAll, expectedCount };
 })();
-/* =========================================================
-   UI LAYER
-========================================================= */
 const UI = (() => {
   const els = {};
   let scheduled = false;
@@ -10258,7 +10161,6 @@ function showToast(msg, duration = TOAST_DURATION) {
         el._fileInfo = fi;
         el.dataset.empty = isPreview ? '1' : '0';
       } else if (renderHashOutputValue(id, value, isPreview)) {
-        // HASHの生データは dataset.raw に保持し、出力フィルタは表示直前だけ適用する。
       } else if (/^[0-9a-fA-F]+$/.test(value) || id.includes('Base')) {
         el.dataset.raw = value;
         const skipCase = id.includes('Base');
@@ -12456,9 +12358,6 @@ async function detectBase85Variants(input) {
   return { init, validate, updateSysPanel, panicReset };
 })();
 
-/* =========================================================
-   PRESET LAYER
-========================================================= */
 const PresetLoader = (() => {
   const PRESET_TEXT = `0  0  1  2  3  4  5  6\n0  A  A  D  F  G  V  X\n1  A  A  B  C  D  E  F\n2  D  G  H  I  J  K  L\n3  F  M  N  O  P  Q  R\n4  G  S  T  U  V  W  X\n5  V  Y  Z  0  1  2  3\n6  X  4  5  6  7  8  9`;
 
@@ -12472,9 +12371,6 @@ const PresetLoader = (() => {
   return { init };
 })();
 
-/* =========================================================
-   APP ENTRY
-========================================================= */
 (async function initApp() {
   Security.init();
   if (!PanicSystem.init()) return;
