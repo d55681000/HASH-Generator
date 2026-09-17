@@ -857,6 +857,8 @@
 
 <script>
 const Security = (() => {
+  let domObserver = null;
+  let domClick = null;
   const storageIsolation = { localStorage: null, sessionStorage: null };
   const getStorageIsolationStatus = () => ({
     localStorage: storageIsolation.localStorage,
@@ -875,15 +877,16 @@ const Security = (() => {
       root.querySelectorAll('meta[http-equiv]').forEach(el => { if (isMetaRefresh(el)) el.remove(); });
     };
     stripNetworkHints(document);
-    document.addEventListener('click', event => {
+    domClick = event => {
       const anchor = event.target?.closest?.('a[href]');
       if (!anchor || anchor.hasAttribute('download')) return;
       const href = String(anchor.getAttribute('href') || '').trim();
       if (!href || href.startsWith('#')) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-    }, true);
-    const observer = new MutationObserver((mutations) => {
+    };
+    document.addEventListener('click', domClick, true);
+    domObserver = new MutationObserver((mutations) => {
       for (const m of mutations) {
         for (const node of m.addedNodes) {
           if (node.nodeType !== 1) continue; 
@@ -908,7 +911,7 @@ const Security = (() => {
         }
       }
     });
-    observer.observe(document.documentElement, { childList: true, subtree: true });
+    domObserver.observe(document.documentElement, { childList: true, subtree: true });
   };
 
   function init() {
@@ -949,7 +952,23 @@ const Security = (() => {
     }
     initDomGuard();
   }
-  return { init, getStorageIsolationStatus };
+  function shutdown() {
+    try { domObserver?.disconnect(); } catch (_) {}
+    domObserver = null;
+    if (domClick) { try { document.removeEventListener('click', domClick, true); } catch (_) {} }
+    domClick = null;
+  }
+  return { init, shutdown, getStorageIsolationStatus };
+})();
+
+const RuntimeGate = (() => {
+  let state = 0;
+  let epoch = 0;
+  return Object.freeze({
+    get epoch() { return epoch; },
+    open: () => state === 0,
+    close: () => { if (state !== 0) return false; state = 1; epoch++; return true; }
+  });
 })();
 
 let InternetGatewayTestBridge = null;
@@ -976,8 +995,8 @@ const InternetGateway = (() => {
     'location.cloudflare': Object.freeze({
       url:'https://www.cloudflare.com/cdn-cgi/trace', method:'GET', format:'text', level:LEVEL.SENSITIVE, purpose:'国コード照会', maxResponseBytes:65536
     }),
-    'navigation.panic': Object.freeze({
-      url:'https://www.google.com', method:'NAVIGATE', format:'none', level:LEVEL.STANDARD, purpose:'Yukikaze退避', transport:'navigate'
+    'navigation.exit': Object.freeze({
+      url:'https://www.google.com', method:'NAVIGATE', format:'none', level:LEVEL.STANDARD, purpose:'Exit', transport:'navigate'
     })
   });
 
@@ -1150,6 +1169,8 @@ const InternetGateway = (() => {
   }
 
   async function request(routeId, options = {}) {
+    if (!RuntimeGate.open()) throw genericNetworkError();
+    const gateEpoch = RuntimeGate.epoch;
     const route = ROUTES[routeId];
     if (!route || route.transport === 'navigate') throw genericNetworkError();
 
@@ -1220,6 +1241,7 @@ const InternetGateway = (() => {
       }
 
       const responseDigest = await digestBytes(responseBytes);
+      if (!RuntimeGate.open() || RuntimeGate.epoch !== gateEpoch) throw gatewayFault('policy');
       const durationMs = Math.max(0, Math.round(performance.now() - started));
       record({
         type:'transfer', mode:requestMode, policyEpoch:requestPolicyEpoch,
@@ -1265,6 +1287,7 @@ const InternetGateway = (() => {
   }
 
   function navigate(routeId) {
+    if (!RuntimeGate.open()) return false;
     const route = ROUTES[routeId];
     if (!route || route.transport !== 'navigate') return false;
     const ticket = issueTicket(routeId);
@@ -1287,6 +1310,11 @@ const InternetGateway = (() => {
       } catch (_) {}
     }
     inflight.clear();
+  }
+
+  function shutdown() {
+    policyEpoch++;
+    abortInflight('lifecycle');
   }
 
   function setMode(next) {
@@ -1464,7 +1492,7 @@ const InternetGateway = (() => {
   });
 
   return Object.freeze({
-    MODE, LEVEL, init, cycle, request, navigate, modeLabel, buttonLabel,
+    MODE, LEVEL, init, cycle, request, navigate, shutdown, modeLabel, buttonLabel,
     auditSnapshot, validate, selfTest,
     get currentMode() { return mode; },
     get routeCount() { return Object.keys(ROUTES).length; }
@@ -1497,6 +1525,7 @@ const WorkerBroker = (() => {
   `;
 
   function createInline(code, options) {
+    if (!RuntimeGate.open()) throw new Error('Worker unavailable');
     if (!NativeWorker) throw new Error('Web Worker unavailable');
     if (typeof code !== 'string') throw new TypeError('Worker code must be a string');
     const blob = new Blob([NETWORK_GUARD, '\n', code], { type:'application/javascript' });
@@ -1516,37 +1545,41 @@ const WorkerBroker = (() => {
 
 InternetGateway.init();
 
-const PanicSystem = (() => {
-  const isApple = /(Mac|iPhone|iPod|iPad)/i.test(navigator.userAgent);
-  let escPressCount = 0;
-  let escResetTimeout;
-  let lastEscPressTime = 0;
-  let panicTriggered = false;
+const LifecycleController = (() => {
+  const apple = /(Mac|iPhone|iPod|iPad)/i.test(navigator.userAgent);
+  let count = 0;
+  let timer = 0;
+  let last = 0;
+  let locked = false;
+  const key = '__ZESS_STATE__';
+  const target = 'https://www.google.com/';
 
-  const markPanicState = () => {
+  const mark = () => { try { history.replaceState({ [key]: 1 }, document.title, window.location.href); } catch (_) {} };
+  const zero = value => {
     try {
-      history.replaceState({ __ZESS_PANIC__: 1 }, document.title, window.location.href);
-    } catch (e) {}
+      if (value instanceof Uint8Array) value.fill(0);
+      else if (ArrayBuffer.isView(value)) new Uint8Array(value.buffer, value.byteOffset, value.byteLength).fill(0);
+      else if (value instanceof ArrayBuffer) new Uint8Array(value).fill(0);
+    } catch (_) {}
   };
-
-  const wipeRuntimeState = () => {
-    try { Engine.resetMasterTask(); } catch (e) {}
-    try { Engine.terminateWorker(); } catch (e) {}
-    try { Base64Engine.terminate(); } catch (e) {}
-    try { Base85Engine.terminate(); } catch (e) {}
-    try { UI.panicReset(); } catch (e) {}
-
+  const blank = () => { try { document.documentElement.innerHTML = '<head><title>Google</title></head><body style="background:#fff;margin:0;padding:0"></body>'; } catch (_) {} };
+  const leave = () => { try { window.location.replace(target); } catch (_) { blank(); } };
+  const purge = () => {
+    try { InternetGateway.shutdown(); } catch (_) {}
+    try { Engine.resetMasterTask('lifecycle'); } catch (_) {}
+    try { Engine.terminateWorker(); } catch (_) {}
+    try { Base64Engine.terminate(); } catch (_) {}
+    try { Base85Engine.terminate(); } catch (_) {}
+    try { SystemPanelRenderer.destroy(); } catch (_) {}
+    try { SystemMonitor.destroy(); } catch (_) {}
+    try { Security.shutdown(); } catch (_) {}
+    try { UI.shutdown(); } catch (_) {}
     try {
-      if (AppState.streamHandles) {
-        Object.values(AppState.streamHandles).forEach(handle => {
-          if (!handle || typeof handle.abort !== 'function') return;
-          try {
-            const p = handle.abort();
-            if (p && typeof p.catch === 'function') p.catch(() => {});
-          } catch (e) {}
-        });
-      }
-
+      if (AppState.streamHandles) Object.values(AppState.streamHandles).forEach(handle => {
+        if (!handle || typeof handle.abort !== 'function') return;
+        try { const p = handle.abort(); if (p && typeof p.catch === 'function') p.catch(() => {}); } catch (_) {}
+      });
+      zero(AppState.currentEntropy);
       AppState.streamHandles = null;
       AppState.currentFile = null;
       AppState.currentEntropy = null;
@@ -1558,125 +1591,79 @@ const PanicSystem = (() => {
       AppState.continuousCompareHit = null;
       AppState.copyMode = 'actual';
       AppState.hashOutputHandoff = 'hex';
+      AppState.hashOutputOrder = [];
       AppState.locationLabel = 'N/A';
       AppState.locationTs = 0;
       AppState.locationCountryCode = '';
       AppState.locationCountryName = '';
       AppState.netTimeOffset = 0;
-    } catch (e) {}
-
+    } catch (_) {}
     try {
-      document.querySelectorAll('textarea, input').forEach(el => {
-        try { el.value = ''; } catch (e) {}
-      });
-
+      document.querySelectorAll('textarea,input').forEach(el => { try { el.value = ''; } catch (_) {} });
       document.querySelectorAll('.value').forEach(el => {
+        zero(el._binBytes);
         el.textContent = '';
-        el.dataset.raw = '';
-        delete el.dataset.output;
-        el.dataset.empty = '1';
+        if (el.dataset) { el.dataset.raw = ''; delete el.dataset.output; el.dataset.empty = '1'; }
+        delete el._binBytes;
+        delete el._fileInfo;
         delete el._hugeBlob;
         delete el._hugeString;
       });
-    } catch (e) {}
-
+    } catch (_) {}
     if (window.__ZESS_MODE__) {
-      try { localStorage.clear(); } catch (e) {}
-      try { sessionStorage.clear(); } catch (e) {}
+      try { localStorage.clear(); } catch (_) {}
+      try { sessionStorage.clear(); } catch (_) {}
     }
   };
-
-  const sealDocument = () => {
-    try {
-      document.documentElement.innerHTML = '<head><title>Google</title></head><body style="background:#fff; margin:0; padding:0;"></body>';
-    } catch (e) {}
+  const run = () => {
+    if (locked) return;
+    locked = true;
+    RuntimeGate.close();
+    mark();
+    try { window.stop(); } catch (_) {}
+    clearTimeout(timer);
+    try { purge(); } catch (_) {}
+    blank();
+    leave();
   };
-
-  const leavePanic = () => {
-    try {
-      if (!window.__ZESS_MODE__ && InternetGateway.navigate('navigation.panic')) return;
-      window.location.replace('about:blank');
-    } catch (e) {
-      sealDocument();
-    }
+  const enforce = () => {
+    if (!locked && !(history.state && history.state[key] === 1)) return;
+    locked = true;
+    RuntimeGate.close();
+    try { window.stop(); } catch (_) {}
+    blank();
+    leave();
   };
-
-  const enforcePanicState = () => {
-    const marked = !!(history.state && history.state.__ZESS_PANIC__ === 1);
-    if (!panicTriggered && !marked) return;
-
-    panicTriggered = true;
-    window.stop();
-    sealDocument();
-    leavePanic();
-  };
-
-  const triggerPanic = () => {
-    if (panicTriggered) return;
-    panicTriggered = true;
-
-    window.stop();
-    clearTimeout(escResetTimeout);
-    markPanicState();
-    wipeRuntimeState();
-    sealDocument();
-    leavePanic();
-  };
-
-  const handleKeydown = (e) => {
-    const keyStr = e.key.toLowerCase();
-
-    const isDevTools = isApple 
-      ? (e.metaKey && e.altKey && ['i', 'j', 'c'].includes(keyStr)) 
-      : (e.ctrlKey && e.shiftKey && ['i', 'j', 'c'].includes(keyStr));
-
-    const isF12 = e.key === 'F12';
-    const isWinKey = e.key === 'Meta' && !isApple;
-
-    if (isF12 || isWinKey || isDevTools) {
+  const onKey = e => {
+    const k = String(e.key || '').toLowerCase();
+    const combo = apple ? (e.metaKey && e.altKey && ['i','j','c'].includes(k)) : (e.ctrlKey && e.shiftKey && ['i','j','c'].includes(k));
+    if (e.key === 'F12' || (e.key === 'Meta' && !apple) || combo) {
       e.preventDefault();
       e.stopPropagation();
-      triggerPanic();
+      run();
       return;
     }
-
     if (e.key === 'Escape') {
       const now = Date.now();
-      if (now - lastEscPressTime > 50) {
-        escPressCount++;
-        lastEscPressTime = now;
-
-        clearTimeout(escResetTimeout);
-        if (escPressCount >= 4) {
-          triggerPanic();
-          return;
-        }
-        escResetTimeout = setTimeout(() => { escPressCount = 0; }, 500);
+      if (now - last > 50) {
+        count++;
+        last = now;
+        clearTimeout(timer);
+        if (count >= 4) { run(); return; }
+        timer = setTimeout(() => { count = 0; }, 500);
       }
     }
   };
-
-  const handleTouch = (e) => {
-    if (e.touches.length >= 4) {
-      triggerPanic();
-    }
-  };
-
+  const onTouch = e => { if (e.touches.length >= 4) run(); };
   function init() {
-    if (history.state && history.state.__ZESS_PANIC__ === 1) {
-      panicTriggered = true;
-      enforcePanicState();
-      return false;
-    }
-
-    document.addEventListener('keydown', handleKeydown, true);
-    document.addEventListener('touchstart', handleTouch, { passive: true, capture: true });
-    window.addEventListener('pageshow', enforcePanicState, true);
-    window.addEventListener('popstate', enforcePanicState, true);
+    if (history.state && history.state[key] === 1) { locked = true; RuntimeGate.close(); enforce(); return false; }
+    document.addEventListener('keydown', onKey, true);
+    document.addEventListener('touchstart', onTouch, { passive:true, capture:true });
+    window.addEventListener('pageshow', enforce, true);
+    window.addEventListener('popstate', enforce, true);
     return true;
   }
-
-  return { init };
+  return Object.freeze({ init });
 })();
 
 const InternalContract = (() => {
@@ -1809,6 +1796,7 @@ const EventBus = (() => {
       (events[event] || (events[event] = [])).push(listener);
     },
     emit: (event, data) => {
+      if (!RuntimeGate.open()) return;
       validate(event);
       (events[event] || []).forEach(l => l(data));
     },
@@ -3885,6 +3873,7 @@ const BaseCodec = (() => {
 const Base64Engine = (() => {
   let worker = null;
   function init() {
+    if (!RuntimeGate.open()) throw new Error('Worker unavailable');
     if(worker) return;
     const code = `
       ${BaseCodec.base64WorkerSource()}
@@ -4040,6 +4029,8 @@ const Base64Engine = (() => {
   }
 
   function run(action, payload, detectFile = false, strict = false, transferOwned = false) {
+    if (!RuntimeGate.open()) return Promise.resolve({ type:'error', message:'Unavailable' });
+    const gateEpoch = RuntimeGate.epoch;
     return new Promise((resolve) => {
       try { init(); }
       catch (e) { resolve({ type: 'error', message: e?.message || 'Base64 Worker Error' }); return; }
@@ -4049,6 +4040,7 @@ const Base64Engine = (() => {
       let settled = false;
       const finish = result => {
         if (settled) return;
+        if (!RuntimeGate.open() || RuntimeGate.epoch !== gateEpoch) { settled = true; resolve({ type:'error', message:'Unavailable' }); return; }
         settled = true;
         targetWorker.removeEventListener('message', handler);
         targetWorker.removeEventListener('error', errorHandler);
@@ -4102,6 +4094,7 @@ const Base64Engine = (() => {
 const Base85Engine = (() => {
   let worker = null;
   function init() {
+    if (!RuntimeGate.open()) throw new Error('Worker unavailable');
     if(worker) return;
     const code = `
       ${BaseCodec.base85WorkerSource()}
@@ -4340,6 +4333,8 @@ const Base85Engine = (() => {
   }
 
   function run(action, payload, variant, detectFile = false, transferOwned = false) {
+    if (!RuntimeGate.open()) return Promise.resolve({ type:'error', message:'Unavailable' });
+    const gateEpoch = RuntimeGate.epoch;
     return new Promise((resolve) => {
       try { init(); }
       catch (e) { resolve({ type: 'error', message: e?.message || 'Base85 Worker Error' }); return; }
@@ -4349,6 +4344,7 @@ const Base85Engine = (() => {
       let settled = false;
       const finish = result => {
         if (settled) return;
+        if (!RuntimeGate.open() || RuntimeGate.epoch !== gateEpoch) { settled = true; resolve({ type:'error', message:'Unavailable' }); return; }
         settled = true;
         targetWorker.removeEventListener('message', handler);
         targetWorker.removeEventListener('error', errorHandler);
@@ -6533,9 +6529,11 @@ const Engine = (() => {
   }
 
   function ensureWorker() {
+    if (!RuntimeGate.open()) return;
     if (hasWorker && !worker) {
       worker = createWorkerBlob();
       worker.onmessage = ev => {
+          if (!RuntimeGate.open()) return;
           const data = ev.data;
           const isIterationMessage = data && (
               data.action === MESSAGE.PAUSE_ACK ||
@@ -6704,6 +6702,7 @@ const Engine = (() => {
   }
 
   function runWorkerSelfTest(mode, payload = {}) {
+    if (!RuntimeGate.open()) return Promise.resolve(null);
     return new Promise((resolve) => {
       let testWorker;
       try { testWorker = ensureSelfTestWorker(); }
@@ -8410,6 +8409,7 @@ const UI = (() => {
 
   const renderState = {};
   let isRendering = false;
+  let renderRafId = 0;
   const LIMIT_100KB = 102400;
 
   let forceEmptyHashOnce = false;
@@ -9974,6 +9974,7 @@ function showToast(msg, duration = TOAST_DURATION) {
   }
 
   function queueRender(algId, value, currentIter, totalIter, isDone = false, isAborted = false, isOOM = false, historyCount = null, historyLimit = 65535, isError = false, taskState = null) {
+    if (!RuntimeGate.open()) return;
     if (typeof value === 'object') {
         if (value.type === 'huge_blob') {
              renderState[algId] = { valueString: '', isHugeBlob: true, blob: value.blob, sizeMB: value.sizeMB, isDone: true };
@@ -9994,7 +9995,7 @@ function showToast(msg, duration = TOAST_DURATION) {
     }
     if (!isRendering) {
         isRendering = true;
-        requestAnimationFrame(renderLoop);
+        renderRafId = requestAnimationFrame(renderLoop);
     }
     TestIdleGate.notify();
   }
@@ -10062,6 +10063,8 @@ function showToast(msg, duration = TOAST_DURATION) {
   });
 
   function renderLoop() {
+    renderRafId = 0;
+    if (!RuntimeGate.open()) { isRendering = false; return; }
     for (const [algId, state] of Object.entries(renderState)) {
         const el = document.getElementById(algId);
         const progEl = document.getElementById(`prog-${algId}`);
@@ -10128,7 +10131,7 @@ function showToast(msg, duration = TOAST_DURATION) {
         if (state.isDone || state.isAborted || state.isOOM || state.isError) delete renderState[algId];
     }
     if (Object.keys(renderState).length > 0) {
-        requestAnimationFrame(renderLoop);
+        renderRafId = requestAnimationFrame(renderLoop);
     } else {
         isRendering = false;
         syncPauseControls();
@@ -10355,10 +10358,12 @@ function showToast(msg, duration = TOAST_DURATION) {
   }
 
   function scheduleUpdate() {
+    if (!RuntimeGate.open()) return;
     if (!scheduled) {
       scheduled = true;
       const run = async () => {
         scheduled = false;
+        if (!RuntimeGate.open()) return;
         updateRunning = true;
         try {
           await updateAll();
@@ -10379,6 +10384,7 @@ function showToast(msg, duration = TOAST_DURATION) {
   }
 
   async function handleFiles(files) {
+    if (!RuntimeGate.open()) return;
     if (!files.length) return;
     const revision = ++fileLoadRevision;
     const f = files[0];
@@ -12280,9 +12286,10 @@ async function detectBase85Variants(input) {
     });
   }
 
-  function panicReset() {
+  function shutdown() {
     if (AutoTestSession.active) AutoTestSession.abort();
     scheduled = false;
+    if (renderRafId) { try { cancelAnimationFrame(renderRafId); } catch (_) {} renderRafId = 0; }
     AppState.continuousCompareEnabled = false;
     AppState.continuousCompareTarget = null;
     AppState.continuousCompareHit = null;
@@ -12355,7 +12362,7 @@ async function detectBase85Variants(input) {
     attachEvents();
   }
 
-  return { init, validate, updateSysPanel, panicReset };
+  return { init, validate, updateSysPanel, shutdown };
 })();
 
 const PresetLoader = (() => {
@@ -12372,8 +12379,8 @@ const PresetLoader = (() => {
 })();
 
 (async function initApp() {
+  if (!LifecycleController.init()) return;
   Security.init();
-  if (!PanicSystem.init()) return;
   VisualTheme.init();
   Engine.init();
   UI.init();
