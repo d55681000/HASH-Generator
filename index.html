@@ -856,6 +856,44 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script>
+const Life = (() => {
+  let state = 0;
+  let epoch = 0;
+  const ctl = new AbortController();
+  const held = new Set();
+  const wipe = value => {
+    try {
+      if (value instanceof ArrayBuffer) new Uint8Array(value).fill(0);
+      else if (ArrayBuffer.isView(value)) new Uint8Array(value.buffer, value.byteOffset, value.byteLength).fill(0);
+    } catch (_) {}
+  };
+  return Object.freeze({
+    get epoch() { return epoch; },
+    get signal() { return ctl.signal; },
+    ok: () => state === 0,
+    same: value => state === 0 && value === epoch,
+    hold: value => {
+      if (state === 0 && (value instanceof ArrayBuffer || ArrayBuffer.isView(value))) held.add(value);
+      return value;
+    },
+    free: (value, erase = false) => {
+      if (value == null) return;
+      held.delete(value);
+      if (erase) wipe(value);
+    },
+    begin: reason => {
+      if (state !== 0) return false;
+      state = 1;
+      epoch++;
+      for (const value of held) wipe(value);
+      held.clear();
+      try { ctl.abort(reason); } catch (_) {}
+      return true;
+    },
+    seal: () => { if (state === 1) state = 2; }
+  });
+})();
+
 const Security = (() => {
   let domObserver = null;
   let domClick = null;
@@ -961,18 +999,9 @@ const Security = (() => {
   return { init, shutdown, getStorageIsolationStatus };
 })();
 
-const RuntimeGate = (() => {
-  let state = 0;
-  let epoch = 0;
-  return Object.freeze({
-    get epoch() { return epoch; },
-    open: () => state === 0,
-    close: () => { if (state !== 0) return false; state = 1; epoch++; return true; }
-  });
-})();
-
 let InternetGatewayTestBridge = null;
 const InternetGateway = (() => {
+  let closed = false;
   const MODE = Object.freeze({ TIME:'time', ON:'on', OFF:'off' });
   const LEVEL = Object.freeze({ TIME:1, STANDARD:2, SENSITIVE:3 });
   const LEVEL_LABEL = Object.freeze({ 1:'T1/TIME', 2:'T2/STANDARD', 3:'T3/SENSITIVE' });
@@ -994,9 +1023,6 @@ const InternetGateway = (() => {
     }),
     'location.cloudflare': Object.freeze({
       url:'https://www.cloudflare.com/cdn-cgi/trace', method:'GET', format:'text', level:LEVEL.SENSITIVE, purpose:'国コード照会', maxResponseBytes:65536
-    }),
-    'navigation.exit': Object.freeze({
-      url:'https://www.google.com', method:'NAVIGATE', format:'none', level:LEVEL.STANDARD, purpose:'Exit', transport:'navigate'
     })
   });
 
@@ -1169,8 +1195,8 @@ const InternetGateway = (() => {
   }
 
   async function request(routeId, options = {}) {
-    if (!RuntimeGate.open()) throw genericNetworkError();
-    const gateEpoch = RuntimeGate.epoch;
+    if (closed || !Life.ok()) throw genericNetworkError();
+    const lifeEpoch = Life.epoch;
     const route = ROUTES[routeId];
     if (!route || route.transport === 'navigate') throw genericNetworkError();
 
@@ -1182,8 +1208,10 @@ const InternetGateway = (() => {
     const maxBodyBytes = Math.max(0, Number(route.maxBodyBytes) || 0);
     if (body != null && maxBodyBytes === 0) throw genericNetworkError();
     const bodyBytes = await requestBodyBytes(body);
+    if (!Life.same(lifeEpoch) || closed) throw genericNetworkError();
     if (bodyBytes.byteLength > maxBodyBytes) throw genericNetworkError();
     const requestDigest = bodyBytes.byteLength ? await digestBytes(bodyBytes) : null;
+    if (!Life.same(lifeEpoch) || closed) throw genericNetworkError();
 
     const requestMode = mode;
     const requestPolicyEpoch = policyEpoch;
@@ -1201,11 +1229,19 @@ const InternetGateway = (() => {
     const started = performance.now();
     const inflightEntry = { controller, routeId, level:route.level, abortReason:'' };
     let externalAbort = null;
+    let lifeAbort = null;
     const timeout = setTimeout(() => {
       if (!inflightEntry.abortReason) inflightEntry.abortReason = 'timeout';
       controller.abort();
     }, timeoutMs);
     inflight.set(requestId, inflightEntry);
+
+    lifeAbort = () => {
+      if (!inflightEntry.abortReason) inflightEntry.abortReason = 'lifecycle';
+      controller.abort();
+    };
+    if (Life.signal.aborted) lifeAbort();
+    else Life.signal.addEventListener('abort', lifeAbort, { once:true });
 
     if (options.signal) {
       externalAbort = () => {
@@ -1241,7 +1277,7 @@ const InternetGateway = (() => {
       }
 
       const responseDigest = await digestBytes(responseBytes);
-      if (!RuntimeGate.open() || RuntimeGate.epoch !== gateEpoch) throw gatewayFault('policy');
+      if (!Life.same(lifeEpoch) || closed) throw gatewayFault('policy');
       const durationMs = Math.max(0, Math.round(performance.now() - started));
       record({
         type:'transfer', mode:requestMode, policyEpoch:requestPolicyEpoch,
@@ -1261,6 +1297,7 @@ const InternetGateway = (() => {
       });
       return parsed;
     } catch (error) {
+      if (closed || !Life.same(lifeEpoch)) throw genericNetworkError();
       const durationMs = Math.max(0, Math.round(performance.now() - started));
       const failureKind = inflightEntry.abortReason || error?.kind || (error?.name === 'AbortError' ? 'transport-abort' : 'transport');
       const status = error?.status == null ? responseStatus : (Number.isFinite(Number(error.status)) ? Number(error.status) : responseStatus);
@@ -1283,11 +1320,12 @@ const InternetGateway = (() => {
       clearTimeout(timeout);
       inflight.delete(requestId);
       if (externalAbort && options.signal) options.signal.removeEventListener('abort', externalAbort);
+      if (lifeAbort) Life.signal.removeEventListener('abort', lifeAbort);
     }
   }
 
   function navigate(routeId) {
-    if (!RuntimeGate.open()) return false;
+    if (closed || !Life.ok()) return false;
     const route = ROUTES[routeId];
     if (!route || route.transport !== 'navigate') return false;
     const ticket = issueTicket(routeId);
@@ -1313,8 +1351,13 @@ const InternetGateway = (() => {
   }
 
   function shutdown() {
+    if (closed) return;
+    closed = true;
     policyEpoch++;
     abortInflight('lifecycle');
+    audit.length = 0;
+    auditSeq = 0;
+    InternetGatewayTestBridge = null;
   }
 
   function setMode(next) {
@@ -1492,7 +1535,7 @@ const InternetGateway = (() => {
   });
 
   return Object.freeze({
-    MODE, LEVEL, init, cycle, request, navigate, shutdown, modeLabel, buttonLabel,
+    MODE, LEVEL, init, cycle, request, navigate, modeLabel, buttonLabel, shutdown,
     auditSnapshot, validate, selfTest,
     get currentMode() { return mode; },
     get routeCount() { return Object.keys(ROUTES).length; }
@@ -1500,6 +1543,8 @@ const InternetGateway = (() => {
 })();
 
 const WorkerBroker = (() => {
+  let closed = false;
+  const workers = new Set();
   const NativeWorker = typeof window.Worker === 'function' ? window.Worker : null;
   const NETWORK_GUARD = `
     (() => {
@@ -1525,13 +1570,23 @@ const WorkerBroker = (() => {
   `;
 
   function createInline(code, options) {
-    if (!RuntimeGate.open()) throw new Error('Worker unavailable');
+    if (closed || !Life.ok()) throw new Error('Worker unavailable');
     if (!NativeWorker) throw new Error('Web Worker unavailable');
     if (typeof code !== 'string') throw new TypeError('Worker code must be a string');
     const blob = new Blob([NETWORK_GUARD, '\n', code], { type:'application/javascript' });
     const url = URL.createObjectURL(blob);
-    try { return new NativeWorker(url, options); }
-    finally { URL.revokeObjectURL(url); }
+    try {
+      const worker = new NativeWorker(url, options);
+      workers.add(worker);
+      const stop = worker.terminate.bind(worker);
+      const terminate = () => {
+        workers.delete(worker);
+        return stop();
+      };
+      try { Object.defineProperty(worker, 'terminate', { value:terminate, configurable:true }); }
+      catch (_) { try { worker.terminate = terminate; } catch (_) {} }
+      return worker;
+    } finally { URL.revokeObjectURL(url); }
   }
 
   function validate() {
@@ -1540,45 +1595,65 @@ const WorkerBroker = (() => {
     return issues;
   }
 
-  return Object.freeze({ createInline, validate, get available() { return !!NativeWorker; } });
+  function shutdown() {
+    closed = true;
+    for (const worker of Array.from(workers)) { try { worker.terminate(); } catch (_) {} }
+    workers.clear();
+  }
+
+  return Object.freeze({ createInline, validate, shutdown, get available() { return !!NativeWorker; } });
 })();
 
-InternetGateway.init();
-
-const LifecycleController = (() => {
-  const apple = /(Mac|iPhone|iPod|iPad)/i.test(navigator.userAgent);
+const Flow = (() => {
+  const key = '__ZESS_X__';
+  const target = 'https://www.google.com/';
   let count = 0;
   let timer = 0;
   let last = 0;
-  let locked = false;
-  const key = '__ZESS_STATE__';
-  const target = 'https://www.google.com/';
+  let active = false;
 
-  const mark = () => { try { history.replaceState({ [key]: 1 }, document.title, window.location.href); } catch (_) {} };
   const zero = value => {
     try {
-      if (value instanceof Uint8Array) value.fill(0);
+      if (value instanceof ArrayBuffer) new Uint8Array(value).fill(0);
       else if (ArrayBuffer.isView(value)) new Uint8Array(value.buffer, value.byteOffset, value.byteLength).fill(0);
-      else if (value instanceof ArrayBuffer) new Uint8Array(value).fill(0);
     } catch (_) {}
   };
-  const blank = () => { try { document.documentElement.innerHTML = '<head><title>Google</title></head><body style="background:#fff;margin:0;padding:0"></body>'; } catch (_) {} };
-  const leave = () => { try { window.location.replace(target); } catch (_) { blank(); } };
-  const purge = () => {
+
+  const mark = () => {
+    try { history.replaceState({ ...(history.state || {}), [key]: 1 }, '', location.href); } catch (_) {}
+  };
+
+  const blank = () => {
+    try { document.documentElement.innerHTML = '<head><title>Google</title></head><body style="background:#fff;margin:0;padding:0"></body>'; } catch (_) {}
+  };
+
+  const leave = () => {
+    try { window.location.replace(target); } catch (_) { blank(); }
+  };
+
+  const clear = () => {
+    try { EventBus.shutdown(); } catch (_) {}
     try { InternetGateway.shutdown(); } catch (_) {}
-    try { Engine.resetMasterTask('lifecycle'); } catch (_) {}
-    try { Engine.terminateWorker(); } catch (_) {}
-    try { Base64Engine.terminate(); } catch (_) {}
-    try { Base85Engine.terminate(); } catch (_) {}
-    try { SystemPanelRenderer.destroy(); } catch (_) {}
-    try { SystemMonitor.destroy(); } catch (_) {}
-    try { Security.shutdown(); } catch (_) {}
+    try { SelfTest.shutdown(); } catch (_) {}
     try { UI.shutdown(); } catch (_) {}
+    try { SystemMonitor.destroy(); } catch (_) {}
+    try { MonospaceGuard.shutdown(); } catch (_) {}
+    try { Engine.shutdown(); } catch (_) {}
+    try { Base64Engine.shutdown(); } catch (_) {}
+    try { Base85Engine.shutdown(); } catch (_) {}
+    try { WorkerBroker.shutdown(); } catch (_) {}
+    try { Security.shutdown(); } catch (_) {}
+
     try {
-      if (AppState.streamHandles) Object.values(AppState.streamHandles).forEach(handle => {
-        if (!handle || typeof handle.abort !== 'function') return;
-        try { const p = handle.abort(); if (p && typeof p.catch === 'function') p.catch(() => {}); } catch (_) {}
-      });
+      if (AppState.streamHandles) {
+        Object.values(AppState.streamHandles).forEach(handle => {
+          if (!handle || typeof handle.abort !== 'function') return;
+          try {
+            const p = handle.abort();
+            if (p && typeof p.catch === 'function') p.catch(() => {});
+          } catch (_) {}
+        });
+      }
       zero(AppState.currentEntropy);
       AppState.streamHandles = null;
       AppState.currentFile = null;
@@ -1591,81 +1666,91 @@ const LifecycleController = (() => {
       AppState.continuousCompareHit = null;
       AppState.copyMode = 'actual';
       AppState.hashOutputHandoff = 'hex';
-      AppState.hashOutputOrder = [];
       AppState.locationLabel = 'N/A';
       AppState.locationTs = 0;
       AppState.locationCountryCode = '';
       AppState.locationCountryName = '';
       AppState.netTimeOffset = 0;
     } catch (_) {}
+
     try {
       document.querySelectorAll('textarea,input').forEach(el => { try { el.value = ''; } catch (_) {} });
       document.querySelectorAll('.value').forEach(el => {
         zero(el._binBytes);
         el.textContent = '';
-        if (el.dataset) { el.dataset.raw = ''; delete el.dataset.output; el.dataset.empty = '1'; }
+        el.dataset.raw = '';
+        delete el.dataset.output;
+        el.dataset.empty = '1';
         delete el._binBytes;
         delete el._fileInfo;
         delete el._hugeBlob;
         delete el._hugeString;
       });
     } catch (_) {}
+
     if (window.__ZESS_MODE__) {
       try { localStorage.clear(); } catch (_) {}
       try { sessionStorage.clear(); } catch (_) {}
     }
   };
+
   const run = () => {
-    if (locked) return;
-    locked = true;
-    RuntimeGate.close();
-    mark();
-    try { window.stop(); } catch (_) {}
-    clearTimeout(timer);
-    try { purge(); } catch (_) {}
-    blank();
+    if (!active) {
+      active = true;
+      Life.begin('lifecycle');
+      try { window.stop(); } catch (_) {}
+      if (timer) { clearTimeout(timer); timer = 0; }
+      mark();
+      clear();
+      blank();
+      Life.seal();
+    } else {
+      blank();
+    }
     leave();
   };
+
   const enforce = () => {
-    if (!locked && !(history.state && history.state[key] === 1)) return;
-    locked = true;
-    RuntimeGate.close();
-    try { window.stop(); } catch (_) {}
-    blank();
-    leave();
+    if (active || !Life.ok() || (history.state && history.state[key] === 1)) run();
   };
-  const onKey = e => {
-    const k = String(e.key || '').toLowerCase();
-    const combo = apple ? (e.metaKey && e.altKey && ['i','j','c'].includes(k)) : (e.ctrlKey && e.shiftKey && ['i','j','c'].includes(k));
-    if (e.key === 'F12' || (e.key === 'Meta' && !apple) || combo) {
+
+  const keydown = e => {
+    if (e.key === 'F12') {
       e.preventDefault();
-      e.stopPropagation();
+      e.stopImmediatePropagation();
       run();
       return;
     }
-    if (e.key === 'Escape') {
+    if (e.key === 'Escape' && !e.repeat) {
       const now = Date.now();
       if (now - last > 50) {
         count++;
         last = now;
-        clearTimeout(timer);
-        if (count >= 4) { run(); return; }
+        if (timer) clearTimeout(timer);
+        if (count >= 4) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          run();
+          return;
+        }
         timer = setTimeout(() => { count = 0; }, 500);
       }
     }
   };
-  const onTouch = e => { if (e.touches.length >= 4) run(); };
+
+  const touch = e => { if (e.touches.length >= 4) run(); };
+
   function init() {
-    if (history.state && history.state[key] === 1) { locked = true; RuntimeGate.close(); enforce(); return false; }
-    document.addEventListener('keydown', onKey, true);
-    document.addEventListener('touchstart', onTouch, { passive:true, capture:true });
+    if (history.state && history.state[key] === 1) { run(); return false; }
+    document.addEventListener('keydown', keydown, true);
+    document.addEventListener('touchstart', touch, { passive:true, capture:true });
     window.addEventListener('pageshow', enforce, true);
     window.addEventListener('popstate', enforce, true);
     return true;
   }
-  return Object.freeze({ init });
-})();
 
+  return { init };
+})();
 const InternalContract = (() => {
   const HASH_ALGORITHMS = Object.freeze({
     'CRC32': Object.freeze({ digestBytes:4, digestHex:8, genericIteration:true }),
@@ -1782,6 +1867,7 @@ const InternalContract = (() => {
 
 const EventBus = (() => {
   const events = {};
+  let closed = false;
   const known = new Set(InternalContract.EVENT_NAMES);
   const unknown = new Set();
   const validate = event => {
@@ -1792,26 +1878,37 @@ const EventBus = (() => {
   };
   return {
     on: (event, listener) => {
+      if (closed || !Life.ok()) return () => {};
       validate(event);
       (events[event] || (events[event] = [])).push(listener);
     },
     emit: (event, data) => {
-      if (!RuntimeGate.open()) return;
+      if (closed || !Life.ok()) return false;
       validate(event);
-      (events[event] || []).forEach(l => l(data));
+      for (const l of (events[event] || [])) {
+        if (closed || !Life.ok()) break;
+        l(data);
+      }
+      return true;
     },
     listenerCount: event => (events[event] || []).length,
-    unknownEvents: () => Array.from(unknown)
+    unknownEvents: () => Array.from(unknown),
+    shutdown: () => { closed = true; for (const k of Object.keys(events)) events[k].length = 0; unknown.clear(); }
   };
 })();
 
 const MonospaceGuard = (() => {
   const SAMPLES = Object.freeze(['iiiiiiii','WWWWWWWW','00000000','AAAAAAAA','........','        ']);
   const EPSILON = 0.125;
+  const frames = new Set();
   let generation = 0;
   let rafId = 0;
 
-  const nextFrame = () => new Promise(resolve => requestAnimationFrame(resolve));
+  const nextFrame = () => new Promise(resolve => {
+    if (!Life.ok()) return;
+    const id = requestAnimationFrame(() => { frames.delete(id); resolve(); });
+    frames.add(id);
+  });
 
   function measure() {
     const target = document.getElementById('in');
@@ -1843,15 +1940,16 @@ const MonospaceGuard = (() => {
   }
 
   async function verify() {
+    if (!Life.ok()) return;
     const current = ++generation;
     if (document.fonts?.ready) {
       try { await document.fonts.ready; } catch (_) {}
     }
-    if (current !== generation || !document.body) return;
+    if (!Life.ok() || current !== generation || !document.body) return;
 
     document.body.classList.remove('mono-fallback');
     await nextFrame();
-    if (current !== generation) return;
+    if (!Life.ok() || current !== generation) return;
 
     if (measure()) {
       document.body.dataset.monoGuard = 'native';
@@ -1860,7 +1958,7 @@ const MonospaceGuard = (() => {
 
     document.body.classList.add('mono-fallback');
     await nextFrame();
-    if (current !== generation) return;
+    if (!Life.ok() || current !== generation) return;
 
     if (measure()) {
       document.body.dataset.monoGuard = 'fallback';
@@ -1872,6 +1970,7 @@ const MonospaceGuard = (() => {
   }
 
   function schedule() {
+    if (!Life.ok()) return;
     if (rafId) cancelAnimationFrame(rafId);
     rafId = requestAnimationFrame(() => {
       rafId = 0;
@@ -1879,8 +1978,15 @@ const MonospaceGuard = (() => {
     });
   }
 
+  function shutdown() {
+    generation++;
+    if (rafId) { try { cancelAnimationFrame(rafId); } catch (_) {} rafId = 0; }
+    for (const id of frames) { try { cancelAnimationFrame(id); } catch (_) {} }
+    frames.clear();
+  }
+
   EventBus.on(InternalContract.EVENTS.VISUAL_APPLIED, schedule);
-  return { verify, schedule };
+  return { verify, schedule, shutdown };
 })();
 
 const VisualTheme = (() => {
@@ -3077,6 +3183,8 @@ const SystemMonitor = (() => {
   const revisions = { device:0, display:0, power:0, connection:0, identity:0, clock:0 };
   const listeners = new Set();
   const cleanup = [];
+  const diagnosticRafs = new Set();
+  const diagnosticTimers = new Set();
   let initialized = false;
   let destroyed = false;
   let pendingMask = 0;
@@ -3519,6 +3627,12 @@ const SystemMonitor = (() => {
   function destroy() {
     if (destroyed) return;
     destroyed = true;
+    identityEpoch++;
+    timeEpoch++;
+    deviceEpoch++;
+    identityQueued = false;
+    timeQueued = false;
+    identityFailureCount = 0;
     stopClock();
     clearIdentityTimer();
     if (notifyRaf) {
@@ -3526,16 +3640,47 @@ const SystemMonitor = (() => {
       else clearTimeout(notifyRaf);
     }
     notifyRaf = 0;
+    for (const id of diagnosticRafs) { try { cancelAnimationFrame(id); } catch (_) {} }
+    diagnosticRafs.clear();
+    for (const id of diagnosticTimers) { try { clearTimeout(id); } catch (_) {} }
+    diagnosticTimers.clear();
     while (cleanup.length) {
       try { cleanup.pop()(); } catch (_) {}
     }
     listeners.clear();
+    identityInflight = null;
+    timeInflight = null;
+    diagnosticActive = false;
+    diagnosticSaved = null;
+    lastTimeSyncAt = 0;
+    connectionObservedAt = 0;
+    state = {
+      device:null,
+      display:null,
+      power:frozen({ text:'N/A', observedAt:0 }),
+      connection:null,
+      identity:emptyIdentity(),
+      clock:frozen({ text:'', observedAt:0, syncedAt:0 })
+    };
+    AppState.locationLabel = 'N/A';
+    AppState.locationTs = 0;
+    AppState.locationCountryCode = '';
+    AppState.locationCountryName = '';
+    AppState.netTimeOffset = 0;
+    AppState.battStr = 'N/A';
+    SystemMonitorTestBridge = null;
   }
 
   function diagnosticFrame() {
     return new Promise(resolve => {
-      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => resolve());
-      else setTimeout(resolve, 0);
+      if (destroyed) return;
+      if (typeof requestAnimationFrame === 'function') {
+        const id = requestAnimationFrame(() => { diagnosticRafs.delete(id); resolve(); });
+        diagnosticRafs.add(id);
+      } else {
+        const id = setTimeout(() => { diagnosticTimers.delete(id); resolve(); }, 0);
+        diagnosticTimers.add(id);
+      }
     });
   }
 
@@ -3872,8 +4017,10 @@ const BaseCodec = (() => {
 
 const Base64Engine = (() => {
   let worker = null;
+  let closed = false;
+  const pending = new Set();
   function init() {
-    if (!RuntimeGate.open()) throw new Error('Worker unavailable');
+    if (closed || !Life.ok()) throw new Error('Worker unavailable');
     if(worker) return;
     const code = `
       ${BaseCodec.base64WorkerSource()}
@@ -4029,8 +4176,8 @@ const Base64Engine = (() => {
   }
 
   function run(action, payload, detectFile = false, strict = false, transferOwned = false) {
-    if (!RuntimeGate.open()) return Promise.resolve({ type:'error', message:'Unavailable' });
-    const gateEpoch = RuntimeGate.epoch;
+    if (closed || !Life.ok()) return Promise.resolve({ type:'error', message:'Unavailable' });
+    const lifeEpoch = Life.epoch;
     return new Promise((resolve) => {
       try { init(); }
       catch (e) { resolve({ type: 'error', message: e?.message || 'Base64 Worker Error' }); return; }
@@ -4038,15 +4185,24 @@ const Base64Engine = (() => {
       const targetWorker = worker;
       const reqId = Date.now() + Math.random();
       let settled = false;
-      const finish = result => {
-        if (settled) return;
-        if (!RuntimeGate.open() || RuntimeGate.epoch !== gateEpoch) { settled = true; resolve({ type:'error', message:'Unavailable' }); return; }
+      const entry = {};
+      const drop = () => {
+        if (settled) return false;
         settled = true;
+        pending.delete(entry);
         targetWorker.removeEventListener('message', handler);
         targetWorker.removeEventListener('error', errorHandler);
+        return true;
+      };
+      const finish = result => {
+        if (!drop()) return;
         resolve(result);
       };
+      entry.finish = finish;
+      entry.drop = drop;
+      pending.add(entry);
       const handler = (e) => {
+        if (!Life.same(lifeEpoch) || closed) { entry.drop(); return; }
         if(e.data.reqId === reqId) {
           if(e.data.status === 'ok') finish(e.data.result);
           else finish({ type: 'error', message: e.data.error });
@@ -4078,7 +4234,17 @@ const Base64Engine = (() => {
   }
 
   function terminate() {
-    if(worker) { worker.terminate(); worker = null; }
+    for (const entry of Array.from(pending)) { try { entry.finish({ type:'error', message:'Unavailable' }); } catch (_) {} }
+    pending.clear();
+    if(worker) { try { worker.terminate(); } catch (_) {} worker = null; }
+  }
+
+  function shutdown() {
+    if (closed) return;
+    closed = true;
+    for (const entry of Array.from(pending)) { try { entry.drop(); } catch (_) {} }
+    pending.clear();
+    if(worker) { try { worker.terminate(); } catch (_) {} worker = null; }
   }
 
   return { 
@@ -4087,14 +4253,16 @@ const Base64Engine = (() => {
     encodeStreamOwned: (bytes) => run('encode_stream', bytes, false, false, true),
     decode: (str, detectFile, strict = false) => run('decode', str, detectFile, strict),
     decodeBytes: (str, strict = true) => run('decode_bytes', str, false, strict), 
-    terminate 
+    terminate, shutdown 
   };
 })();
 
 const Base85Engine = (() => {
   let worker = null;
+  let closed = false;
+  const pending = new Set();
   function init() {
-    if (!RuntimeGate.open()) throw new Error('Worker unavailable');
+    if (closed || !Life.ok()) throw new Error('Worker unavailable');
     if(worker) return;
     const code = `
       ${BaseCodec.base85WorkerSource()}
@@ -4333,8 +4501,8 @@ const Base85Engine = (() => {
   }
 
   function run(action, payload, variant, detectFile = false, transferOwned = false) {
-    if (!RuntimeGate.open()) return Promise.resolve({ type:'error', message:'Unavailable' });
-    const gateEpoch = RuntimeGate.epoch;
+    if (closed || !Life.ok()) return Promise.resolve({ type:'error', message:'Unavailable' });
+    const lifeEpoch = Life.epoch;
     return new Promise((resolve) => {
       try { init(); }
       catch (e) { resolve({ type: 'error', message: e?.message || 'Base85 Worker Error' }); return; }
@@ -4342,15 +4510,24 @@ const Base85Engine = (() => {
       const targetWorker = worker;
       const reqId = Date.now() + Math.random();
       let settled = false;
-      const finish = result => {
-        if (settled) return;
-        if (!RuntimeGate.open() || RuntimeGate.epoch !== gateEpoch) { settled = true; resolve({ type:'error', message:'Unavailable' }); return; }
+      const entry = {};
+      const drop = () => {
+        if (settled) return false;
         settled = true;
+        pending.delete(entry);
         targetWorker.removeEventListener('message', handler);
         targetWorker.removeEventListener('error', errorHandler);
+        return true;
+      };
+      const finish = result => {
+        if (!drop()) return;
         resolve(result);
       };
+      entry.finish = finish;
+      entry.drop = drop;
+      pending.add(entry);
       const handler = (e) => {
+        if (!Life.same(lifeEpoch) || closed) { entry.drop(); return; }
         if(e.data.reqId === reqId) {
           if(e.data.status === 'ok') finish(e.data.result);
           else finish({ type: 'error', message: e.data.error });
@@ -4382,7 +4559,17 @@ const Base85Engine = (() => {
   }
 
   function terminate() {
-    if(worker) { worker.terminate(); worker = null; }
+    for (const entry of Array.from(pending)) { try { entry.finish({ type:'error', message:'Unavailable' }); } catch (_) {} }
+    pending.clear();
+    if(worker) { try { worker.terminate(); } catch (_) {} worker = null; }
+  }
+
+  function shutdown() {
+    if (closed) return;
+    closed = true;
+    for (const entry of Array.from(pending)) { try { entry.drop(); } catch (_) {} }
+    pending.clear();
+    if(worker) { try { worker.terminate(); } catch (_) {} worker = null; }
   }
 
   return { 
@@ -4391,7 +4578,7 @@ const Base85Engine = (() => {
     encodeStreamOwned: (bytes, variant) => run('encode_stream', bytes, variant, false, true),
     decode: (str, variant, detectFile) => run('decode', str, variant, detectFile),
     decodeBytes: (str, variant) => run('decode_bytes', str, variant, false), 
-    terminate 
+    terminate, shutdown 
   };
 })();
 
@@ -4431,6 +4618,7 @@ const Base85Detect = (() => {
 })();
 
 const BaseRenderGate = (() => {
+  let closed = false;
   const revisions = {
     'Base64-Enc': 0,
     'Base64-Dec': 0,
@@ -4440,13 +4628,13 @@ const BaseRenderGate = (() => {
   let pending = 0;
 
   function issue(id) {
-    if (!Object.prototype.hasOwnProperty.call(revisions, id)) return 0;
+    if (closed || !Life.ok() || !Object.prototype.hasOwnProperty.call(revisions, id)) return 0;
     revisions[id]++;
     return revisions[id];
   }
 
   function isCurrent(id, revision) {
-    return Object.prototype.hasOwnProperty.call(revisions, id)
+    return !closed && Life.ok() && Object.prototype.hasOwnProperty.call(revisions, id)
       && revisions[id] === revision;
   }
 
@@ -4457,12 +4645,14 @@ const BaseRenderGate = (() => {
   const listeners = new Set();
 
   function notify() {
+    if (closed) return;
     for (const listener of listeners) {
       try { listener(pending); } catch (_) {}
     }
   }
 
   function track(promise) {
+    if (closed) return Promise.resolve(promise);
     pending++;
     notify();
     return Promise.resolve(promise).finally(() => {
@@ -4473,12 +4663,20 @@ const BaseRenderGate = (() => {
 
   function hasPending() { return pending > 0; }
   function onChange(listener) {
-    if (typeof listener !== 'function') return () => {};
+    if (closed || typeof listener !== 'function') return () => {};
     listeners.add(listener);
     return () => listeners.delete(listener);
   }
 
-  return { issue, isCurrent, invalidateAll, track, hasPending, onChange };
+  function shutdown() {
+    if (closed) return;
+    closed = true;
+    invalidateAll();
+    pending = 0;
+    listeners.clear();
+  }
+
+  return { issue, isCurrent, invalidateAll, track, hasPending, onChange, shutdown };
 })();
 
 const HashOutputFilter = (() => {
@@ -4762,22 +4960,36 @@ const Engine = (() => {
   let selfTestWorker = null;
   let selfTestReqSeq = 0;
   const selfTestPending = new Map();
+  const auxPending = new Set();
+  const readers = new Set();
+  let closed = false;
   let iterativeSessionActive = false;
   let iterativeSessionId = 0;
   let iterativeTargetRevision = 0;
 
   const TaskManager = (() => {
     let master = new AbortController();
+    let closed = false;
     const algs = new Map();
     return {
       get masterSignal() { return master.signal; },
       resetMaster: () => {
+        if (closed) return false;
         master.abort();
         master = new AbortController();
         algs.forEach(ctrl => ctrl.abort());
         algs.clear();
+        return true;
+      },
+      shutdown: () => {
+        if (closed) return;
+        closed = true;
+        try { master.abort(); } catch (_) {}
+        algs.forEach(ctrl => { try { ctrl.abort(); } catch (_) {} });
+        algs.clear();
       },
       startAlg: (id) => {
+        if (closed || !Life.ok()) return master.signal;
         if (algs.has(id)) algs.get(id).abort();
         const ctrl = new AbortController();
         algs.set(id, ctrl);
@@ -6508,6 +6720,7 @@ const Engine = (() => {
   }
 
   function ensureSelfTestWorker() {
+    if (closed || !Life.ok()) return null;
     if (!hasWorker) return null;
     if (selfTestWorker) return selfTestWorker;
 
@@ -6529,11 +6742,11 @@ const Engine = (() => {
   }
 
   function ensureWorker() {
-    if (!RuntimeGate.open()) return;
+    if (closed || !Life.ok()) return;
     if (hasWorker && !worker) {
       worker = createWorkerBlob();
       worker.onmessage = ev => {
-          if (!RuntimeGate.open()) return;
+          if (closed || !Life.ok()) return;
           const data = ev.data;
           const isIterationMessage = data && (
               data.action === MESSAGE.PAUSE_ACK ||
@@ -6628,23 +6841,38 @@ const Engine = (() => {
           }
       };
       worker.onerror = () => {
+          if (closed || !Life.ok()) { terminateLiveWorker(false); return; }
           EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, {'CRC32':'ワーカーエラー', 'CRC64':'ワーカーエラー', 'MD5':'ワーカーエラー', 'SHA-1':'ワーカーエラー', 'SHA-224':'ワーカーエラー', 'SHA-256':'ワーカーエラー', 'SHA-384':'ワーカーエラー', 'SHA-512':'ワーカーエラー'});
           terminateLiveWorker(); ensureWorker();
       };
     }
   }
   
-  function terminateLiveWorker() {
+  function terminateLiveWorker(emit = true) {
     iterativeSessionActive = false;
     iterativeSessionId++;
     iterativeTargetRevision = 0;
     if (worker) { worker.terminate(); worker = null; }
-    EventBus.emit(InternalContract.EVENTS.HASH_SESSION_END, { reason: 'terminated' });
+    if (emit) EventBus.emit(InternalContract.EVENTS.HASH_SESSION_END, { reason: 'terminated' });
   }
 
   function terminateWorker() {
     terminateLiveWorker();
     terminateSelfTestWorker();
+  }
+
+  function shutdown() {
+    if (closed) return;
+    closed = true;
+    TaskManager.shutdown();
+    for (const reader of Array.from(readers)) { try { const p = reader.cancel(); if (p?.catch) p.catch(() => {}); } catch (_) {} }
+    readers.clear();
+    for (const entry of auxPending) { try { entry.drop(); } catch (_) {} }
+    auxPending.clear();
+    for (const entry of selfTestPending.values()) { try { clearTimeout(entry.timer); } catch (_) {} }
+    selfTestPending.clear();
+    if (selfTestWorker) { try { selfTestWorker.terminate(); } catch (_) {} selfTestWorker = null; }
+    terminateLiveWorker(false);
   }
   
   function verifyTestBytes(bytes, crc64Variant) {
@@ -6653,12 +6881,18 @@ const Engine = (() => {
         const testWorker = worker;
         const reqId = Date.now() + Math.random();
         let settled = false;
-        const finish = result => {
-            if (settled) return;
+        let entry = null;
+        const drop = () => {
+            if (settled) return false;
             settled = true;
             clearTimeout(timer);
             testWorker.removeEventListener('message', handler);
             testWorker.removeEventListener('error', errorHandler);
+            auxPending.delete(entry);
+            return true;
+        };
+        const finish = result => {
+            if (!drop()) return;
             resolve(result);
         };
         const handler = (ev) => {
@@ -6666,6 +6900,8 @@ const Engine = (() => {
         };
         const errorHandler = () => finish(null);
         const timer = setTimeout(() => finish(null), 10000);
+        entry = { drop };
+        auxPending.add(entry);
         testWorker.addEventListener('message', handler);
         testWorker.addEventListener('error', errorHandler);
         try { testWorker.postMessage({ action: ACTION.VERIFY_TEST, bytes, crc64Variant, reqId }); }
@@ -6680,12 +6916,18 @@ const Engine = (() => {
         const fallbackWorker = worker;
         const reqId = Date.now() + Math.random();
         let settled = false;
-        const finish = result => {
-            if (settled) return;
+        let entry = null;
+        const drop = () => {
+            if (settled) return false;
             settled = true;
             clearTimeout(timer);
             fallbackWorker.removeEventListener('message', handler);
             fallbackWorker.removeEventListener('error', errorHandler);
+            auxPending.delete(entry);
+            return true;
+        };
+        const finish = result => {
+            if (!drop()) return;
             resolve(result);
         };
         const handler = (ev) => {
@@ -6694,6 +6936,8 @@ const Engine = (() => {
         };
         const errorHandler = () => finish(null);
         const timer = setTimeout(() => finish(null), 30000);
+        entry = { drop };
+        auxPending.add(entry);
         fallbackWorker.addEventListener('message', handler);
         fallbackWorker.addEventListener('error', errorHandler);
         try { fallbackWorker.postMessage({ action: ACTION.HASH_SHA512_FALLBACK, algId: alg, bytes, key, reqId }); }
@@ -6702,7 +6946,6 @@ const Engine = (() => {
   }
 
   function runWorkerSelfTest(mode, payload = {}) {
-    if (!RuntimeGate.open()) return Promise.resolve(null);
     return new Promise((resolve) => {
       let testWorker;
       try { testWorker = ensureSelfTestWorker(); }
@@ -6734,15 +6977,17 @@ const Engine = (() => {
   }
 
   async function hashFile(file, saltBytes, hmacKeyBytes) {
+    if (closed || !Life.ok()) return;
     const isSmallFile = file.size <= 10 * 1024 * 1024;
     const signal = TaskManager.masterSignal;
     
     return new Promise(async resolve => {
       if (isSmallFile) {
+        let bytes = null;
         try {
             const arrayBuf = await file.arrayBuffer();
             if (signal.aborted) return resolve();
-            let bytes = new Uint8Array(arrayBuf);
+            bytes = Life.hold(new Uint8Array(arrayBuf));
             
             if (AppState.Base64Encode) {
                 const revision = BaseRenderGate.issue('Base64-Enc');
@@ -6762,8 +7007,9 @@ const Engine = (() => {
             }
 
             if (saltBytes && saltBytes.length > 0) {
-                const nb = new Uint8Array(bytes.length + saltBytes.length);
+                const nb = Life.hold(new Uint8Array(bytes.length + saltBytes.length));
                 nb.set(bytes, 0); nb.set(saltBytes, bytes.length);
+                Life.free(bytes, true);
                 bytes = nb;
             }
 
@@ -6802,6 +7048,8 @@ const Engine = (() => {
             ['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','Base64-Enc','Base85-Enc'].forEach(id => errRes[id] = '読込エラー');
             EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, errRes);
             resolve();
+        } finally {
+            Life.free(bytes, true);
         }
       } else {
         if (!hasWorker || !file.stream) {
@@ -6814,12 +7062,16 @@ const Engine = (() => {
         worker.postMessage({action: ACTION.INIT, key: hmacKeyBytes, crc64Variant: AppState.crc64Variant});
         const stream = file.stream();
         const reader = stream.getReader();
+        readers.add(reader);
         let bytesSinceLastYield = 0;
         const YIELD_THRESHOLD = 50 * 1024 * 1024;
         
         let base64Chunks = [];
         let base85Chunks = [];
         let leftover = new Uint8Array(0);
+        let activeBlock = null;
+        const keep = (list, value) => { if (value) { Life.hold(value); list.push(value); } };
+        const erase = list => { for (const value of list) Life.free(value, true); list.length = 0; };
         let base85Failed = false;
         let btoaStreamEor = 0, btoaStreamSum = 0, btoaStreamRot = 0, btoaStreamColumn = 0;
 
@@ -6833,13 +7085,13 @@ const Engine = (() => {
         if (AppState.Base85Encode && !base85Failed && AppState.base85Variant === 'Adobe ASCII85') {
             const pre = new TextEncoder().encode('<~');
             if (AppState.streamHandles && AppState.streamHandles.Base85) await AppState.streamHandles.Base85.write(pre).catch(()=>{});
-            else base85Chunks.push(pre);
+            else keep(base85Chunks, pre);
         }
 
         if (AppState.Base85Encode && !base85Failed && AppState.base85Variant === 'btoa ASCII85') {
             const pre = new TextEncoder().encode('xbtoa Begin\n');
             if (AppState.streamHandles && AppState.streamHandles.Base85) await AppState.streamHandles.Base85.write(pre).catch(()=>{});
-            else base85Chunks.push(pre);
+            else keep(base85Chunks, pre);
         }
 
         try {
@@ -6848,19 +7100,31 @@ const Engine = (() => {
             const {done, value} = await reader.read();
             if (signal.aborted) { await reader.cancel(); return resolve(); }
 
-            const block = StreamBlock.partition(leftover, value, done);
+            const previousLeftover = leftover;
+            const block = StreamBlock.partition(previousLeftover, value, done);
             let toProcess = block.toProcess;
             leftover = block.leftover;
+            if (previousLeftover.length) {
+              if (value && value.length) Life.free(previousLeftover, true);
+              else if (!done) Life.free(previousLeftover, false);
+            }
+            if (leftover.length) Life.hold(leftover);
 
             if (toProcess.length > 0) {
+                activeBlock = Life.hold(toProcess);
                 const hashCopy = toProcess.slice();
                 worker.postMessage({action: ACTION.UPDATE, bytes: hashCopy}, [hashCopy.buffer]);
 
                 if (AppState.Base64Encode) {
                     const Base64Copy = toProcess.slice();
                     const Base64Res = await Base64Engine.encodeStreamOwned(Base64Copy);
-                    if (AppState.streamHandles && AppState.streamHandles.Base64) await AppState.streamHandles.Base64.write(Base64Res.bytes).catch(()=>{});
-                    else base64Chunks.push(Base64Res.bytes);
+                    const outputBytes = Base64Res.bytes ? Life.hold(Base64Res.bytes) : null;
+                    if (outputBytes) {
+                      if (AppState.streamHandles && AppState.streamHandles.Base64) {
+                        await AppState.streamHandles.Base64.write(outputBytes).catch(()=>{});
+                        Life.free(outputBytes, true);
+                      } else keep(base64Chunks, outputBytes);
+                    }
                 }
 
                 if (AppState.Base85Encode && !base85Failed) {
@@ -6878,34 +7142,44 @@ const Engine = (() => {
 
                     if (Base85Res.type === 'error') {
                         base85Failed = true;
+                        erase(base85Chunks);
                         base85Chunks = [];
                         EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, {'Base85-Enc': 'エンコードエラー'});
                     } else {
-                        let outputBytes = Base85Res.bytes;
-                        if (AppState.base85Variant === 'btoa ASCII85' && outputBytes.length) {
+                        let outputBytes = Base85Res.bytes ? Life.hold(Base85Res.bytes) : null;
+                        if (outputBytes && AppState.base85Variant === 'btoa ASCII85' && outputBytes.length) {
+                            const sourceBytes = outputBytes;
                             const wrapped = [];
-                            for (let wi = 0; wi < outputBytes.length; wi++) {
-                                wrapped.push(outputBytes[wi]);
+                            for (let wi = 0; wi < sourceBytes.length; wi++) {
+                                wrapped.push(sourceBytes[wi]);
                                 btoaStreamColumn++;
                                 if (btoaStreamColumn === 78) {
                                     wrapped.push(10);
                                     btoaStreamColumn = 0;
                                 }
                             }
-                            outputBytes = new Uint8Array(wrapped);
+                            outputBytes = Life.hold(new Uint8Array(wrapped));
+                            Life.free(sourceBytes, true);
                         }
-                        if (AppState.streamHandles && AppState.streamHandles.Base85) await AppState.streamHandles.Base85.write(outputBytes).catch(()=>{});
-                        else base85Chunks.push(outputBytes);
+                        if (outputBytes) {
+                          if (AppState.streamHandles && AppState.streamHandles.Base85) {
+                            await AppState.streamHandles.Base85.write(outputBytes).catch(()=>{});
+                            Life.free(outputBytes, true);
+                          } else keep(base85Chunks, outputBytes);
+                        }
                     }
                 }
 
                 bytesSinceLastYield += toProcess.length;
+                Life.free(activeBlock, true);
+                activeBlock = null;
                 if (bytesSinceLastYield >= YIELD_THRESHOLD) {
                     await new Promise(r => setTimeout(r, 0));
                     bytesSinceLastYield = 0;
                 }
             }
 
+            if (done && previousLeftover.length && (!value || !value.length)) Life.free(previousLeftover, true);
             if (done) break;
           }
 
@@ -6915,7 +7189,7 @@ const Engine = (() => {
           if (AppState.Base85Encode && !base85Failed && AppState.base85Variant === 'Adobe ASCII85') {
               const post = new TextEncoder().encode('~>');
               if (AppState.streamHandles && AppState.streamHandles.Base85) await AppState.streamHandles.Base85.write(post).catch(()=>{});
-              else base85Chunks.push(post);
+              else keep(base85Chunks, post);
           }
 
           if (AppState.Base85Encode && !base85Failed && AppState.base85Variant === 'btoa ASCII85') {
@@ -6923,7 +7197,7 @@ const Engine = (() => {
               const trailerText = `${btoaStreamColumn === 0 ? '' : '\n'}xbtoa End N ${n} ${n.toString(16)} E ${btoaStreamEor.toString(16)} S ${btoaStreamSum.toString(16)} R ${btoaStreamRot.toString(16)}`;
               const post = new TextEncoder().encode(trailerText);
               if (AppState.streamHandles && AppState.streamHandles.Base85) await AppState.streamHandles.Base85.write(post).catch(()=>{});
-              else base85Chunks.push(post);
+              else keep(base85Chunks, post);
           }
 
           if (AppState.Base64Encode) {
@@ -6931,6 +7205,7 @@ const Engine = (() => {
                   EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, {'Base64-Enc': '[ディスクへ直接保存完了]'});
               } else {
                   const blob = new Blob(base64Chunks, {type: 'text/plain'});
+                  erase(base64Chunks);
                   const sizeMB = (blob.size / 1048576).toFixed(2);
                   EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, {'Base64-Enc': { type: 'huge_blob', blob: blob, sizeMB } });
               }
@@ -6940,6 +7215,7 @@ const Engine = (() => {
                   EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, {'Base85-Enc': '[ディスクへ直接保存完了]'});
               } else {
                   const blob = new Blob(base85Chunks, {type: 'text/plain'});
+                  erase(base85Chunks);
                   const sizeMB = (blob.size / 1048576).toFixed(2);
                   EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, {'Base85-Enc': { type: 'huge_blob', blob: blob, sizeMB } });
               }
@@ -6948,8 +7224,15 @@ const Engine = (() => {
         } catch (e) {
           const errRes = {'CRC32':'読込エラー', 'CRC64':'読込エラー', 'MD5':'読込エラー', 'SHA-1':'読込エラー', 'SHA-224':'読込エラー', 'SHA-256':'読込エラー', 'SHA-384':'読込エラー', 'SHA-512':'読込エラー'};
           EventBus.emit(InternalContract.EVENTS.HASH_RESULTS, errRes);
-          terminateLiveWorker(); ensureWorker();
+          if (!closed && Life.ok()) { terminateLiveWorker(); ensureWorker(); }
         } finally {
+          Life.free(activeBlock, true);
+          activeBlock = null;
+          Life.free(leftover, true);
+          leftover = new Uint8Array(0);
+          erase(base64Chunks);
+          erase(base85Chunks);
+          readers.delete(reader);
           if (AppState.streamHandles) {
               if (AppState.streamHandles.Base64) await AppState.streamHandles.Base64.close().catch(()=>{});
               if (AppState.streamHandles.Base85) await AppState.streamHandles.Base85.close().catch(()=>{});
@@ -6962,6 +7245,7 @@ const Engine = (() => {
   }
 
   async function hashText(bytesToHash, saltBytes, hmacKeyBytes, iterations) {
+    if (closed || !Life.ok()) return;
     const signal = TaskManager.masterSignal;
     if (AppState.Base64Encode) {
         if (bytesToHash.length > 50000000) {
@@ -7011,24 +7295,26 @@ const Engine = (() => {
   }
 
   function resetMasterTask(reason = 'reset') {
+    if (closed || !Life.ok()) return false;
     iterativeSessionActive = false;
     TaskManager.resetMaster();
     iterativeSessionId++;
     iterativeTargetRevision = 0;
     EventBus.emit(InternalContract.EVENTS.HASH_SESSION_END, { reason });
+    return true;
   }
 
   function setIterationTarget(target) {
-    if (!worker || !iterativeSessionActive) return null;
+    if (closed || !Life.ok() || !worker || !iterativeSessionActive) return null;
     iterativeTargetRevision++;
     const revision = iterativeTargetRevision;
     worker.postMessage({ action: ACTION.SET_TARGET, target, sessionId: iterativeSessionId, targetRevision: revision });
     return { sessionId: iterativeSessionId, targetRevision: revision };
   }
 
-  function init() { ensureWorker(); }
+  function init() { if (!closed && Life.ok()) ensureWorker(); }
   return { 
-      init, hasWorker, WORKER_THRESHOLD, hashFile, hashText, terminateWorker, verifyTestBytes, runWorkerSelfTest,
+      init, hasWorker, WORKER_THRESHOLD, hashFile, hashText, terminateWorker, shutdown, verifyTestBytes, runWorkerSelfTest,
       get masterSignal() { return TaskManager.masterSignal; },
       get hasIterationSession() { return iterativeSessionActive; },
       resetMasterTask,
@@ -7052,6 +7338,8 @@ const Engine = (() => {
 })();
 
 const SelfTest = (() => {
+  let closed = false;
+  const timers = new Set();
   const CRC64_CHECK = Object.freeze({
     'XZ (ECMA, Reflected)':'995dc9bbdf1939fa',
     'WE (ECMA, Non-Reflected)':'62ec59e3f1a4f00a',
@@ -7290,6 +7578,7 @@ const SelfTest = (() => {
   const expectedCountCache = new Map();
 
   async function expectedCount() {
+    if (closed || !Life.ok()) return 0;
     const capabilityKey = `${Engine.hasWorker ? 1 : 0}:${window.crypto?.subtle ? 1 : 0}`;
     if (expectedCountCache.has(capabilityKey)) return expectedCountCache.get(capabilityKey);
     const report = await runAll(null);
@@ -7299,8 +7588,10 @@ const SelfTest = (() => {
   }
 
   async function pushResult(report, item) {
+    if (closed || !Life.ok()) throw new Error('Unavailable');
     report.push(item);
     if (typeof resultObserver === 'function') await resultObserver(item, report.length);
+    if (closed || !Life.ok()) throw new Error('Unavailable');
   }
 
   async function add(report, group, name, actual, expected) {
@@ -7341,8 +7632,11 @@ const SelfTest = (() => {
   }
 
   async function step(control, group, name) {
+    if (closed || !Life.ok()) throw new Error('Unavailable');
     if (control && typeof control.checkpoint === 'function') await control.checkpoint();
+    if (closed || !Life.ok()) throw new Error('Unavailable');
     if (control && typeof control.onProgress === 'function') await control.onProgress(group, name);
+    if (closed || !Life.ok()) throw new Error('Unavailable');
   }
 
   async function runSecurityTests(report, control) {
@@ -7400,9 +7694,14 @@ const SelfTest = (() => {
       `;
       worker = WorkerBroker.createInline(code);
       const result = await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Worker Network Guard Timeout')), 3000);
-        worker.onmessage = event => { clearTimeout(timeout); resolve(event.data || {}); };
-        worker.onerror = event => { clearTimeout(timeout); reject(new Error(event?.message || 'Worker Network Guard Error')); };
+        const timeout = setTimeout(() => {
+          timers.delete(timeout);
+          if (closed || !Life.ok()) return;
+          reject(new Error('Worker Network Guard Timeout'));
+        }, 3000);
+        timers.add(timeout);
+        worker.onmessage = event => { clearTimeout(timeout); timers.delete(timeout); resolve(event.data || {}); };
+        worker.onerror = event => { clearTimeout(timeout); timers.delete(timeout); reject(new Error(event?.message || 'Worker Network Guard Error')); };
         worker.postMessage(null);
       });
       for (const [name, label] of Object.entries({
@@ -8375,6 +8674,7 @@ const SelfTest = (() => {
   }
 
   async function runAll(control = null) {
+    if (closed || !Life.ok()) throw new Error('Unavailable');
     const report = [];
     const previousObserver = resultObserver;
     resultObserver = control && typeof control.onResult === 'function' ? control.onResult : null;
@@ -8398,7 +8698,16 @@ const SelfTest = (() => {
     }
   }
 
-  return { runAll, expectedCount };
+  function shutdown() {
+    if (closed) return;
+    closed = true;
+    for (const id of timers) { try { clearTimeout(id); } catch (_) {} }
+    timers.clear();
+    resultObserver = null;
+    expectedCountCache.clear();
+  }
+
+  return { runAll, expectedCount, shutdown };
 })();
 const UI = (() => {
   const els = {};
@@ -8406,10 +8715,19 @@ const UI = (() => {
   let updateRunning = false;
   let continuousCompareRevision = 0;
   let fileLoadRevision = 0;
+  let renderRafId = 0;
+  let updateJob = 0;
+  let updateKind = '';
+  let autoProgressRaf = 0;
+  let pendingAutoProgress = null;
+  let eventCtl = null;
+  const eventOff = [];
+  const autoVerifyWaiters = new Map();
+  const openHandles = new Set();
+  const testObservers = new Set();
 
   const renderState = {};
   let isRendering = false;
-  let renderRafId = 0;
   const LIMIT_100KB = 102400;
 
   let forceEmptyHashOnce = false;
@@ -8425,34 +8743,54 @@ const UI = (() => {
   const AutoTestClock = (() => {
     const speed = Math.max(0.01, Number(AUTO_TEST_SPEED) || 1);
     const taskQueue = [];
+    const timers = new Set();
+    const rafs = new Set();
     const channel = typeof MessageChannel === 'function' ? new MessageChannel() : null;
+    let closed = false;
 
     if (channel) {
       channel.port1.onmessage = () => {
+        if (closed || !Life.ok()) return;
         const task = taskQueue.shift();
         if (task) task();
       };
     }
 
     const postTask = callback => {
-      if (!channel) { setTimeout(callback, 0); return; }
+      if (closed || !Life.ok()) return 0;
+      if (!channel) {
+        const id = setTimeout(() => { timers.delete(id); if (!closed && Life.ok()) callback(); }, 0);
+        timers.add(id);
+        return id;
+      }
       taskQueue.push(callback);
       channel.port2.postMessage(0);
+      return 1;
     };
 
     const yieldTask = () => new Promise(resolve => postTask(resolve));
     const delay = ms => {
+      if (closed || !Life.ok()) return new Promise(() => {});
       const scaled = Math.max(0, Number(ms) || 0) / speed;
       if (scaled <= 0) return Promise.resolve();
       if (scaled < 1) return yieldTask();
-      return new Promise(resolve => setTimeout(resolve, scaled));
+      return new Promise(resolve => {
+        const id = setTimeout(() => { timers.delete(id); if (!closed && Life.ok()) resolve(); }, scaled);
+        timers.add(id);
+      });
     };
     const paint = (frames = 1) => new Promise(resolve => {
+      if (closed || !Life.ok()) return;
       const step = () => {
+        if (closed || !Life.ok()) return;
         if (--frames <= 0) resolve();
-        else requestAnimationFrame(step);
+        else {
+          const id = requestAnimationFrame(() => { rafs.delete(id); step(); });
+          rafs.add(id);
+        }
       };
-      requestAnimationFrame(step);
+      const id = requestAnimationFrame(() => { rafs.delete(id); step(); });
+      rafs.add(id);
     });
     const hold = async (ms, requirePaint = false) => {
       if (requirePaint && speed <= 1) await paint(1);
@@ -8463,14 +8801,32 @@ const UI = (() => {
       await delay(ms);
     };
     const schedule = callback => {
-      if (speed <= 1) requestAnimationFrame(callback);
-      else postTask(callback);
+      if (closed || !Life.ok()) return 0;
+      if (speed <= 1) {
+        const id = requestAnimationFrame(() => { rafs.delete(id); if (!closed && Life.ok()) callback(); });
+        rafs.add(id);
+        return id;
+      }
+      return postTask(callback);
+    };
+    const shutdown = () => {
+      if (closed) return;
+      closed = true;
+      taskQueue.length = 0;
+      for (const id of timers) clearTimeout(id);
+      timers.clear();
+      for (const id of rafs) cancelAnimationFrame(id);
+      rafs.clear();
+      if (channel) {
+        channel.port1.onmessage = null;
+        try { channel.port1.close(); } catch (_) {}
+        try { channel.port2.close(); } catch (_) {}
+      }
     };
     const yieldBudget = speed <= 1 ? 4 : speed >= 1000 ? 12 : 8;
 
-    return { speed, hold, readable, schedule, yieldTask, paint, yieldBudget };
+    return { speed, hold, readable, schedule, yieldTask, paint, yieldBudget, shutdown };
   })();
-
   const AutoTestSession = (() => {
     let active = false;
     let paused = false;
@@ -8501,6 +8857,15 @@ const UI = (() => {
     const pause = () => { if (active) paused = true; };
     const resume = () => { if (active) { paused = false; wake(); } };
     const abort = () => { if (active) { aborted = true; paused = false; wake(); } };
+    const shutdown = () => {
+      active = false;
+      paused = false;
+      aborted = true;
+      phase = '';
+      current = 0;
+      total = 0;
+      waiters.length = 0;
+    };
     const checkpoint = async () => {
       if (aborted) { const e = new Error('Auto Test Aborted'); e.autoTestAbort = true; throw e; }
       while (active && paused && !aborted) await new Promise(resolve => waiters.push(resolve));
@@ -8522,6 +8887,7 @@ const UI = (() => {
       pause,
       resume,
       abort,
+      shutdown,
       checkpoint,
       end,
       get active() { return active; },
@@ -8569,6 +8935,7 @@ const UI = (() => {
     }) : null;
 
     const begin = visibleTotal => {
+      if (!Life.ok()) return;
       latest = {
         status:'running',
         startedAt:Date.now(),
@@ -8582,13 +8949,13 @@ const UI = (() => {
         error:''
       };
     };
-    const addVisible = item => { if (latest?.status === 'running') latest.visible.push(copyVisible(item)); };
-    const addSystem = item => { if (latest?.status === 'running') latest.system.push(copySystem(item)); };
-    const addInternal = item => { if (latest?.status === 'running') latest.internal.push(copyInternal(item)); };
-    const setPreHiddenReset = item => { if (latest?.status === 'running') latest.preHiddenReset = copyVerify(item); };
-    const setFinalReset = item => { if (latest?.status === 'running') latest.finalReset = copyVerify(item); };
+    const addVisible = item => { if (Life.ok() && latest?.status === 'running') latest.visible.push(copyVisible(item)); };
+    const addSystem = item => { if (Life.ok() && latest?.status === 'running') latest.system.push(copySystem(item)); };
+    const addInternal = item => { if (Life.ok() && latest?.status === 'running') latest.internal.push(copyInternal(item)); };
+    const setPreHiddenReset = item => { if (Life.ok() && latest?.status === 'running') latest.preHiddenReset = copyVerify(item); };
+    const setFinalReset = item => { if (Life.ok() && latest?.status === 'running') latest.finalReset = copyVerify(item); };
     const finish = (status, error = '') => {
-      if (!latest) return;
+      if (!Life.ok() || !latest) return;
       latest.status = String(status || 'error');
       latest.endedAt = Date.now();
       latest.error = String(error?.message || error || '');
@@ -8609,7 +8976,9 @@ const UI = (() => {
       });
     };
 
-    return Object.freeze({ begin, addVisible, addSystem, addInternal, setPreHiddenReset, setFinalReset, finish, snapshot });
+    const clear = () => { latest = null; };
+
+    return Object.freeze({ begin, addVisible, addSystem, addInternal, setPreHiddenReset, setFinalReset, finish, snapshot, clear });
   })();
 
   const TEST_VECTORS = {
@@ -9435,6 +9804,7 @@ const UI = (() => {
 const TOAST_DURATION = 1500;
 
 function showToast(msg, duration = TOAST_DURATION) {
+  if (!Life.ok()) return;
   els.toastEl.textContent = msg;
   els.toastEl.classList.add('show');
 
@@ -9600,7 +9970,12 @@ function showToast(msg, duration = TOAST_DURATION) {
       });
     };
 
-    return { wait, notify };
+    const shutdown = () => {
+      for (const waiter of Array.from(waiters)) { if (waiter.timer) clearTimeout(waiter.timer); }
+      waiters.clear();
+    };
+
+    return { wait, notify, shutdown };
   })();
 
   BaseRenderGate.onChange(pending => {
@@ -9974,7 +10349,7 @@ function showToast(msg, duration = TOAST_DURATION) {
   }
 
   function queueRender(algId, value, currentIter, totalIter, isDone = false, isAborted = false, isOOM = false, historyCount = null, historyLimit = 65535, isError = false, taskState = null) {
-    if (!RuntimeGate.open()) return;
+    if (!Life.ok()) return;
     if (typeof value === 'object') {
         if (value.type === 'huge_blob') {
              renderState[algId] = { valueString: '', isHugeBlob: true, blob: value.blob, sizeMB: value.sizeMB, isDone: true };
@@ -10064,7 +10439,7 @@ function showToast(msg, duration = TOAST_DURATION) {
 
   function renderLoop() {
     renderRafId = 0;
-    if (!RuntimeGate.open()) { isRendering = false; return; }
+    if (!Life.ok()) { isRendering = false; return; }
     for (const [algId, state] of Object.entries(renderState)) {
         const el = document.getElementById(algId);
         const progEl = document.getElementById(`prog-${algId}`);
@@ -10146,6 +10521,7 @@ function showToast(msg, duration = TOAST_DURATION) {
       el.dataset.isBinary = '0';
       el.dataset.isTextBlob = '0';
       delete el.dataset.output;
+      Life.free(el._binBytes, true);
       delete el._binBytes;
       delete el._fileInfo;
       delete el._hugeString;
@@ -10160,7 +10536,7 @@ function showToast(msg, duration = TOAST_DURATION) {
         el.dataset.raw = `[Binary Data: ${value.bytes.length} bytes, Ext: ${fi.ext}]`;
         el.textContent = `[バイナリデータ: ${value.bytes.length} bytes / 拡張子: ${fi.ext}]（クリックでダウンロード保存）`;
         el.dataset.isBinary = '1';
-        el._binBytes = value.bytes;
+        el._binBytes = Life.hold(value.bytes);
         el._fileInfo = fi;
         el.dataset.empty = isPreview ? '1' : '0';
       } else if (renderHashOutputValue(id, value, isPreview)) {
@@ -10218,6 +10594,8 @@ function showToast(msg, duration = TOAST_DURATION) {
   }
 
   async function updateAll() {
+    if (!Life.ok()) return;
+    const lifeEpoch = Life.epoch;
     BaseRenderGate.invalidateAll();
     AppState.crc64Results = {};
     AppState.currentEntropy = null;
@@ -10231,10 +10609,16 @@ function showToast(msg, duration = TOAST_DURATION) {
     document.getElementById('label-SHA-384').textContent = isHmac ? 'HMAC-SHA384' : 'SHA-384';
     document.getElementById('label-SHA-512').textContent = isHmac ? 'HMAC-SHA512' : 'SHA-512';
 
-    const saltBytes = AppState.salt ? Core.utf8Encode(AppState.salt) : null;
-    const hmacKeyBytes = AppState.showHmac ? Core.utf8Encode(AppState.hmacKey) : null;
+    const saltBytes = AppState.salt ? Life.hold(Core.utf8Encode(AppState.salt)) : null;
+    const hmacKeyBytes = AppState.showHmac ? Life.hold(Core.utf8Encode(AppState.hmacKey)) : null;
 
-    let bytesToHash;
+    let bytesToHash = null;
+    const releaseBytes = () => {
+      Life.free(bytesToHash, true);
+      Life.free(saltBytes, true);
+      Life.free(hmacKeyBytes, true);
+    };
+    try {
     let isFile = false;
     let displayCount = 0;
     let isEmptyInput = false;
@@ -10264,7 +10648,7 @@ function showToast(msg, duration = TOAST_DURATION) {
       if (!v) {
         if (AppState.salt || AppState.showHmac || forceEmptyHashOnce) {
           isEmptyInput = true;
-          bytesToHash = new Uint8Array(0);
+          bytesToHash = Life.hold(new Uint8Array(0));
           displayCount = 0;
           forceEmptyHashOnce = false;
         } else {
@@ -10288,7 +10672,7 @@ function showToast(msg, duration = TOAST_DURATION) {
         }
       } else {
         forceEmptyHashOnce = false;
-        bytesToHash = Core.utf8Encode(v);
+        bytesToHash = Life.hold(Core.utf8Encode(v));
         displayCount = Core.countGraphemes(v);
       }
     }
@@ -10351,41 +10735,49 @@ function showToast(msg, duration = TOAST_DURATION) {
       idsToClear.forEach(id => queueRender(id, '計算中…', 0, 1, false));
 
       await Engine.hashFile(AppState.currentFile, saltBytes, hmacKeyBytes);
+      if (!Life.same(lifeEpoch)) return;
     } else {
       await Engine.hashText(bytesToHash, saltBytes, hmacKeyBytes, iterations);
+      if (!Life.same(lifeEpoch)) return;
       if (!Engine.masterSignal.aborted && isEmptyInput) updateMeta(displayCount, isFile, '空値プレビュー', iterations);
     }
+    } finally { releaseBytes(); }
   }
 
   function scheduleUpdate() {
-    if (!RuntimeGate.open()) return;
-    if (!scheduled) {
-      scheduled = true;
-      const run = async () => {
-        scheduled = false;
-        if (!RuntimeGate.open()) return;
-        updateRunning = true;
-        try {
-          await updateAll();
-        } catch (e) {
-          console.warn('Update error:', e);
-        } finally {
-          updateRunning = false;
-          TestIdleGate.notify();
-        }
-      };
-
-      if (AutoTestSession.active && AutoTestSession.phase === 'visible') {
-        AutoTestClock.schedule(run);
-      } else {
-        (window.requestIdleCallback || window.requestAnimationFrame)(run);
+    if (!Life.ok() || scheduled) return;
+    const lifeEpoch = Life.epoch;
+    scheduled = true;
+    const run = async () => {
+      updateJob = 0;
+      scheduled = false;
+      if (!Life.same(lifeEpoch)) return;
+      updateRunning = true;
+      try {
+        await updateAll();
+      } catch (e) {
+        if (Life.ok()) console.warn('Update error:', e);
+      } finally {
+        updateRunning = false;
+        if (Life.ok()) TestIdleGate.notify();
       }
+    };
+
+    if (AutoTestSession.active && AutoTestSession.phase === 'visible') {
+      updateKind = 'auto';
+      updateJob = AutoTestClock.schedule(run) || 0;
+    } else if (typeof window.requestIdleCallback === 'function') {
+      updateKind = 'idle';
+      updateJob = window.requestIdleCallback(run);
+    } else {
+      updateKind = 'raf';
+      updateJob = window.requestAnimationFrame(run);
     }
   }
 
   async function handleFiles(files) {
-    if (!RuntimeGate.open()) return;
-    if (!files.length) return;
+    if (!Life.ok() || !files.length) return;
+    const lifeEpoch = Life.epoch;
     const revision = ++fileLoadRevision;
     const f = files[0];
     AppState.currentFile = null;
@@ -10416,7 +10808,7 @@ function showToast(msg, duration = TOAST_DURATION) {
     els.fTrigger.style.display = 'inline-block';
     
     const analysis = await Core.analyzeFileStructure(f);
-    if (revision !== fileLoadRevision) return;
+    if (!Life.same(lifeEpoch) || revision !== fileLoadRevision) return;
     
     let statusText = `種別: ${analysis.type}`;
     if (analysis.isPolyglot) {
@@ -10431,6 +10823,19 @@ function showToast(msg, duration = TOAST_DURATION) {
   }
 
   function attachEvents() {
+    if (eventCtl) { try { eventCtl.abort(); } catch (_) {} }
+    while (eventOff.length) { try { eventOff.pop()(); } catch (_) {} }
+    eventCtl = new AbortController();
+    const on = (target, name, handler, options) => {
+      if (!target?.addEventListener) return;
+      const capture = typeof options === 'boolean' ? options : !!options?.capture;
+      const opts = typeof options === 'boolean'
+        ? { capture:options, signal:eventCtl.signal }
+        : { ...(options || {}), signal:eventCtl.signal };
+      try { target.addEventListener(name, handler, opts); }
+      catch (_) { target.addEventListener(name, handler, options); }
+      eventOff.push(() => target.removeEventListener(name, handler, capture));
+    };
     const CRC64_VARIANTS = InternalContract.CRC64_VARIANTS;
 
     const syncVisualThemeControls = () => {
@@ -10575,16 +10980,16 @@ function showToast(msg, duration = TOAST_DURATION) {
       }
     };
 
-    els.fileInput.addEventListener('change', e => handleFiles(e.target.files));
+    on(els.fileInput, 'change', e => handleFiles(e.target.files));
 
-    els.dropZone.addEventListener('dragover', e => { e.preventDefault(); els.dropZone.classList.add('dragover'); });
-    els.dropZone.addEventListener('dragleave', () => { els.dropZone.classList.remove('dragover'); });
-    els.dropZone.addEventListener('drop', e => {
+    on(els.dropZone, 'dragover', e => { e.preventDefault(); els.dropZone.classList.add('dragover'); });
+    on(els.dropZone, 'dragleave', () => { els.dropZone.classList.remove('dragover'); });
+    on(els.dropZone, 'drop', e => {
       e.preventDefault(); els.dropZone.classList.remove('dragover');
       handleFiles(e.dataTransfer.files);
     });
 
-    els.inputEl.addEventListener('paste', e => {
+    on(els.inputEl, 'paste', e => {
       fileLoadRevision++;
       if (AppState.currentFile) AppState.currentFile = null;
       if (!AppState.sanitizeText) return;
@@ -10597,15 +11002,15 @@ function showToast(msg, duration = TOAST_DURATION) {
       els.inputEl.selectionStart = els.inputEl.selectionEnd = a + clean.length;
       scheduleUpdate();
     });
-    els.inputEl.addEventListener('input', () => {
+    on(els.inputEl, 'input', () => {
       fileLoadRevision++;
       if (AppState.currentFile) AppState.currentFile = null;
       scheduleUpdate();
     });
-    els.inputEl.addEventListener('compositionend', scheduleUpdate);
+    on(els.inputEl, 'compositionend', scheduleUpdate);
 
 const bindDynamicUpdate = (el, isRealtime = false) => {
-  el.addEventListener('keydown', (e) => {
+  on(el, 'keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       el.blur();
@@ -10615,20 +11020,20 @@ const bindDynamicUpdate = (el, isRealtime = false) => {
     }
   });
 
-  el.addEventListener(isRealtime ? 'input' : 'change', scheduleUpdate);
+  on(el, isRealtime ? 'input' : 'change', scheduleUpdate);
 };
 
 bindDynamicUpdate(els.saltIn, true);
 bindDynamicUpdate(els.hmacIn, true);
 
-els.iterIn.addEventListener('keydown', e => {
+on(els.iterIn, 'keydown', e => {
   if (e.key === 'Enter') {
     e.preventDefault();
     commitIterationTarget();
     els.iterIn.blur();
   }
 });
-els.iterIn.addEventListener('change', commitIterationTarget);
+on(els.iterIn, 'change', commitIterationTarget);
 
 const captureCompareContext = () => ({
   outputOrder: AppState.hashOutputOrder.slice(),
@@ -10653,6 +11058,8 @@ const compareContextKey = context => JSON.stringify([
 ]);
 
 async function armContinuousCompare() {
+  if (!Life.ok()) return false;
+  const lifeEpoch = Life.epoch;
   const revision = ++continuousCompareRevision;
   const entered = els.compareIn.value;
   const compareContext = captureCompareContext();
@@ -10662,6 +11069,7 @@ async function armContinuousCompare() {
   if (AppState.currentFile) { showToast('連続一致判定: テキスト反復時のみ利用できます'); return false; }
 
   const target = await HashOutputFilter.resolveCompareTarget(entered, compareContext);
+  if (!Life.same(lifeEpoch)) return false;
   const currentKey = compareContextKey(captureCompareContext());
   if (revision !== continuousCompareRevision || els.compareIn.value !== entered || currentKey !== compareKey) return false;
   if (!target) {
@@ -10681,7 +11089,7 @@ async function armContinuousCompare() {
   return true;
 }
 
-els.compareIn.addEventListener('input', () => {
+on(els.compareIn, 'input', () => {
   if (AppState.continuousCompareEnabled) disarmContinuousCompare(true);
   else continuousCompareRevision++;
 });
@@ -10692,7 +11100,7 @@ async function detectBase85Variants(input) {
 
     syncContinuousCompareControl();
 
-    els.sepIn.addEventListener('input', () => {
+    on(els.sepIn, 'input', () => {
       if (AppState.copyMode === 'visual' && AppState.grouping > 0 && AppState.continuousCompareEnabled) disarmContinuousCompare(true);
       AppState.separator = els.sepIn.value;
       if (AppState.grouping > 0) reformatAll();
@@ -10817,24 +11225,23 @@ async function detectBase85Variants(input) {
       return { ok:failed.length === 0, total, passed:ok, skipped, failed };
     };
 
-    let autoProgressRaf = 0;
-    let pendingAutoProgress = null;
     const queueAutoProgress = (phase, current, total) => {
+      if (!Life.ok()) return;
       AutoTestSession.setProgress(phase, current, total);
       pendingAutoProgress = true;
       if (autoProgressRaf) return;
       autoProgressRaf = requestAnimationFrame(() => {
         autoProgressRaf = 0;
         pendingAutoProgress = null;
+        if (!Life.ok()) return;
         syncPauseControls();
       });
     };
 
     let autoClickTokenSeq = 0;
     let dispatchingAutoClickToken = 0;
-    const autoVerifyWaiters = new Map();
-
     const clickAsUser = el => {
+      if (!Life.ok()) return 0;
       if (!el) throw new Error('Auto Test Control Missing');
       const token = ++autoClickTokenSeq;
       dispatchingAutoClickToken = token;
@@ -10848,10 +11255,12 @@ async function detectBase85Variants(input) {
 
     const waitForAutoVerify = (token, timeout = 20000) => new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
+        if (!Life.ok()) return;
         autoVerifyWaiters.delete(token);
         reject(new Error('Visible Verify Timeout'));
       }, timeout);
       autoVerifyWaiters.set(token, {
+        timer,
         resolve: result => {
           clearTimeout(timer);
           autoVerifyWaiters.delete(token);
@@ -10866,6 +11275,7 @@ async function detectBase85Variants(input) {
     });
 
     const finishAutoVerify = (token, result, error = null) => {
+      if (!Life.ok()) return;
       if (!token) return;
       const waiter = autoVerifyWaiters.get(token);
       if (!waiter) return;
@@ -10881,6 +11291,7 @@ async function detectBase85Variants(input) {
     };
 
     const showAutoToast = (message, duration = TOAST_DURATION, force = false) => {
+      if (!Life.ok()) return;
       if (AutoTestClock.speed >= 1000 && !force) return;
       const visibleDuration = AutoTestClock.speed <= 1
         ? duration
@@ -10930,10 +11341,17 @@ async function detectBase85Variants(input) {
           }
         });
         observer.observe(els.sysEl, { subtree:true, childList:true, characterData:true, attributes:true, attributeFilter:['class','hidden'] });
-        await action();
-        await bridge.settle();
-        observer.disconnect();
-        return Array.from(keys).sort();
+        testObservers.add(observer);
+        try {
+          await action();
+          if (!Life.ok()) return [];
+          await bridge.settle();
+          if (!Life.ok()) return [];
+          return Array.from(keys).sort();
+        } finally {
+          testObservers.delete(observer);
+          observer.disconnect();
+        }
       };
       const makeFakeRequester = plan => {
         const calls = [];
@@ -11428,6 +11846,7 @@ async function detectBase85Variants(input) {
           if (resetFailed) console.warn('Final reset self-test failure:', resetResult.failed);
         }
       } catch (e) {
+        if (!Life.ok()) return;
         if (SystemMonitorTestBridge?.active) {
           try { SystemMonitorTestBridge.restore(); await SystemMonitorTestBridge.settle(); } catch (_) {}
         }
@@ -11551,7 +11970,9 @@ async function detectBase85Variants(input) {
       return lines;
     };
 
-    document.body.addEventListener('click', async e => {
+    on(document.body, 'click', async e => {
+        if (!Life.ok()) return;
+        const lifeEpoch = Life.epoch;
         const actionEl = e.target.closest('[data-action]');
         if (!actionEl) return;
         const action = actionEl.dataset.action;
@@ -11565,6 +11986,7 @@ async function detectBase85Variants(input) {
                 const kind = actionEl.dataset.themeKind;
                 if (!VisualTheme.hasKind(kind)) break;
                 const switchTheme = () => {
+                    if (!Life.same(lifeEpoch)) return;
                     VisualTheme.cycle(kind);
                     syncVisualThemeControls();
                 };
@@ -11686,6 +12108,7 @@ async function detectBase85Variants(input) {
 
                 if (/[^0-9a-fA-F]/.test(entered)) {
                     const variants = await detectBase85Variants(entered);
+                    if (!Life.same(lifeEpoch)) break;
                     if (compareRevision !== continuousCompareRevision || els.compareIn.value !== entered) break;
                     if (variants.length === 1) { showToast(`一致判定: 不一致 / 一致する値なし / Base85推定: ${variants[0]}${countSuffix}`); break; }
                     if (variants.length > 1) { showToast(`一致判定: 不一致 / 一致する値なし / Base85変種候補: ${variants.join(' / ')}${countSuffix}`); break; }
@@ -11840,11 +12263,17 @@ async function detectBase85Variants(input) {
                     AppState.streamHandles = {};
                     if (AppState.Base64Encode) {
                         const handle = await window.showSaveFilePicker({ suggestedName: 'base64_out.txt' });
-                        AppState.streamHandles.Base64 = await handle.createWritable();
+                        if (!Life.same(lifeEpoch)) break;
+                        const writable = await handle.createWritable();
+                        if (!Life.same(lifeEpoch)) { try { const q = writable.abort(); if (q?.catch) q.catch(() => {}); } catch (_) {} break; }
+                        AppState.streamHandles.Base64 = writable;
                     }
                     if (AppState.Base85Encode) {
                         const handle = await window.showSaveFilePicker({ suggestedName: 'base85_out.txt' });
-                        AppState.streamHandles.Base85 = await handle.createWritable();
+                        if (!Life.same(lifeEpoch)) break;
+                        const writable = await handle.createWritable();
+                        if (!Life.same(lifeEpoch)) { try { const q = writable.abort(); if (q?.catch) q.catch(() => {}); } catch (_) {} break; }
+                        AppState.streamHandles.Base85 = writable;
                     }
                     els.hugeFileBtn.style.display = 'none';
                     els.fTrigger.style.display = 'inline-block';
@@ -11900,7 +12329,9 @@ async function detectBase85Variants(input) {
                 syncTestVerifyControl();
                 try {
                     if (!autoToken) await waitForTestIdle();
+                    if (!Life.same(lifeEpoch)) break;
                     const result = await verifySelectedTest();
+                    if (!Life.same(lifeEpoch)) break;
                     finishAutoVerify(autoToken, result);
                 } catch (error) {
                     finishAutoVerify(autoToken, null, error);
@@ -11910,6 +12341,7 @@ async function detectBase85Variants(input) {
             }
             case 'runSelfTest': {
                 await runAutomaticSelfTest();
+                if (!Life.same(lifeEpoch)) break;
                 break;
             }
             case 'saveResults': {
@@ -12057,6 +12489,7 @@ async function detectBase85Variants(input) {
                 const blob = new Blob(blobParts, { type: 'text/markdown' });
                 
                 const fallbackDownload = () => {
+                    if (!Life.same(lifeEpoch)) return;
                     const url = URL.createObjectURL(blob);
                     const a = Object.assign(document.createElement('a'), { href: url, download: fn });
                     document.body.appendChild(a);
@@ -12075,11 +12508,18 @@ async function detectBase85Variants(input) {
                                 accept: { 'text/markdown': ['.md'] },
                             }],
                         });
+                        if (!Life.same(lifeEpoch)) break;
                         const writable = await handle.createWritable();
+                        openHandles.add(writable);
+                        if (!Life.same(lifeEpoch)) { try { const q = writable.abort(); if (q?.catch) q.catch(() => {}); } catch (_) {} openHandles.delete(writable); break; }
                         await writable.write(blob);
+                        if (!Life.same(lifeEpoch)) { try { const q = writable.abort(); if (q?.catch) q.catch(() => {}); } catch (_) {} openHandles.delete(writable); break; }
                         await writable.close();
+                        openHandles.delete(writable);
+                        if (!Life.same(lifeEpoch)) break;
                         showToast('Markdownレポートを保存しました');
                     } catch (err) {
+                        if (!Life.same(lifeEpoch)) break;
                         if (err.name === 'AbortError') {
                             showToast('レポートの保存がキャンセルされました');
                             break;
@@ -12188,7 +12628,8 @@ async function detectBase85Variants(input) {
                 if (!elRaw || el.dataset.empty === '1') return;
                 try { 
                     if (navigator.clipboard && window.isSecureContext) {
-                        await navigator.clipboard.writeText(elRaw); 
+                        await navigator.clipboard.writeText(elRaw);
+                        if (!Life.same(lifeEpoch)) break;
                     } else {
                         const tempTextarea = document.createElement('textarea');
                         tempTextarea.value = elRaw;
@@ -12259,10 +12700,11 @@ async function detectBase85Variants(input) {
     });
 
     document.querySelectorAll('.value').forEach(el => {
-      el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); } });
+      on(el, 'keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); } });
     });
 
-    document.addEventListener('fullscreenchange', () => {
+    on(document, 'fullscreenchange', () => {
+      if (!Life.ok()) return;
       const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
       els.fsBtn.textContent = isFs ? '通常表示' : '全画面';
       SystemMonitor.refreshDisplay();
@@ -12276,8 +12718,8 @@ async function detectBase85Variants(input) {
       if (els.internetSep) els.internetSep.hidden = true;
     }
 
-    window.addEventListener('load', () => { els.inputEl.focus(); });
-    window.addEventListener('beforeunload', () => {
+    on(window, 'load', () => { if (Life.ok()) els.inputEl.focus(); });
+    on(window, 'beforeunload', () => {
       SystemPanelRenderer.destroy();
       SystemMonitor.destroy();
       Engine.terminateWorker();
@@ -12287,9 +12729,36 @@ async function detectBase85Variants(input) {
   }
 
   function shutdown() {
-    if (AutoTestSession.active) AutoTestSession.abort();
+    if (eventCtl) { try { eventCtl.abort(); } catch (_) {} eventCtl = null; }
+    while (eventOff.length) { try { eventOff.pop()(); } catch (_) {} }
+    for (const observer of testObservers) { try { observer.disconnect(); } catch (_) {} }
+    testObservers.clear();
+    AutoTestSession.shutdown();
+    AutoTestClock.shutdown();
+    for (const waiter of autoVerifyWaiters.values()) { try { clearTimeout(waiter.timer); } catch (_) {} }
+    autoVerifyWaiters.clear();
+    AutoTestReport.clear();
+    TestIdleGate.shutdown();
+    BaseRenderGate.shutdown();
+    continuousCompareRevision++;
+    fileLoadRevision++;
     scheduled = false;
+    updateRunning = false;
+    if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
+    if (updateJob) {
+      try {
+        if (updateKind === 'idle' && typeof cancelIdleCallback === 'function') cancelIdleCallback(updateJob);
+        else if (updateKind === 'raf') cancelAnimationFrame(updateJob);
+      } catch (_) {}
+    }
+    updateJob = 0;
+    updateKind = '';
     if (renderRafId) { try { cancelAnimationFrame(renderRafId); } catch (_) {} renderRafId = 0; }
+    if (autoProgressRaf) { try { cancelAnimationFrame(autoProgressRaf); } catch (_) {} autoProgressRaf = 0; }
+    pendingAutoProgress = null;
+    for (const handle of Array.from(openHandles)) { try { const q = handle.abort(); if (q?.catch) q.catch(() => {}); } catch (_) {} }
+    openHandles.clear();
+    SystemPanelRenderer.destroy();
     AppState.continuousCompareEnabled = false;
     AppState.continuousCompareTarget = null;
     AppState.continuousCompareHit = null;
@@ -12307,14 +12776,17 @@ async function detectBase85Variants(input) {
     Object.values(els).forEach(el => {
       if (!el || typeof el !== 'object') return;
       try {
+        if (ArrayBuffer.isView(el._binBytes)) new Uint8Array(el._binBytes.buffer, el._binBytes.byteOffset, el._binBytes.byteLength).fill(0);
         if ('value' in el) el.value = '';
         if (el.dataset) {
           el.dataset.raw = '';
           delete el.dataset.output;
         }
+        delete el._binBytes;
+        delete el._fileInfo;
         delete el._hugeBlob;
         delete el._hugeString;
-      } catch (e) {}
+      } catch (_) {}
     });
   }
 
@@ -12379,8 +12851,9 @@ const PresetLoader = (() => {
 })();
 
 (async function initApp() {
-  if (!LifecycleController.init()) return;
+  if (!Flow.init()) return;
   Security.init();
+  InternetGateway.init();
   VisualTheme.init();
   Engine.init();
   UI.init();
