@@ -16,16 +16,45 @@
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="x-dns-prefetch-control" content="off">
 <style>
+  @font-face{font-family:"HASH ASCII SFMono";src:local("SFMono-Regular"),local("SF Mono");unicode-range:U+0020-007E}
+  @font-face{font-family:"HASH ASCII Menlo";src:local("Menlo");unicode-range:U+0020-007E}
+  @font-face{font-family:"HASH ASCII Monaco";src:local("Monaco");unicode-range:U+0020-007E}
+  @font-face{font-family:"HASH ASCII Consolas";src:local("Consolas");unicode-range:U+0020-007E}
+  @font-face{font-family:"HASH ASCII Cascadia Mono";src:local("Cascadia Mono");unicode-range:U+0020-007E}
+  @font-face{font-family:"HASH ASCII Cascadia Code";src:local("Cascadia Code");unicode-range:U+0020-007E}
+  @font-face{font-family:"HASH ASCII Liberation Mono";src:local("Liberation Mono"),local("LiberationMono-Regular");unicode-range:U+0020-007E}
+  @font-face{font-family:"HASH ASCII DejaVu Sans Mono";src:local("DejaVu Sans Mono"),local("DejaVuSansMono");unicode-range:U+0020-007E}
+  @font-face{font-family:"HASH ASCII Courier New";src:local("Courier New");unicode-range:U+0020-007E}
+  @font-face{font-family:"HASH JP Noto Mono CJK";src:local("Noto Sans Mono CJK JP");unicode-range:U+00A5,U+203E,U+2E80-2FDF,U+3000-303F,U+3040-30FF,U+31F0-31FF,U+3190-319F,U+3400-4DBF,U+4E00-9FFF,U+F900-FAFF,U+FE00-FE0F,U+FF00-FFEF,U+1AFF0-1AFFF,U+1B000-1B16F,U+20000-2FA1F,U+E0100-E01EF}
+  @font-face{font-family:"HASH JP Source Han Mono";src:local("Source Han Mono"),local("Source Han Mono JP");unicode-range:U+00A5,U+203E,U+2E80-2FDF,U+3000-303F,U+3040-30FF,U+31F0-31FF,U+3190-319F,U+3400-4DBF,U+4E00-9FFF,U+F900-FAFF,U+FE00-FE0F,U+FF00-FFEF,U+1AFF0-1AFFF,U+1B000-1B16F,U+20000-2FA1F,U+E0100-E01EF}
+  @font-face{font-family:"HASH JP MS Gothic";src:local("MS Gothic"),local("ＭＳ ゴシック");unicode-range:U+00A5,U+203E,U+2E80-2FDF,U+3000-303F,U+3040-30FF,U+31F0-31FF,U+3190-319F,U+3400-4DBF,U+4E00-9FFF,U+F900-FAFF,U+FE00-FE0F,U+FF00-FFEF,U+1AFF0-1AFFF,U+1B000-1B16F,U+20000-2FA1F,U+E0100-E01EF}
+  @font-face{font-family:"HASH JP Noto CJK";src:local("Noto Sans CJK JP");unicode-range:U+00A5,U+203E,U+2E80-2FDF,U+3000-303F,U+3040-30FF,U+31F0-31FF,U+3190-319F,U+3400-4DBF,U+4E00-9FFF,U+F900-FAFF,U+FE00-FE0F,U+FF00-FFEF,U+1AFF0-1AFFF,U+1B000-1B16F,U+20000-2FA1F,U+E0100-E01EF}
+  @font-face{font-family:"HASH JP Noto";src:local("Noto Sans JP");unicode-range:U+00A5,U+203E,U+2E80-2FDF,U+3000-303F,U+3040-30FF,U+31F0-31FF,U+3190-319F,U+3400-4DBF,U+4E00-9FFF,U+F900-FAFF,U+FE00-FE0F,U+FF00-FFEF,U+1AFF0-1AFFF,U+1B000-1B16F,U+20000-2FA1F,U+E0100-E01EF}
+  @font-face{font-family:"HASH JP Source Han";src:local("Source Han Sans JP"),local("Source Han Sans");unicode-range:U+00A5,U+203E,U+2E80-2FDF,U+3000-303F,U+3040-30FF,U+31F0-31FF,U+3190-319F,U+3400-4DBF,U+4E00-9FFF,U+F900-FAFF,U+FE00-FE0F,U+FF00-FFEF,U+1AFF0-1AFFF,U+1B000-1B16F,U+20000-2FA1F,U+E0100-E01EF}
+  @font-face{font-family:"HASH JP IPA Gothic";src:local("IPA Gothic"),local("IPAGothic");unicode-range:U+00A5,U+203E,U+2E80-2FDF,U+3000-303F,U+3040-30FF,U+31F0-31FF,U+3190-319F,U+3400-4DBF,U+4E00-9FFF,U+F900-FAFF,U+FE00-FE0F,U+FF00-FFEF,U+1AFF0-1AFFF,U+1B000-1B16F,U+20000-2FA1F,U+E0100-E01EF}
+  @font-face{font-family:"HASH JP VL Gothic";src:local("VL Gothic"),local("VLゴシック");unicode-range:U+00A5,U+203E,U+2E80-2FDF,U+3000-303F,U+3040-30FF,U+31F0-31FF,U+3190-319F,U+3400-4DBF,U+4E00-9FFF,U+F900-FAFF,U+FE00-FE0F,U+FF00-FFEF,U+1AFF0-1AFFF,U+1B000-1B16F,U+20000-2FA1F,U+E0100-E01EF}
+  @font-face{font-family:"HASH JP Takao Gothic";src:local("TakaoGothic"),local("Takao Gothic");unicode-range:U+00A5,U+203E,U+2E80-2FDF,U+3000-303F,U+3040-30FF,U+31F0-31FF,U+3190-319F,U+3400-4DBF,U+4E00-9FFF,U+F900-FAFF,U+FE00-FE0F,U+FF00-FFEF,U+1AFF0-1AFFF,U+1B000-1B16F,U+20000-2FA1F,U+E0100-E01EF}
+  @font-face{font-family:"HASH JP Yu Gothic";src:local("Yu Gothic"),local("YuGothic");unicode-range:U+00A5,U+203E,U+2E80-2FDF,U+3000-303F,U+3040-30FF,U+31F0-31FF,U+3190-319F,U+3400-4DBF,U+4E00-9FFF,U+F900-FAFF,U+FE00-FE0F,U+FF00-FFEF,U+1AFF0-1AFFF,U+1B000-1B16F,U+20000-2FA1F,U+E0100-E01EF}
+  @font-face{font-family:"HASH JP Meiryo";src:local("Meiryo");unicode-range:U+00A5,U+203E,U+2E80-2FDF,U+3000-303F,U+3040-30FF,U+31F0-31FF,U+3190-319F,U+3400-4DBF,U+4E00-9FFF,U+F900-FAFF,U+FE00-FE0F,U+FF00-FFEF,U+1AFF0-1AFFF,U+1B000-1B16F,U+20000-2FA1F,U+E0100-E01EF}
+  @font-face{font-family:"HASH JP Hiragino Sans";src:local("Hiragino Sans"),local("Hiragino Kaku Gothic ProN");unicode-range:U+00A5,U+203E,U+2E80-2FDF,U+3000-303F,U+3040-30FF,U+31F0-31FF,U+3190-319F,U+3400-4DBF,U+4E00-9FFF,U+F900-FAFF,U+FE00-FE0F,U+FF00-FFEF,U+1AFF0-1AFFF,U+1B000-1B16F,U+20000-2FA1F,U+E0100-E01EF}
+
   :root{
     --alert:#ff4747;
     --warning:#ffd43b;
     --sys-offset:120px;
-    --data-font-stack:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Cascadia Mono","Cascadia Code","Liberation Mono","DejaVu Sans Mono","Noto Sans Mono CJK JP","MS Gothic","ＭＳ ゴシック","Courier New",monospace;
-    --data-font-stack-fallback:"Courier New","Liberation Mono","DejaVu Sans Mono","Noto Sans Mono CJK JP","MS Gothic","ＭＳ ゴシック",monospace;
+    --font-common-modern:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Cascadia Mono","Cascadia Code","Liberation Mono","DejaVu Sans Mono","Noto Sans Mono CJK JP","Source Han Mono","MS Gothic","ＭＳ ゴシック","Courier New";
+    --font-common-terminal:Consolas,"Cascadia Mono","Cascadia Code",ui-monospace,SFMono-Regular,Menlo,Monaco,"Liberation Mono","DejaVu Sans Mono","Noto Sans Mono CJK JP","Source Han Mono","MS Gothic","ＭＳ ゴシック","Courier New";
+    --font-ascii-rescue:"HASH ASCII SFMono","HASH ASCII Menlo","HASH ASCII Monaco","HASH ASCII Consolas","HASH ASCII Cascadia Mono","HASH ASCII Cascadia Code","HASH ASCII Liberation Mono","HASH ASCII DejaVu Sans Mono","HASH ASCII Courier New";
+    --font-japanese-rescue:"HASH JP Noto Mono CJK","HASH JP Source Han Mono","HASH JP MS Gothic","HASH JP Noto CJK","HASH JP Noto","HASH JP Source Han","HASH JP IPA Gothic","HASH JP VL Gothic","HASH JP Takao Gothic","HASH JP Yu Gothic","HASH JP Meiryo","HASH JP Hiragino Sans";
+    --font-stack-modern:var(--font-common-modern),var(--font-ascii-rescue),var(--font-japanese-rescue),monospace,sans-serif;
+    --font-stack-terminal:var(--font-common-terminal),var(--font-ascii-rescue),var(--font-japanese-rescue),monospace,sans-serif;
+    --font-stack-fallback:var(--font-ascii-rescue),var(--font-japanese-rescue),monospace,sans-serif;
+    --data-font-stack:var(--font-stack-modern);
+    --data-font-stack-fallback:var(--font-stack-fallback);
   }
 
   body[data-system="modern"]{
-    --sys-font-stack:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Cascadia Mono","Cascadia Code","Liberation Mono","DejaVu Sans Mono","Noto Sans Mono CJK JP","MS Gothic","ＭＳ ゴシック","Courier New",monospace;
+    --sys-font-stack:var(--font-stack-modern);
     --sys-font-size:16px;
     --sys-font-smoothing:antialiased;
     --sys-moz-font-smoothing:auto;
@@ -36,7 +65,7 @@
   }
 
   body[data-system="terminal"]{
-    --sys-font-stack:Consolas,"Cascadia Mono","Cascadia Code",ui-monospace,SFMono-Regular,Menlo,Monaco,"Liberation Mono","DejaVu Sans Mono","Noto Sans Mono CJK JP","MS Gothic","ＭＳ ゴシック","Courier New",monospace;
+    --sys-font-stack:var(--font-stack-terminal);
     --sys-font-size:16px;
     --sys-font-smoothing:none;
     --sys-moz-font-smoothing:grayscale;
@@ -140,7 +169,6 @@
     --app-background-repeat:repeat;
     --app-background-attachment:scroll;
     --app-background-animation:none;
-    --app-font-stack:Consolas,"Cascadia Mono","Cascadia Code",ui-monospace,SFMono-Regular,Menlo,Monaco,"Liberation Mono","DejaVu Sans Mono","Noto Sans Mono CJK JP","MS Gothic","ＭＳ ゴシック","Courier New",monospace;
     --app-font-smoothing:none;
     --app-moz-font-smoothing:grayscale;
     --app-text-rendering:optimizeSpeed;
@@ -166,7 +194,6 @@
     --app-background-repeat:repeat;
     --app-background-attachment:fixed;
     --app-background-animation:none;
-    --app-font-stack:Consolas,"Cascadia Mono","Cascadia Code",ui-monospace,SFMono-Regular,Menlo,Monaco,"Liberation Mono","DejaVu Sans Mono","Noto Sans Mono CJK JP","MS Gothic","ＭＳ ゴシック","Courier New",monospace;
   }
 
   *{box-sizing:border-box}
@@ -374,8 +401,8 @@
 
   body.mono-fallback{
     --data-font-stack:var(--data-font-stack-fallback);
-    --sys-font-stack:var(--data-font-stack-fallback);
-    --app-font-stack:var(--data-font-stack-fallback);
+    --sys-font-stack:var(--font-stack-fallback);
+    --app-font-stack:var(--font-stack-fallback);
   }
 
   .value:not([data-empty="1"]) { text-shadow: var(--glow-bright); }
@@ -856,6 +883,8 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script>
+const APP_VERSION = '260918-76C39B1';
+
 const Life = (() => {
   let state = 0;
   let epoch = 0;
@@ -1804,6 +1833,7 @@ const InternalContract = (() => {
 
   const EVENTS = Object.freeze({
     VISUAL_APPLIED:'visual:applied',
+    FONT_VERIFIED:'font:verified',
     HASH_RESULTS:'hash:results',
     HASH_RENDER:'hash:render',
     HASH_SESSION:'hash:session',
@@ -1898,7 +1928,19 @@ const EventBus = (() => {
 })();
 
 const MonospaceGuard = (() => {
-  const SAMPLES = Object.freeze(['iiiiiiii','WWWWWWWW','00000000','AAAAAAAA','........','        ']);
+  const ASCII = Object.freeze(Array.from({ length:95 }, (_, i) => String.fromCharCode(0x20 + i)));
+  const JAPANESE = Object.freeze([
+    Object.freeze({ text:'日本語', cells:6 }),
+    Object.freeze({ text:'漢字', cells:4 }),
+    Object.freeze({ text:'ひらがな', cells:8 }),
+    Object.freeze({ text:'カタカナ', cells:8 }),
+    Object.freeze({ text:'。、・「」ー', cells:12 }),
+    Object.freeze({ text:'ＡＢＣ１２３', cells:12 }),
+    Object.freeze({ text:'𠮷', cells:2 }),
+    Object.freeze({ text:'か\u3099', cells:2 }),
+    Object.freeze({ text:'ｶﾞ', cells:2 })
+  ]);
+  const REPEAT = 32;
   const EPSILON = 0.125;
   const frames = new Set();
   let generation = 0;
@@ -1910,9 +1952,8 @@ const MonospaceGuard = (() => {
     frames.add(id);
   });
 
-  function measure() {
-    const target = document.getElementById('in');
-    if (!target || !document.body) return true;
+  function measureTarget(target, withJapanese = false) {
+    if (!target || !document.body) return Object.freeze({ ascii:true, japanese:true, cell:0 });
 
     const style = getComputedStyle(target);
     const probe = document.createElement('span');
@@ -1922,21 +1963,44 @@ const MonospaceGuard = (() => {
     probe.style.fontSize = style.fontSize;
     probe.style.fontWeight = style.fontWeight;
     probe.style.fontStyle = style.fontStyle;
+    probe.style.fontStretch = style.fontStretch;
     probe.style.fontVariantLigatures = 'none';
     probe.style.fontKerning = 'none';
+    probe.style.fontSynthesis = 'none';
+    probe.style.fontOpticalSizing = 'none';
+    probe.style.fontFeatureSettings = style.fontFeatureSettings;
+    probe.style.fontVariantNumeric = style.fontVariantNumeric;
     probe.style.letterSpacing = '0';
     probe.style.wordSpacing = '0';
     document.body.appendChild(probe);
 
+    const width = text => {
+      probe.textContent = text;
+      return probe.getBoundingClientRect().width;
+    };
+
     try {
-      const widths = SAMPLES.map(sample => {
-        probe.textContent = sample;
-        return probe.getBoundingClientRect().width;
-      });
-      return Math.max(...widths) - Math.min(...widths) <= EPSILON;
+      const cell = width('0'.repeat(REPEAT)) / REPEAT;
+      const asciiEpsilon = Math.max(EPSILON / REPEAT, cell * 0.0025);
+      const japaneseEpsilon = Math.max(0.25, cell * 0.03);
+      const ascii = cell > 0 && ASCII.every(ch => Math.abs(width(ch.repeat(REPEAT)) / REPEAT - cell) <= asciiEpsilon);
+      const japanese = !withJapanese || (cell > 0 && JAPANESE.every(item => Math.abs(width(item.text) / item.cells - cell) <= japaneseEpsilon));
+      return Object.freeze({ ascii, japanese, cell });
     } finally {
       probe.remove();
     }
+  }
+
+  function measure() {
+    const ui = measureTarget(document.body);
+    const data = measureTarget(document.getElementById('in'), true);
+    return Object.freeze({
+      ascii:ui.ascii && data.ascii,
+      uiAscii:ui.ascii,
+      dataAscii:data.ascii,
+      japanese:data.japanese,
+      cell:data.cell
+    });
   }
 
   async function verify() {
@@ -1951,22 +2015,23 @@ const MonospaceGuard = (() => {
     await nextFrame();
     if (!Life.ok() || current !== generation) return;
 
-    if (measure()) {
-      document.body.dataset.monoGuard = 'native';
-      return;
+    let result = measure();
+    let fallback = false;
+
+    if (!result.ascii) {
+      document.body.classList.add('mono-fallback');
+      fallback = true;
+      await nextFrame();
+      if (!Life.ok() || current !== generation) return;
+      result = measure();
     }
 
-    document.body.classList.add('mono-fallback');
-    await nextFrame();
-    if (!Life.ok() || current !== generation) return;
-
-    if (measure()) {
-      document.body.dataset.monoGuard = 'fallback';
-      return;
-    }
-
-    document.body.dataset.monoGuard = 'failed';
-    console.warn('[MONOSPACE] 等幅フォント検証失敗: フォールバック後も字幅が一致しません');
+    const ascii = result.ascii ? (fallback ? 'fallback' : 'native') : 'failed';
+    const japanese = result.japanese ? 'aligned' : 'mixed';
+    document.body.dataset.monoGuard = ascii;
+    document.body.dataset.jpGrid = japanese;
+    EventBus.emit(InternalContract.EVENTS.FONT_VERIFIED, Object.freeze({ ascii, japanese, uiAscii:result.uiAscii, dataAscii:result.dataAscii, cell:result.cell }));
+    if (!result.ascii) console.warn('[MONOSPACE] ASCII等幅フォント検証失敗');
   }
 
   function schedule() {
@@ -2001,8 +2066,8 @@ const VisualTheme = (() => {
     ]),
     background: Object.freeze([
       Object.freeze({ id: 'default', label: 'DEFAULT', kind: 'background', overrides: Object.freeze([]) }),
-      Object.freeze({ id: 'cmd', label: 'Command', kind: 'background', overrides: Object.freeze(['font', 'fontSmoothing', 'mozFontSmoothing', 'textRendering', 'caretShape']) }),
-      Object.freeze({ id: 'ps', label: 'PowerShell', kind: 'background', overrides: Object.freeze(['font']) })
+      Object.freeze({ id: 'cmd', label: 'Command', kind: 'background', overrides: Object.freeze(['fontSmoothing', 'mozFontSmoothing', 'textRendering', 'caretShape']) }),
+      Object.freeze({ id: 'ps', label: 'PowerShell', kind: 'background', overrides: Object.freeze([]) })
     ])
   });
 
@@ -10193,6 +10258,7 @@ function showToast(msg, duration = TOAST_DURATION) {
       makeLine('manufacture');
       makeLine('reference');
       makeLine('system');
+      makeLine('font');
       makeLine('device');
       makeLine('processor');
       makeLine('graphics');
@@ -10204,10 +10270,13 @@ function showToast(msg, duration = TOAST_DURATION) {
       makeLine('connection');
       makeLine('ip');
       makeLine('geo');
+      makeLine('version');
       makeLine('clock');
 
       patchText(nodes.manufacture, '製造: ソニーグループ株式会社 / インターナショナル・ビジネス・マシーンズ・コーポレーション（IBM） 2026', 'manufacture');
       patchText(nodes.reference, '外部検証リファレンス: GCHQ Cyber​​Chef', 'reference');
+      patchText(nodes.version, `バージョン: ${APP_VERSION}`, 'version');
+      renderFont();
 
       if (typeof ResizeObserver === 'function') {
         resizeObserver = new ResizeObserver(entries => {
@@ -10242,6 +10311,17 @@ function showToast(msg, duration = TOAST_DURATION) {
         last.crypto = '';
         nodes.crypto.textContent = '';
       }
+    }
+
+    function renderFont(state = null) {
+      const input = document.getElementById('in');
+      const firstFamily = value => String(value || '').split(',')[0].trim().replace(/^['"]|['"]$/g, '') || 'N/A';
+      const ui = document.body ? firstFamily(getComputedStyle(document.body).fontFamily) : 'N/A';
+      const data = input ? firstFamily(getComputedStyle(input).fontFamily) : 'N/A';
+      const ascii = state?.ascii || document.body?.dataset?.monoGuard || 'N/A';
+      const japanese = state?.japanese || document.body?.dataset?.jpGrid || 'N/A';
+      patchText(nodes.font, `字型: UI候補=${ui} / DATA候補=${data} / ASCII=${ascii} / 日本語=${japanese}`, 'font');
+      if (!resizeObserver) measureFallback();
     }
 
     function renderDevice(device) {
@@ -10319,7 +10399,7 @@ function showToast(msg, duration = TOAST_DURATION) {
       resizeObserver = null;
     }
 
-    return Object.freeze({ init, render, destroy });
+    return Object.freeze({ init, render, renderFont, destroy });
   })();
 
   function updateSysPanel() {
@@ -11571,6 +11651,19 @@ async function detectBase85Variants(input) {
             expect(lineText('screen') === displayState.screenLine, 'Screen line render');
             expect(lineText('viewport') === displayState.viewportLine, 'Viewport line render');
             expect(lineText('theme') === displayState.themeLine, 'Theme line render');
+          }
+        },
+        {
+          name:'Font / Version / Order / DOM',
+          run:async expect => {
+            const order = Array.from(els.sysEl?.querySelectorAll('[data-sys-line]') || []).map(node => node.dataset.sysLine);
+            const expected = ['zess','crypto','manufacture','reference','system','font','device','processor','graphics','screen','viewport','browser','theme','power','connection','ip','geo','version','clock'];
+            const ascii = document.body.dataset.monoGuard || 'N/A';
+            const japanese = document.body.dataset.jpGrid || 'N/A';
+            expect(order.join(',') === expected.join(','), `System panel order (${order.join(',')})`);
+            expect(/^字型: UI候補=.+ \/ DATA候補=.+ \/ ASCII=.+ \/ 日本語=.+$/.test(lineText('font')), 'Font line format');
+            expect(lineText('font').includes(`/ ASCII=${ascii} / 日本語=${japanese}`), 'Font guard status render');
+            expect(lineText('version') === `バージョン: ${APP_VERSION}`, 'Version line render');
           }
         },
         {
@@ -12831,6 +12924,8 @@ async function detectBase85Variants(input) {
     initDOM();
     SystemPanelRenderer.init();
     SystemMonitor.subscribe((snapshot, mask) => SystemPanelRenderer.render(snapshot, mask));
+    EventBus.on(InternalContract.EVENTS.FONT_VERIFIED, SystemPanelRenderer.renderFont);
+    MonospaceGuard.schedule();
     attachEvents();
   }
 
