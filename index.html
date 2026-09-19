@@ -883,7 +883,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script>
-const APP_VERSION = '260919-7088072';
+const APP_VERSION = '260919-7088072-03';
 
 const Life = (() => {
   let state = 0;
@@ -10314,13 +10314,9 @@ function showToast(msg, duration = TOAST_DURATION) {
     }
 
     function renderFont(state = null) {
-      const input = document.getElementById('in');
-      const firstFamily = value => String(value || '').split(',')[0].trim().replace(/^['"]|['"]$/g, '') || 'N/A';
-      const ui = document.body ? firstFamily(getComputedStyle(document.body).fontFamily) : 'N/A';
-      const data = input ? firstFamily(getComputedStyle(input).fontFamily) : 'N/A';
       const ascii = state?.ascii || document.body?.dataset?.monoGuard || 'N/A';
       const japanese = state?.japanese || document.body?.dataset?.jpGrid || 'N/A';
-      patchText(nodes.font, `字型: UI候補=${ui} / DATA候補=${data} / ASCII=${ascii} / 日本語=${japanese}`, 'font');
+      patchText(nodes.font, `字型: ASCII=${ascii} / 日本語=${japanese}`, 'font');
       if (!resizeObserver) measureFallback();
     }
 
@@ -11661,8 +11657,8 @@ async function detectBase85Variants(input) {
             const ascii = document.body.dataset.monoGuard || 'N/A';
             const japanese = document.body.dataset.jpGrid || 'N/A';
             expect(order.join(',') === expected.join(','), `System panel order (${order.join(',')})`);
-            expect(/^字型: UI候補=.+ \/ DATA候補=.+ \/ ASCII=.+ \/ 日本語=.+$/.test(lineText('font')), 'Font line format');
-            expect(lineText('font').includes(`/ ASCII=${ascii} / 日本語=${japanese}`), 'Font guard status render');
+            expect(/^字型: ASCII=.+ \/ 日本語=.+$/.test(lineText('font')), 'Font line format');
+            expect(lineText('font') === `字型: ASCII=${ascii} / 日本語=${japanese}`, 'Font guard status render');
             expect(lineText('version') === `バージョン: ${APP_VERSION}`, 'Version line render');
           }
         },
