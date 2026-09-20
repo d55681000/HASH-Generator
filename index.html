@@ -966,7 +966,7 @@ applyRuntimePlatform();
 <script>
 applyRuntimePlatform();
 
-const APP_VERSION = '20260920-N/G-01-G';
+const APP_VERSION = '20260920-N/G-02-G';
 
 const Life = (() => {
   let state = 0;
@@ -4163,6 +4163,93 @@ const BaseCodec = (() => {
   return { encodeBase64, encodeBase85, btoaChecksum, wrapBtoaPayload, base64WorkerSource, base85WorkerSource, base85Variants };
 })();
 
+const Base85Presentation = (() => {
+  const BTOA_TRAILER_RE = /^xbtoa End N (\d+) ([0-9a-fA-F]+) E ([0-9a-fA-F]+) S ([0-9a-fA-F]+) R ([0-9a-fA-F]+)$/;
+
+  function normalizeOptions(options = null) {
+    return {
+      hexUpper: options?.hexUpper ?? AppState.hexUpper,
+      grouping: options?.grouping ?? AppState.grouping,
+      separator: options?.separator ?? AppState.separator
+    };
+  }
+
+  function parseBtoaEnvelope(value) {
+    const normalized = String(value ?? '').replace(/\r\n?/g, '\n');
+    const lines = normalized.split('\n');
+    if (lines.length < 2 || lines[0] !== 'xbtoa Begin') return null;
+    const trailer = lines[lines.length - 1];
+    const match = BTOA_TRAILER_RE.exec(trailer);
+    if (!match) return null;
+    return {
+      payloadLines: lines.slice(1, -1),
+      decimalLength: match[1],
+      hexLength: match[2],
+      eor: match[3],
+      sum: match[4],
+      rot: match[5]
+    };
+  }
+
+  function buildBtoaTrailer(parsed, hexUpper) {
+    const hexCase = value => hexUpper ? value.toUpperCase() : value.toLowerCase();
+    return `xbtoa End N ${parsed.decimalLength} ${hexCase(parsed.hexLength)} E ${hexCase(parsed.eor)} S ${hexCase(parsed.sum)} R ${hexCase(parsed.rot)}`;
+  }
+
+  function formatAdobe(value, cfg) {
+    const raw = String(value ?? '');
+    if (raw.startsWith('<~') && raw.endsWith('~>')) {
+      const payload = raw.slice(2, -2);
+      return '<~' + Core.applyGrouping(payload, cfg.grouping, cfg.separator) + '~>';
+    }
+    return Core.formatForDisplay(raw, false, cfg.grouping, true, cfg.separator);
+  }
+
+  function unformatAdobe(value, cfg) {
+    const displayed = String(value ?? '');
+    if (displayed.startsWith('<~') && displayed.endsWith('~>')) {
+      const payload = Core.removeGrouping(displayed.slice(2, -2), cfg.grouping, cfg.separator);
+      return payload === null ? null : '<~' + payload + '~>';
+    }
+    return Core.removeGrouping(displayed, cfg.grouping, cfg.separator);
+  }
+
+  function formatBtoa(value, cfg) {
+    const parsed = parseBtoaEnvelope(value);
+    if (!parsed) return Core.formatForDisplay(String(value ?? ''), false, cfg.grouping, true, cfg.separator);
+    const payloadLines = parsed.payloadLines.map(line => Core.applyGrouping(line, cfg.grouping, cfg.separator));
+    return ['xbtoa Begin', ...payloadLines, buildBtoaTrailer(parsed, cfg.hexUpper)].join('\n');
+  }
+
+  function unformatBtoa(value, cfg) {
+    const parsed = parseBtoaEnvelope(value);
+    if (!parsed) return Core.removeGrouping(String(value ?? ''), cfg.grouping, cfg.separator);
+    const payloadLines = [];
+    for (const line of parsed.payloadLines) {
+      const rawLine = Core.removeGrouping(line, cfg.grouping, cfg.separator);
+      if (rawLine === null) return null;
+      payloadLines.push(rawLine);
+    }
+    return ['xbtoa Begin', ...payloadLines, buildBtoaTrailer(parsed, false)].join('\n');
+  }
+
+  function format(value, variant, options = null) {
+    const cfg = normalizeOptions(options);
+    if (variant === 'Adobe ASCII85') return formatAdobe(value, cfg);
+    if (variant === 'btoa ASCII85') return formatBtoa(value, cfg);
+    return Core.formatForDisplay(String(value ?? ''), false, cfg.grouping, true, cfg.separator);
+  }
+
+  function unformat(value, variant, options = null) {
+    const cfg = normalizeOptions(options);
+    if (variant === 'Adobe ASCII85') return unformatAdobe(value, cfg);
+    if (variant === 'btoa ASCII85') return unformatBtoa(value, cfg);
+    return Core.removeGrouping(String(value ?? ''), cfg.grouping, cfg.separator);
+  }
+
+  return { format, unformat, parseBtoaEnvelope };
+})();
+
 const Base64Engine = (() => {
   let worker = null;
   let closed = false;
@@ -4896,6 +4983,26 @@ const HashOutputFilter = (() => {
     return mode === 'hex' ? '手渡し（Hex）' : '標準（Raw）';
   }
 
+  function finalOutputMode(cfg) {
+    return cfg.outputOrder.length ? cfg.outputOrder[cfg.outputOrder.length - 1] : '';
+  }
+
+  function formatDisplay(value, context = null) {
+    const cfg = normalizeContext(context);
+    if (finalOutputMode(cfg) === 'base85') {
+      return Base85Presentation.format(value, cfg.base85Variant, cfg);
+    }
+    return Core.formatForDisplay(value, cfg.hexUpper, cfg.grouping, cfg.outputOrder.length > 0, cfg.separator);
+  }
+
+  function unformatDisplay(value, context = null) {
+    const cfg = normalizeContext(context);
+    if (finalOutputMode(cfg) === 'base85') {
+      return Base85Presentation.unformat(value, cfg.base85Variant, cfg);
+    }
+    return Core.removeGrouping(String(value ?? ''), cfg.grouping, cfg.separator);
+  }
+
   function targetFromBytes(bytes, source = 'HEX', crc64Variant = AppState.crc64Variant) {
     const algId = DIGEST_BYTE_ALGORITHMS[bytes.length];
     if (!algId) return null;
@@ -4953,7 +5060,7 @@ const HashOutputFilter = (() => {
 
     let actualCandidate = entered;
     if (cfg.copyMode === 'visual') {
-      actualCandidate = Core.removeGrouping(entered, cfg.grouping, cfg.separator);
+      actualCandidate = unformatDisplay(entered, cfg);
       if (actualCandidate === null) return null;
     }
 
@@ -4961,7 +5068,7 @@ const HashOutputFilter = (() => {
     if (!target) return null;
 
     const actual = apply(target.algId, target.hex, cfg);
-    const visual = Core.formatForDisplay(actual, cfg.hexUpper, cfg.grouping, cfg.outputOrder.length > 0, cfg.separator);
+    const visual = formatDisplay(actual, cfg);
     const selected = cfg.copyMode === 'visual' ? visual : actual;
     if (selected !== entered) return null;
 
@@ -4971,7 +5078,7 @@ const HashOutputFilter = (() => {
 
   const digestHexLength = id => DIGEST_HEX_LENGTHS[id] || 0;
 
-  return { ids, digestHexLength, isHashResult, apply, describe, handoffLabel, resolveCompareTarget };
+  return { ids, digestHexLength, isHashResult, apply, describe, handoffLabel, formatDisplay, unformatDisplay, resolveCompareTarget };
 })();
 
 const ResultSurface = (() => {
@@ -8219,6 +8326,21 @@ const SelfTest = (() => {
     await add(report, 'BASE85', 'btoa Block Envelope', BaseCodec.encodeBase85(block, 'btoa ASCII85'), "xbtoa Begin\n!!*-'\nxbtoa End N 4 4 E 0 S a R b");
     await add(report, 'BASE85', 'btoa Zero Shorthand Envelope', BaseCodec.encodeBase85(zeros, 'btoa ASCII85'), 'xbtoa Begin\nz\nxbtoa End N 4 4 E 0 S 4 R 0');
     await add(report, 'BASE85', 'btoa Space Shorthand Envelope', BaseCodec.encodeBase85(spaces, 'btoa ASCII85'), 'xbtoa Begin\ny\nxbtoa End N 4 4 E 0 S 84 R 1e0');
+
+    const adobeVisual = Base85Presentation.format('<~87cURDZ~>', 'Adobe ASCII85', { hexUpper:true, grouping:2, separator:'|' });
+    await add(report, 'BASE85 PRESENTATION', 'Adobe Wrapper Grouping', adobeVisual, '<~87|cU|RD|Z~>');
+    await add(report, 'BASE85 PRESENTATION', 'Adobe Visual Roundtrip', Base85Presentation.unformat(adobeVisual, 'Adobe ASCII85', { hexUpper:true, grouping:2, separator:'|' }), '<~87cURDZ~>');
+
+    const btoaHelloActual = BaseCodec.encodeBase85(hello, 'btoa ASCII85');
+    const btoaVisualOptions = { hexUpper:true, grouping:2, separator:' ' };
+    const btoaHelloVisual = Base85Presentation.format(btoaHelloActual, 'btoa ASCII85', btoaVisualOptions);
+    await add(report, 'BASE85 PRESENTATION', 'btoa Payload Grouping / Trailer Uppercase', btoaHelloVisual, 'xbtoa Begin\n87 cU RD ZB b;\nxbtoa End N 5 5 E 42 S 1F9 R A9F');
+    await add(report, 'BASE85 PRESENTATION', 'btoa Visual Roundtrip', Base85Presentation.unformat(btoaHelloVisual, 'btoa ASCII85', btoaVisualOptions), btoaHelloActual);
+
+    const btoaLongActual = BaseCodec.encodeBase85(makeBytes(96), 'btoa ASCII85');
+    const btoaLongVisualOptions = { hexUpper:false, grouping:4, separator:'+' };
+    const btoaLongVisual = Base85Presentation.format(btoaLongActual, 'btoa ASCII85', btoaLongVisualOptions);
+    await add(report, 'BASE85 PRESENTATION', 'btoa Multi-line Roundtrip / Separator +', Base85Presentation.unformat(btoaLongVisual, 'btoa ASCII85', btoaLongVisualOptions), btoaLongActual);
     await add(report, 'BASE85', 'ZeroMQ Vector', BaseCodec.encodeBase85(z85, 'ZeroMQ (Z85)'), 'HelloWorld');
     await add(report, 'BASE85', 'RFC 1924 Alphabet (Block)', BaseCodec.encodeBase85(block, 'RFC 1924 Alphabet (Block)'), '009C6');
 
@@ -8431,6 +8553,8 @@ const SelfTest = (() => {
       { name:'RFC 1924 Alphabet (Block) Raw', outputOrder:['base85'], handoff:'raw', base85Variant:'RFC 1924 Alphabet (Block)' },
       { name:'Adobe ASCII85 Raw', outputOrder:['base85'], handoff:'raw', base85Variant:'Adobe ASCII85' },
       { name:'btoa ASCII85 Raw', outputOrder:['base85'], handoff:'raw', base85Variant:'btoa ASCII85' },
+      { name:'Base64 → btoa ASCII85 Raw', outputOrder:['base64','base85'], handoff:'raw', base85Variant:'btoa ASCII85' },
+      { name:'btoa ASCII85 → Base64 Raw', outputOrder:['base85','base64'], handoff:'raw', base85Variant:'btoa ASCII85' },
       { name:'Base64 → Base85 Raw', outputOrder:['base64','base85'], handoff:'raw', base85Variant:'Standard ASCII85' },
       { name:'Base64 → Base85 Hex', outputOrder:['base64','base85'], handoff:'hex', base85Variant:'Standard ASCII85' },
       { name:'Base85 → Base64 Raw', outputOrder:['base85','base64'], handoff:'raw', base85Variant:'Standard ASCII85' },
@@ -8476,6 +8600,28 @@ const SelfTest = (() => {
       await add(report, 'FILTER', 'Visual Copy', target?.algId === 'SHA-256' ? target.hex : '', canonical);
     } catch (e) {
       await addFailure(report, 'FILTER', 'Visual Copy', e);
+    }
+
+    await step(control, 'FILTER', 'btoa Visual Copy');
+    const btoaVisualContext = {
+      outputOrder:['base85'],
+      handoff:'raw',
+      base85Variant:'btoa ASCII85',
+      crc64Variant:CRC64_VARIANTS[0],
+      copyMode:'visual',
+      hexUpper:true,
+      grouping:2,
+      separator:'|'
+    };
+    try {
+      const actual = HashOutputFilter.apply('SHA-256', canonical, btoaVisualContext);
+      const visual = HashOutputFilter.formatDisplay(actual, btoaVisualContext);
+      const target = await HashOutputFilter.resolveCompareTarget(visual, btoaVisualContext);
+      await add(report, 'FILTER', 'btoa Visual Copy', target?.algId === 'SHA-256' ? target.hex : '', canonical);
+      const wrongSeparator = visual.replace('|', ':');
+      await add(report, 'FILTER', 'btoa Reject Wrong Visual Separator', await HashOutputFilter.resolveCompareTarget(wrongSeparator, btoaVisualContext) === null, true);
+    } catch (e) {
+      await addFailure(report, 'FILTER', 'btoa Visual Copy', e);
     }
 
     const digestCases = [
@@ -10495,10 +10641,9 @@ function showToast(msg, duration = TOAST_DURATION) {
     const el = document.getElementById(id);
     if (!el || !HashOutputFilter.isHashResult(id, canonicalHex)) return false;
     const output = HashOutputFilter.apply(id, canonicalHex);
-    const skipCase = AppState.hashOutputOrder.length > 0;
     el.dataset.raw = canonicalHex;
     el.dataset.output = output;
-    el.textContent = Core.formatForDisplay(output, AppState.hexUpper, AppState.grouping, skipCase);
+    el.textContent = HashOutputFilter.formatDisplay(output);
     el.dataset.empty = isPreview ? '1' : '0';
     return true;
   }
@@ -10511,6 +10656,18 @@ function showToast(msg, duration = TOAST_DURATION) {
       if (!HashOutputFilter.isHashResult(id, canonicalHex)) continue;
       renderHashOutputValue(id, canonicalHex, false);
     }
+  }
+
+  function formatSurfaceValue(id, value) {
+    if (id === 'Base85-Enc') {
+      return Base85Presentation.format(value, AppState.base85Variant, {
+        hexUpper:AppState.hexUpper,
+        grouping:AppState.grouping,
+        separator:AppState.separator
+      });
+    }
+    const skipCase = id.includes('Base');
+    return Core.formatForDisplay(value, AppState.hexUpper, AppState.grouping, skipCase);
   }
 
   function queueRender(algId, value, currentIter, totalIter, isDone = false, isAborted = false, isOOM = false, historyCount = null, historyLimit = 65535, isError = false, taskState = null) {
@@ -10651,8 +10808,7 @@ function showToast(msg, duration = TOAST_DURATION) {
         } else if (state.valueString) {
             if (!renderHashOutputValue(algId, state.valueString)) {
                 delete el.dataset.output;
-                const skipCase = algId.includes('Base');
-                el.textContent = Core.formatForDisplay(state.valueString, AppState.hexUpper, AppState.grouping, skipCase);
+                el.textContent = formatSurfaceValue(algId, state.valueString);
                 el.dataset.raw = state.valueString;
                 el.dataset.empty = '0';
             }
@@ -10707,8 +10863,7 @@ function showToast(msg, duration = TOAST_DURATION) {
       } else if (renderHashOutputValue(id, value, isPreview)) {
       } else if (/^[0-9a-fA-F]+$/.test(value) || id.includes('Base')) {
         el.dataset.raw = value;
-        const skipCase = id.includes('Base');
-        el.textContent = Core.formatForDisplay(value, AppState.hexUpper, AppState.grouping, skipCase);
+        el.textContent = formatSurfaceValue(id, value);
         el.dataset.empty = isPreview ? '1' : '0';
       } else {
         el.dataset.raw = value || '';
@@ -10728,8 +10883,7 @@ function showToast(msg, duration = TOAST_DURATION) {
       if (HashOutputFilter.isHashResult(id, raw)) {
         renderHashOutputValue(id, raw, el.dataset.empty === '1');
       } else if (/^[0-9a-fA-F]+$/i.test(raw) || id.includes('Base')) {
-        const skipCase = id.includes('Base');
-        el.textContent = Core.formatForDisplay(raw, AppState.hexUpper, AppState.grouping, skipCase);
+        el.textContent = formatSurfaceValue(id, raw);
       }
     }
   }
