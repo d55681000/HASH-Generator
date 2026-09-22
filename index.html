@@ -977,7 +977,7 @@ applyRuntimePlatform();
 <script>
 applyRuntimePlatform();
 
-const APP_VERSION = '20260921A-N/G-00-G';
+const APP_VERSION = '20260922A-N/A-00-G';
 
 const Life = (() => {
   let state = 0;
@@ -1511,6 +1511,17 @@ const InternetGateway = (() => {
     return audit.map(entry => Object.freeze({ ...entry }));
   }
 
+  function auditStats() {
+    return Object.freeze({
+      limit:AUDIT_LIMIT,
+      total:auditSeq,
+      saved:audit.length,
+      dropped:Math.max(0, auditSeq - audit.length),
+      firstSeq:audit.length ? audit[0].seq : null,
+      lastSeq:audit.length ? audit[audit.length - 1].seq : null
+    });
+  }
+
   function init() {
     if (initialized) return;
     initialized = true;
@@ -1659,7 +1670,7 @@ const InternetGateway = (() => {
 
   return Object.freeze({
     MODE, LEVEL, init, cycle, request, navigate, modeLabel, buttonLabel, shutdown,
-    auditSnapshot, validate, selfTest,
+    auditSnapshot, auditStats, validate, selfTest,
     get currentMode() { return mode; },
     get routeCount() { return Object.keys(ROUTES).length; }
   });
@@ -1958,7 +1969,8 @@ const InternalContract = (() => {
     HASH_SHA512_FALLBACK:'hashSha512Fallback',
     VERIFY_TEST:'verifyTest',
     SELF_TEST:'selfTest',
-    HASH_ITERATIVE:'hashIterative'
+    HASH_ITERATIVE:'hashIterative',
+    SNAPSHOT_STATE:'snapshot_state'
   });
 
   const ENGINE_MESSAGES = Object.freeze({
@@ -1971,7 +1983,8 @@ const InternalContract = (() => {
     TARGET_ACK:'target_ack',
     MATCH_HIT:'match_hit',
     MATCH_CLEAR:'match_clear',
-    ITER_PROGRESS:'iter_progress'
+    ITER_PROGRESS:'iter_progress',
+    SNAPSHOT_STATE_RESULT:'snapshot_state_result'
   });
 
   return {
@@ -2266,7 +2279,6 @@ const VisualTheme = (() => {
       return issues;
     }
 
-    const findRule = selector => rules.find(rule => rule.selectorText === selector) || null;
     const styleProps = rule => Array.from({ length: rule?.style?.length || 0 }, (_, i) => rule.style[i]);
 
     for (const kind of kinds) {
@@ -2403,7 +2415,11 @@ const AppState = {
   locationCountryCode: '',
   locationCountryName: '',
   netTimeOffset: 0,
-  battStr: window.__ZESS_MODE__ ? 'N/A（ZESS）' : 'N/A'
+  battStr: window.__ZESS_MODE__ ? 'N/A（ZESS）' : 'N/A',
+  inputEntered: '',
+  inputSanitized: '',
+  inputNormalized: '',
+  calculationSessionConfig: null
 };
 
 
@@ -3964,7 +3980,7 @@ const SystemMonitor = (() => {
   }
 
   function formatObserved(at) {
-    return at ? SysUtils.fmtJapaneseDate(new Date(at + AppState.netTimeOffset)) : '未取得';
+    return at ? SysUtils.fmtJapaneseDate(new Date(at + AppState.netTimeOffset)) : 'N/A';
   }
 
   function reportSnapshot() {
@@ -4117,8 +4133,6 @@ const BaseCodec = (() => {
     if (!isAscii85 && extra !== 0) {
         throw new Error(variant + ' requires input length to be a multiple of 4 bytes');
     }
-
-    const paddedLen = extra === 0 ? len : len + (4 - extra);
 
     let resArr = [];
     for(let i = 0; i < len; i += 4) {
@@ -4948,22 +4962,63 @@ const OutputBaseFilter = (() => {
     };
   }
 
-  function applyBytes(bytes, context = null) {
+  function traceApplyBytes(bytes, context = null) {
     const cfg = normalizeContext(context);
-    if (cfg.outputOrder.length === 0) return null;
-    let current = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || 0);
-    let output = '';
+    const source = bytes instanceof Uint8Array ? bytes.slice() : new Uint8Array(bytes || 0);
+    const stages = [];
+    let current = source;
+    let output = null;
 
     for (let i = 0; i < cfg.outputOrder.length; i++) {
       const mode = cfg.outputOrder[i];
       const inputBytes = cfg.handoff === 'hex' ? Core.utf8Encode(bytesToHex(current)) : current;
-      if (mode === 'base64') output = BaseCodec.encodeBase64(inputBytes);
-      else if (mode === 'base85') output = BaseCodec.encodeBase85(inputBytes, cfg.base85Variant);
-      else continue;
-      current = Core.utf8Encode(output);
+      const stage = {
+        index:i + 1,
+        mode,
+        variant:mode === 'base85' ? cfg.base85Variant : '',
+        handoff:cfg.handoff,
+        inputByteLength:inputBytes.length,
+        inputHex:bytesToHex(inputBytes),
+        status:'complete',
+        output:'',
+        error:''
+      };
+      try {
+        if (mode === 'base64') output = BaseCodec.encodeBase64(inputBytes);
+        else if (mode === 'base85') output = BaseCodec.encodeBase85(inputBytes, cfg.base85Variant);
+        else {
+          stage.status = 'error';
+          stage.error = 'Unsupported output BASE stage';
+          stages.push(Object.freeze(stage));
+          return Object.freeze({
+            ok:false, value:stages.length > 1 ? stages[stages.length - 2].output : null,
+            completedStages:i, completedOrder:cfg.outputOrder.slice(0, i), failedStage:mode,
+            note:notAppliedLabel(mode), error:stage.error, stages:Object.freeze(stages.slice())
+          });
+        }
+        stage.output = output;
+        stages.push(Object.freeze(stage));
+        current = Core.utf8Encode(output);
+      } catch (e) {
+        stage.status = 'error';
+        stage.error = String(e?.message || e || '');
+        stages.push(Object.freeze(stage));
+        return Object.freeze({
+          ok:false, value:output, completedStages:i, completedOrder:cfg.outputOrder.slice(0, i),
+          failedStage:mode, note:notAppliedLabel(mode), error:stage.error, stages:Object.freeze(stages.slice())
+        });
+      }
     }
 
-    return output;
+    return Object.freeze({
+      ok:true, value:output, completedStages:cfg.outputOrder.length, completedOrder:cfg.outputOrder.slice(),
+      failedStage:'', note:'', error:'', stages:Object.freeze(stages.slice())
+    });
+  }
+
+  function applyBytes(bytes, context = null) {
+    const result = traceApplyBytes(bytes, context);
+    return result.completedStages > 0 ? result.value : null;
   }
 
   function appliedLabel() {
@@ -4981,44 +5036,7 @@ const OutputBaseFilter = (() => {
   }
 
   function tryApplyBytes(bytes, context = null) {
-    const cfg = normalizeContext(context);
-    if (cfg.outputOrder.length === 0) {
-      return { ok:true, value:null, completedStages:0, completedOrder:[], failedStage:'', note:'', error:'' };
-    }
-
-    let current = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || 0);
-    let output = null;
-
-    for (let i = 0; i < cfg.outputOrder.length; i++) {
-      const mode = cfg.outputOrder[i];
-      try {
-        const inputBytes = cfg.handoff === 'hex' ? Core.utf8Encode(bytesToHex(current)) : current;
-        if (mode === 'base64') output = BaseCodec.encodeBase64(inputBytes);
-        else if (mode === 'base85') output = BaseCodec.encodeBase85(inputBytes, cfg.base85Variant);
-        else continue;
-        current = Core.utf8Encode(output);
-      } catch (e) {
-        return {
-          ok:false,
-          value:output,
-          completedStages:i,
-          completedOrder:cfg.outputOrder.slice(0, i),
-          failedStage:mode,
-          note:notAppliedLabel(mode),
-          error:String(e?.message || e || '')
-        };
-      }
-    }
-
-    return {
-      ok:true,
-      value:output,
-      completedStages:cfg.outputOrder.length,
-      completedOrder:cfg.outputOrder.slice(),
-      failedStage:'',
-      note:'',
-      error:''
-    };
+    return traceApplyBytes(bytes, context);
   }
 
   function describeOrder(order, base85Variant, withVariant = false) {
@@ -5058,7 +5076,7 @@ const OutputBaseFilter = (() => {
     return Core.removeGrouping(String(value ?? ''), cfg.grouping, cfg.separator);
   }
 
-  return Object.freeze({ ids, baseIds, bytesToHex, normalizeContext, applyBytes, tryApplyBytes, appliedLabel, notAppliedLabel, errorLabel, describeOrder, describe, handoffLabel, formatDisplay, unformatDisplay });
+  return Object.freeze({ ids, baseIds, bytesToHex, normalizeContext, traceApplyBytes, applyBytes, tryApplyBytes, appliedLabel, notAppliedLabel, errorLabel, describeOrder, describe, handoffLabel, formatDisplay, unformatDisplay });
 })();
 
 const HashOutputFilter = (() => {
@@ -6360,7 +6378,7 @@ const Engine = (() => {
           terminated: new Set()
         };
         const terminal = state => state === 'terminated' || state === 'error';
-        const begin = (alg, sessionId, generation, target, revision) => {
+        const begin = (alg, sessionId, generation, target, revision, iterMode = 'hex') => {
           tasks[alg] = {
             sessionId,
             generation,
@@ -6368,7 +6386,8 @@ const Engine = (() => {
             target: normalizeTarget(target),
             targetRevision: Math.max(0, Number(revision) || 0),
             currentIter: 0,
-            hex: ''
+            hex: '',
+            iterMode
           };
           return tasks[alg];
         };
@@ -6411,7 +6430,8 @@ const Engine = (() => {
           const task = get(alg);
           return !!task && task.sessionId === sessionId;
         };
-        return { begin, get, setState, update, setTarget, terminate, isSession, terminal };
+        const values = () => Object.entries(tasks).map(([algId, task]) => ({ algId, ...task }));
+        return { begin, get, setState, update, setTarget, terminate, isSession, values, terminal };
       })();
 
       function bytesToHex(bytes) {
@@ -6572,6 +6592,72 @@ const Engine = (() => {
 
       onmessage = e => {
         const { action, bytes, key, crc64Variant, iterations, algorithms, saltBytes, algId, iterMode, reqId, target, sessionId = 0, targetRevision = 0, matchTarget = null } = e.data;
+
+        if (action === ENGINE_ACTIONS.SNAPSHOT_STATE) {
+            const snapshotTasks = [];
+            for (const task of IterationRuntime.values()) {
+                if (sessionId && task.sessionId !== sessionId) continue;
+                const history = taskHistories[task.algId] || null;
+                const historyCount = history ? history.count : 0;
+                const item = {
+                    algId:task.algId,
+                    state:task.state,
+                    currentIter:task.currentIter,
+                    target:task.target,
+                    sessionId:task.sessionId,
+                    taskGeneration:task.generation,
+                    targetRevision:task.targetRevision,
+                    iterMode:task.iterMode || 'hex',
+                    hex:String(task.hex || ''),
+                    historyCount,
+                    historyLimit:HISTORY_LIMIT,
+                    rawHex:'',
+                    effectiveHex:String(task.hex || ''),
+                    crc64RawByVariant:null,
+                    crc64EffectiveByVariant:null
+                };
+                if (history && task.currentIter > 0) {
+                    const row = history.get(task.currentIter);
+                    if (row) {
+                        if (task.algId === 'CRC64') {
+                            const rawByVariant = {}, effectiveByVariant = {};
+                            let pos = 0;
+                            for (const variant of CRC64_VARIANTS) {
+                                rawByVariant[variant] = bytesToHex(row.slice(pos, pos + 8));
+                                pos += 8;
+                            }
+                            if (task.iterMode === 'xor') {
+                                for (const variant of CRC64_VARIANTS) {
+                                    effectiveByVariant[variant] = bytesToHex(row.slice(pos, pos + 8));
+                                    pos += 8;
+                                }
+                            } else {
+                                for (const variant of CRC64_VARIANTS) effectiveByVariant[variant] = rawByVariant[variant];
+                            }
+                            item.crc64RawByVariant = rawByVariant;
+                            item.crc64EffectiveByVariant = effectiveByVariant;
+                        } else {
+                            const digestBytes = DIGEST_BYTES[task.algId] || 0;
+                            if (digestBytes && row.length >= digestBytes) {
+                                item.rawHex = bytesToHex(row.slice(0, digestBytes));
+                                if (task.iterMode === 'xor' && row.length >= digestBytes * 2) {
+                                    item.effectiveHex = bytesToHex(row.slice(digestBytes, digestBytes * 2));
+                                }
+                            }
+                        }
+                    }
+                }
+                snapshotTasks.push(item);
+            }
+            postMessage({
+                action:ENGINE_MESSAGES.SNAPSHOT_STATE_RESULT,
+                reqId,
+                sessionId,
+                capturedAt:Date.now(),
+                tasks:snapshotTasks
+            });
+            return;
+        }
 
         if (action === ENGINE_ACTIONS.SET_MATCH) {
             configureContinuousMatch(sessionId, matchTarget);
@@ -6807,7 +6893,7 @@ const Engine = (() => {
                 currentTaskGen[alg] = myGen;
                 pausedTasks[alg] = false;
                 wakeTask(alg);
-                IterationRuntime.begin(alg, sessionId, myGen, iterations, targetRevision);
+                IterationRuntime.begin(alg, sessionId, myGen, iterations, targetRevision, iterMode);
                 if (continuousMatch.matched && continuousMatch.sessionId === sessionId) {
                     pausedTasks[alg] = true;
                     IterationRuntime.setState(alg, 'paused');
@@ -7408,6 +7494,53 @@ const Engine = (() => {
     });
   }
 
+  function captureIterationSnapshot(timeout = 3000) {
+    return new Promise(resolve => {
+      if (!hasWorker || !worker || !iterativeSessionActive) {
+        resolve(Object.freeze({ available:false, reason:'no-active-session', requestedAt:Date.now(), capturedAt:Date.now(), sessionId:iterativeSessionId, tasks:Object.freeze([]) }));
+        return;
+      }
+      const snapshotWorker = worker;
+      const reqId = `snapshot-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const requestedAt = Date.now();
+      let settled = false;
+      let entry = null;
+      const drop = () => {
+        if (settled) return false;
+        settled = true;
+        clearTimeout(timer);
+        snapshotWorker.removeEventListener('message', handler);
+        snapshotWorker.removeEventListener('error', errorHandler);
+        auxPending.delete(entry);
+        return true;
+      };
+      const finish = result => {
+        if (!drop()) return;
+        resolve(result);
+      };
+      const handler = ev => {
+        const data = ev.data;
+        if (data?.action !== MESSAGE.SNAPSHOT_STATE_RESULT || data.reqId !== reqId) return;
+        finish(Object.freeze({
+          available:true,
+          reason:'',
+          requestedAt,
+          capturedAt:Number(data.capturedAt) || Date.now(),
+          sessionId:Number(data.sessionId) || iterativeSessionId,
+          tasks:Object.freeze(Array.isArray(data.tasks) ? data.tasks.map(task => Object.freeze({ ...task })) : [])
+        }));
+      };
+      const errorHandler = () => finish(Object.freeze({ available:false, reason:'worker-error', requestedAt, capturedAt:Date.now(), sessionId:iterativeSessionId, tasks:Object.freeze([]) }));
+      const timer = setTimeout(() => finish(Object.freeze({ available:false, reason:'timeout', requestedAt, capturedAt:Date.now(), sessionId:iterativeSessionId, tasks:Object.freeze([]) })), Math.max(250, Number(timeout) || 3000));
+      entry = { drop };
+      auxPending.add(entry);
+      snapshotWorker.addEventListener('message', handler);
+      snapshotWorker.addEventListener('error', errorHandler);
+      try { snapshotWorker.postMessage({ action:ACTION.SNAPSHOT_STATE, reqId, sessionId:iterativeSessionId }); }
+      catch (_) { finish(Object.freeze({ available:false, reason:'post-failed', requestedAt, capturedAt:Date.now(), sessionId:iterativeSessionId, tasks:Object.freeze([]) })); }
+    });
+  }
+
   function hashSha512Manual(alg, bytes, key) {
     return new Promise((resolve) => {
         ensureWorker();
@@ -7915,6 +8048,7 @@ const Engine = (() => {
       get hasIterationSession() { return iterativeSessionActive; },
       resetMasterTask,
       setIterationTarget,
+      captureIterationSnapshot,
       cancelTask: (algId) => TaskManager.cancelAlg(algId),
       pauseTask: (algId) => { if (worker && iterativeSessionActive) worker.postMessage({ action: ACTION.PAUSE, algId, sessionId: iterativeSessionId }); },
       resumeTask: (algId) => { if (worker && iterativeSessionActive) worker.postMessage({ action: ACTION.RESUME, algId, sessionId: iterativeSessionId }); },
@@ -9462,7 +9596,6 @@ const UI = (() => {
   let updateJob = 0;
   let updateKind = '';
   let autoProgressRaf = 0;
-  let pendingAutoProgress = null;
   let eventCtl = null;
   const eventOff = [];
   const autoVerifyWaiters = new Map();
@@ -9506,19 +9639,28 @@ const UI = (() => {
     await abortWritable(writable);
   }
 
-  async function writeBlobWithFilePicker(blob, options, lifeEpoch, picker = window.showSaveFilePicker) {
+  async function writeBytesVerifiedWithFileHandle(fileHandle, bytes, lifeEpoch) {
     let writable = null;
     try {
-      const fileHandle = await picker(options);
-      if (!Life.same(lifeEpoch)) return false;
+      if (!fileHandle || !Life.same(lifeEpoch)) return { ok:false, verified:false, reason:'cancelled' };
       writable = await fileHandle.createWritable();
       openHandles.add(writable);
-      if (!Life.same(lifeEpoch)) { await discardOpenWritable(writable); return false; }
-      await writable.write(blob);
-      if (!Life.same(lifeEpoch)) { await discardOpenWritable(writable); return false; }
+      if (!Life.same(lifeEpoch)) { await discardOpenWritable(writable); return { ok:false, verified:false, reason:'lifecycle' }; }
+      await writable.write(bytes);
+      if (!Life.same(lifeEpoch)) { await discardOpenWritable(writable); return { ok:false, verified:false, reason:'lifecycle' }; }
       await writable.close();
       openHandles.delete(writable);
-      return Life.same(lifeEpoch);
+      writable = null;
+      if (!Life.same(lifeEpoch)) return { ok:false, verified:false, reason:'lifecycle' };
+      const savedFile = await fileHandle.getFile();
+      const savedBytes = new Uint8Array(await savedFile.arrayBuffer());
+      let equal = savedBytes.length === bytes.length;
+      if (equal) {
+        for (let i = 0; i < bytes.length; i++) {
+          if (savedBytes[i] !== bytes[i]) { equal = false; break; }
+        }
+      }
+      return { ok:equal, verified:equal, reason:equal ? '' : 'read-back-mismatch', size:savedBytes.length };
     } catch (e) {
       if (writable) await discardOpenWritable(writable);
       throw e;
@@ -10703,7 +10845,8 @@ function showToast(msg, duration = TOAST_DURATION) {
           total: target,
           historyCount: 0,
           historyLimit: 65535,
-          targetRevision
+          targetRevision,
+          hex:''
         });
       });
     };
@@ -10738,6 +10881,7 @@ function showToast(msg, duration = TOAST_DURATION) {
       task.historyCount = Math.max(0, Number(data.historyCount) || 0);
       task.historyLimit = Math.max(1, Number(data.historyLimit) || 65535);
       task.targetRevision = revision;
+      if (typeof data.hex === 'string') task.hex = data.hex;
       if (revision >= targetRevision) {
         targetRevision = revision;
         target = task.total;
@@ -10767,6 +10911,951 @@ function showToast(msg, duration = TOAST_DURATION) {
       get target() { return target; },
       get targetRevision() { return targetRevision; }
     };
+  })();
+
+  const SessionRecord = (() => {
+    const SESSION_SCHEMA = 'SONY-HASH-SESSION/2';
+    const RECORD_SCHEMA = 'SONY-HASH-RECORD/6';
+    const SUMMARY_SCHEMA = 'SONY-HASH-SUMMARY/4';
+    const RESULT_IDS = Object.freeze(['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','Base64-Enc','Base64-Dec','Base85-Enc','Base85-Dec']);
+    let sequenceSecond = '';
+    let sequence = 0;
+
+    const htmlEscape = value => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const textValue = value => value === null || value === undefined ? '' : String(value);
+    const bytesHex = hex => String(hex || '').replace(/(..)/g, '$1 ').trim();
+    const enabledFor = id => id === 'Base64-Enc' ? AppState.Base64Encode : id === 'Base64-Dec' ? AppState.Base64Decode : id === 'Base85-Enc' ? AppState.Base85Encode : id === 'Base85-Dec' ? AppState.Base85Decode : true;
+    const statusLabel = value => ({ complete:'完了', error:'エラー', not_reached:'未到達', not_configured:'なし', not_run:'なし', running:'実行中', paused:'一時停止', parked:'完了', terminated:'中止' }[value] || 'N/A');
+
+    function nextIdentity(requestedAt) {
+      const stamp = SysUtils.fmtJapanTimestamp(new Date(requestedAt + AppState.netTimeOffset));
+      if (stamp === sequenceSecond) sequence++;
+      else { sequenceSecond = stamp; sequence = 1; }
+      const suffix = String(sequence).padStart(3, '0');
+      return Object.freeze({ id:`${stamp}-${suffix}`, defaultName:`SONY-HASH-SESSION-${stamp}-${suffix}` });
+    }
+
+    function capturePanel() {
+      const keys = ['zess','crypto','manufacture','reference','system','font','device','processor','graphics','screen','viewport','browser','theme','power','connection','ip','geo','version','clock'];
+      const map = {};
+      for (const key of keys) {
+        const el = els.sysEl?.querySelector(`[data-sys-line="${key}"]`);
+        let text = el?.textContent || '';
+        if (!text && key === 'zess') text = 'ZESS：なし';
+        if (!text && key === 'crypto') text = window.crypto?.subtle ? 'Web Crypto：有効' : 'Web Crypto：なし';
+        if (key === 'crypto' && /無効/.test(text)) text = 'Web Crypto：なし';
+        map[key] = { text, visible:!!el && !el.hidden };
+      }
+      return map;
+    }
+
+    function captureUiResult(id) {
+      const el = document.getElementById(id);
+      const progress = document.getElementById(`prog-${id}`)?.textContent || '';
+      const history = document.getElementById(`history-${id}`)?.textContent || '';
+      const note = document.getElementById(`note-${id}`)?.textContent || '';
+      const binary = el?.dataset?.isBinary === '1';
+      const huge = el?.dataset?.isTextBlob === '1';
+      return {
+        id,
+        enabled:enabledFor(id),
+        empty:!el || el.dataset.empty === '1',
+        progress,
+        history,
+        note,
+        raw:textValue(el?.dataset?.raw),
+        output:textValue(el?.dataset?.output),
+        outputApplied:el?.dataset?.outputApplied || '',
+        outputOrder:textValue(el?.dataset?.outputOrder).split(',').filter(Boolean),
+        display:textValue(el?.textContent),
+        binary,
+        binaryByteLength:binary && el?._binBytes ? el._binBytes.length : 0,
+        binaryHex:binary && el?._binBytes ? OutputBaseFilter.bytesToHex(el._binBytes) : '',
+        fileInfo:el?._fileInfo ? { ...el._fileInfo } : null,
+        huge,
+        hugeText:huge && typeof el?._hugeString === 'string' ? el._hugeString : null,
+        hugeBlobSize:huge && el?._hugeBlob ? el._hugeBlob.size : null
+      };
+    }
+
+    function traceForHex(hex, context) {
+      const canonical = String(hex || '').toLowerCase();
+      if (!canonical || !/^[0-9a-f]+$/.test(canonical) || canonical.length % 2) return null;
+      const trace = OutputBaseFilter.traceApplyBytes(Core.hexToBytes(canonical), context);
+      return {
+        enabled:context.outputOrder.length > 0,
+        handoff:context.handoff,
+        requestedOrder:context.outputOrder.slice(),
+        original:canonical,
+        stages:[0,1].map(index => {
+          const stage = trace.stages[index];
+          if (stage) return { ...stage };
+          return { index:index + 1, mode:'', variant:'', handoff:context.handoff, inputByteLength:0, inputHex:'', status:index < context.outputOrder.length ? 'not_reached' : 'not_configured', output:'', error:'' };
+        }),
+        ok:trace.ok,
+        failedStage:trace.failedStage,
+        error:trace.error,
+        finalActual:trace.completedStages > 0 ? textValue(trace.value) : canonical,
+        finalDisplay:trace.completedStages > 0
+          ? OutputBaseFilter.formatDisplay(textValue(trace.value), { ...context, outputOrder:trace.completedOrder })
+          : Core.formatForDisplay(canonical, context.hexUpper, context.grouping, false, context.separator)
+      };
+    }
+
+    function buildHashResult(id, ui, runtime, context) {
+      const effectiveHex = String(runtime?.effectiveHex || runtime?.hex || (HashOutputFilter.isHashResult(id, ui.raw) ? ui.raw : '') || '').toLowerCase();
+      const rawHex = String(runtime?.rawHex || effectiveHex || '').toLowerCase();
+      const surfaceHex = effectiveHex && /^[0-9a-f]+$/.test(effectiveHex)
+        ? Core.formatForDisplay(effectiveHex, context.hexUpper, context.grouping, false, context.separator)
+        : '';
+      const outputBase = traceForHex(effectiveHex, context);
+      return {
+        id,
+        type:'hash',
+        enabled:true,
+        status:runtime?.state || (ui.empty ? 'not_run' : 'complete'),
+        runtime:runtime || null,
+        iterationRawHex:rawHex,
+        iterationRawBytes:bytesHex(rawHex),
+        effectiveHex,
+        effectiveBytes:bytesHex(effectiveHex),
+        originalHex:effectiveHex,
+        surfaceHex,
+        crc64RawByVariant:runtime?.crc64RawByVariant || null,
+        crc64EffectiveByVariant:runtime?.crc64EffectiveByVariant || null,
+        outputBase,
+        finalActual:outputBase?.finalActual || effectiveHex || ui.output || ui.raw,
+        finalDisplay:outputBase?.finalDisplay || surfaceHex || ui.display,
+        ui
+      };
+    }
+
+    function baseSourceBytes(ui) {
+      if (ui.binaryHex) return Core.hexToBytes(ui.binaryHex);
+      if (ui.hugeText !== null) return Core.utf8Encode(ui.hugeText);
+      if (ui.raw && !/^\[Binary Data:/.test(ui.raw)) return Core.utf8Encode(ui.raw);
+      return new Uint8Array(0);
+    }
+
+    function buildBaseResult(id, ui, context) {
+      const emptyStages = () => [0,1].map(index => ({
+        index:index + 1,
+        mode:'',
+        variant:'',
+        handoff:context.handoff,
+        inputByteLength:0,
+        inputHex:'',
+        status:'not_configured',
+        output:'',
+        error:''
+      }));
+      if (!ui.enabled) {
+        return {
+          id,
+          type:'base',
+          enabled:false,
+          status:'not_run',
+          sourceType:'text',
+          sourceByteLength:0,
+          sourceHex:'',
+          originalResult:'',
+          fileInfo:null,
+          outputBase:{
+            enabled:context.outputOrder.length > 0,
+            handoff:context.handoff,
+            requestedOrder:context.outputOrder.slice(),
+            original:'',
+            stages:emptyStages(),
+            ok:context.outputOrder.length === 0,
+            failedStage:'',
+            error:''
+          },
+          finalActual:'',
+          finalDisplay:'',
+          ui
+        };
+      }
+
+      const transient = [ui.progress, ui.display, ui.raw].some(value => /計算中|処理中/.test(String(value || '')));
+      const source = transient ? new Uint8Array(0) : baseSourceBytes(ui);
+      const trace = !transient && context.outputOrder.length > 0 && source.length ? OutputBaseFilter.traceApplyBytes(source, context) : null;
+      const stages = [0,1].map(index => {
+        const stage = trace?.stages?.[index];
+        if (stage) return { ...stage };
+        return { index:index + 1, mode:'', variant:'', handoff:context.handoff, inputByteLength:0, inputHex:'', status:index < context.outputOrder.length ? 'not_reached' : 'not_configured', output:'', error:'' };
+      });
+      return {
+        id,
+        type:'base',
+        enabled:true,
+        status:transient ? 'running' : (ui.empty ? 'not_run' : 'complete'),
+        sourceType:ui.binary ? 'binary' : ui.huge ? 'huge-text' : 'text',
+        sourceByteLength:source.length || (!transient ? (ui.hugeBlobSize || 0) : 0),
+        sourceHex:source.length ? OutputBaseFilter.bytesToHex(source) : '',
+        originalResult:transient ? '' : (ui.hugeText !== null ? ui.hugeText : ui.raw),
+        fileInfo:ui.fileInfo,
+        outputBase:{
+          enabled:context.outputOrder.length > 0,
+          handoff:context.handoff,
+          requestedOrder:context.outputOrder.slice(),
+          original:transient ? '' : (ui.binary ? (source.length ? OutputBaseFilter.bytesToHex(source) : 'N/A') : (ui.hugeText !== null ? ui.hugeText : ui.raw)),
+          stages,
+          ok:transient ? false : (trace ? trace.ok : context.outputOrder.length === 0),
+          failedStage:trace?.failedStage || '',
+          error:trace?.error || ''
+        },
+        finalActual:transient ? '' : (ui.output || ui.hugeText || ui.raw),
+        finalDisplay:ui.display,
+        ui
+      };
+    }
+
+    function captureMainState(requestedAt) {
+      const systemReport = SystemMonitor.reportSnapshot();
+      const outputContext = Object.freeze({
+        outputOrder:AppState.outputBaseOrder.slice(), handoff:AppState.outputBaseHandoff,
+        base85Variant:AppState.base85Variant, hexUpper:AppState.hexUpper,
+        grouping:AppState.grouping, separator:AppState.separator
+      });
+      const uiResults = Object.fromEntries(RESULT_IDS.map(id => [id, captureUiResult(id)]));
+      const autoTest = AutoTestReport.snapshot();
+      const zessStorage = window.__ZESS_MODE__ ? Security.getStorageIsolationStatus() : null;
+      return {
+        requestedAt,
+        outputContext,
+        uiResults,
+        app:{
+          version:APP_VERSION,
+          platform:CAPACITOR_PLATFORM,
+          native:IS_CAPACITOR_NATIVE,
+          android:IS_CAPACITOR_ANDROID,
+          zess:!!window.__ZESS_MODE__,
+          webCrypto:!!window.crypto?.subtle,
+          netTimeOffset:Number(AppState.netTimeOffset) || 0,
+          zessStorage:zessStorage ? { ...zessStorage } : null
+        },
+        settings:{
+          visual:{ system:AppState.visualSystem, display:AppState.visualDisplay, background:AppState.visualBackground, optionsOpen:AppState.showTheme },
+          normalization:AppState.normalization,
+          sanitizeText:AppState.sanitizeText,
+          hexUpper:AppState.hexUpper,
+          grouping:AppState.grouping,
+          groupingOptionsOpen:AppState.showGrouping,
+          separator:AppState.separator,
+          copyMode:AppState.copyMode,
+          iterations:Number(AppState.iterations) || 1,
+          iterMode:AppState.iterMode,
+          salt:{ enabled:AppState.showSalt, value:AppState.showSalt ? AppState.salt : null },
+          hmac:{ enabled:AppState.showHmac, key:AppState.showHmac ? AppState.hmacKey : null },
+          crc64Variant:AppState.crc64Variant,
+          base:{
+            groupOpen:AppState.showBaseGroup,
+            base64Encode:AppState.Base64Encode,
+            base64Decode:AppState.Base64Decode,
+            base64Strict:AppState.base64Strict,
+            base85Encode:AppState.Base85Encode,
+            base85Decode:AppState.Base85Decode,
+            base85Variant:AppState.base85Variant,
+            fileAutoDetect:AppState.baseFileDetect
+          },
+          outputBase:{
+            optionsOpen:AppState.showOutputBase,
+            enabled:AppState.outputBaseOrder.length > 0,
+            handoff:AppState.outputBaseHandoff,
+            order:AppState.outputBaseOrder.slice(),
+            base64:AppState.outputBaseOrder.includes('base64'),
+            base85:AppState.outputBaseOrder.includes('base85')
+          },
+          compare:{
+            panelOpen:AppState.showCompare,
+            input:els.compareIn?.value || '',
+            continuousEnabled:AppState.continuousCompareEnabled,
+            continuousTarget:AppState.continuousCompareTarget ? { ...AppState.continuousCompareTarget } : null,
+            continuousHit:AppState.continuousCompareHit ? { ...AppState.continuousCompareHit } : null
+          },
+          test:{ panelOpen:AppState.showTest, vector:AppState.testVector, verifyArmed:AppState.testVerifyArmed },
+          internet:{ mode:InternetGateway.currentMode, label:InternetGateway.modeLabel() }
+        },
+        input:{
+          type:AppState.currentFile ? 'file' : 'text',
+          entered:AppState.currentFile ? null : (AppState.inputEntered || els.inputEl.value || ''),
+          sanitized:AppState.currentFile ? null : (AppState.inputSanitized || els.inputEl.value || ''),
+          normalized:AppState.currentFile ? null : (AppState.inputNormalized || els.inputEl.value || ''),
+          visible:els.inputEl.value || '',
+          graphemes:AppState.currentFile ? null : Core.countGraphemes(els.inputEl.value || ''),
+          entropy:Number.isFinite(AppState.currentEntropy) ? AppState.currentEntropy : null,
+          file:AppState.currentFile ? { name:AppState.currentFile.name, size:AppState.currentFile.size, type:AppState.currentFile.type || '', lastModified:AppState.currentFile.lastModified || 0 } : null
+        },
+        calculationSession:AppState.calculationSessionConfig ? JSON.parse(JSON.stringify(AppState.calculationSessionConfig)) : null,
+        ui:{
+          status:AppState.currentStatus || '待機',
+          meta:els.metaEl?.textContent || '',
+          fullscreen:!!(document.fullscreenElement || document.webkitFullscreenElement),
+          results:uiResults
+        },
+        system:{ structured:systemReport.snapshot, observed:systemReport.observed, panel:capturePanel() },
+        network:{ audit:InternetGateway.auditSnapshot(), stats:InternetGateway.auditStats() },
+        autoTest:autoTest || null
+      };
+    }
+
+    async function capture(identity, requestedAt) {
+      const main = captureMainState(requestedAt);
+      const runtime = await Engine.captureIterationSnapshot();
+      const runtimeById = Object.fromEntries((runtime.tasks || []).map(task => [task.algId, task]));
+      const results = {};
+      for (const id of RESULT_IDS) {
+        results[id] = InternalContract.HASH_IDS.includes(id)
+          ? buildHashResult(id, main.uiResults[id], runtimeById[id] || null, main.outputContext)
+          : buildBaseResult(id, main.uiResults[id], main.outputContext);
+      }
+      const capturedAt = Date.now();
+      const running = (runtime.tasks || []).some(task => task.state === 'running');
+      const paused = (runtime.tasks || []).some(task => task.state === 'paused');
+      const snapshot = {
+        schema:{ session:SESSION_SCHEMA, record:RECORD_SCHEMA },
+        identity:{ id:identity.id, requestedAt, capturedAt, runtimeCapturedAt:runtime.capturedAt, captureLatencyMs:Math.max(0, (runtime.capturedAt || capturedAt) - requestedAt), type:running ? 'LIVE' : paused ? 'PAUSED' : 'FINAL' },
+        app:main.app,
+        settings:main.settings,
+        input:main.input,
+        calculationSession:main.calculationSession,
+        runtime,
+        results,
+        ui:main.ui,
+        system:main.system,
+        network:main.network,
+        autoTest:main.autoTest
+      };
+      deepFreeze(snapshot);
+      const issues = validateSnapshot(snapshot);
+      if (issues.length) throw new Error(`Session Snapshot Validation: ${issues.join(' / ')}`);
+      return snapshot;
+    }
+
+    function deepFreeze(value) {
+      if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
+      Object.freeze(value);
+      for (const child of Object.values(value)) deepFreeze(child);
+      return value;
+    }
+
+    function validateSnapshot(snapshot) {
+      const issues = [];
+      if (snapshot?.schema?.session !== SESSION_SCHEMA) issues.push('session schema');
+      if (snapshot?.schema?.record !== RECORD_SCHEMA) issues.push('record schema');
+      if (!snapshot?.identity?.id) issues.push('snapshot id');
+      if (!snapshot?.settings?.hmac || !Object.prototype.hasOwnProperty.call(snapshot.settings.hmac, 'key')) issues.push('hmac');
+      if (!snapshot?.settings?.salt || !Object.prototype.hasOwnProperty.call(snapshot.settings.salt, 'value')) issues.push('salt');
+      for (const id of RESULT_IDS) {
+        const result = snapshot?.results?.[id];
+        if (!result) { issues.push(`result:${id}`); continue; }
+        if (!Array.isArray(result.outputBase?.stages) || result.outputBase.stages.length !== 2) issues.push(`stages:${id}`);
+      }
+      const panelKeys = Object.keys(snapshot?.system?.panel || {});
+      if (panelKeys.length !== 19) issues.push('system panel');
+      return issues;
+    }
+
+    async function sha256Hex(bytes) {
+      try { return await Core.digestHex('SHA-256', bytes); }
+      catch (_) { return null; }
+    }
+
+    const normalizeVisibleText = value => {
+      if (value === null || value === undefined) return 'N/A';
+      const text = String(value);
+      if (!text) return 'N/A';
+      return text
+        .replace(/\u672a\u53d6\u5f97/g, 'N/A')
+        .replace(/GPU取得不可/g, 'N/A')
+        .replace(/取得不可/g, 'N/A')
+        .replace(/不明/g, 'N/A')
+        .replace(/\bUNAVAILABLE\b/gi, 'N/A')
+        .replace(/\bUNKNOWN\b/gi, 'N/A');
+    };
+    const displayValue = value => value === null || value === undefined ? 'N/A' : value === '' ? '（空文字列）' : String(value);
+    const enabledLabel = value => value ? '有効' : 'なし';
+    const normalizationLabel = value => value === 'none' ? 'なし' : String(value || 'N/A').toUpperCase();
+    const iterModeLabel = value => value === 'raw' ? '標準（Raw）' : value === 'hex' ? '手渡し（Hex）' : value === 'xor' ? 'XOR累積（XOR）' : 'N/A';
+    const internetLabel = value => value === 'オフ' ? 'なし' : value === 'オン' ? '有効' : value === '日時' ? '日時のみ' : normalizeVisibleText(value);
+    const handoffLabel = value => value === 'hex' ? '手渡し（Hex）' : value === 'raw' ? '標準（Raw）' : 'N/A';
+    const snapshotTypeLabel = value => value === 'LIVE' ? '実行中' : value === 'PAUSED' ? '一時停止' : value === 'FINAL' ? '完了' : 'N/A';
+    const sourceTypeLabel = value => value === 'binary' ? 'バイナリ' : value === 'huge-text' ? '巨大テキスト' : value === 'text' ? 'テキスト' : 'N/A';
+    const outputOrderLabel = order => Array.isArray(order) && order.length ? order.map(mode => mode === 'base85' ? 'Base85' : 'Base64').join(' → ') : 'なし';
+    const kv = (label, value, cls='') => `<div class="kv"><div class="k">${htmlEscape(label)}</div><div class="v ${cls}">${htmlEscape(displayValue(value))}</div></div>`;
+    const valueBlock = (label, value, recordInput = '') => `<div class="value-block"${recordInput ? ` data-record-input="${htmlEscape(recordInput)}"` : ''}><div class="value-label">${htmlEscape(label)}</div><pre>${htmlEscape(displayValue(value))}</pre></div>`;
+    const status = value => `<span class="status">${htmlEscape(statusLabel(value))}</span>`;
+
+    const SYSTEM_PANEL_LABELS = Object.freeze({
+      zess:'ZESS', crypto:'Web Crypto', manufacture:'製造', reference:'参照情報', system:'システム', font:'フォント',
+      device:'デバイス', processor:'プロセッサ', graphics:'グラフィックス', screen:'画面', viewport:'ビューポート',
+      browser:'ブラウザ', theme:'テーマ', power:'電源', connection:'接続', ip:'IP', geo:'位置情報', version:'バージョン', clock:'時計'
+    });
+
+    const recordDate = (snapshot, value, offset = snapshot?.app?.netTimeOffset) => {
+      const time = Number(value);
+      return Number.isFinite(time) && time > 0
+        ? SysUtils.fmtJapaneseDate(new Date(time + (Number(offset) || 0)))
+        : 'N/A';
+    };
+    const inputTypeLabel = value => value === 'file' ? 'ファイル' : value === 'text' ? 'テキスト' : 'N/A';
+    const gatewayModeLabel = value => value === 'off' ? 'なし' : value === 'time' ? '日時のみ' : value === 'on' ? '有効' : 'N/A';
+    const gatewayTypeLabel = value => ({ policy:'通信ポリシー', transfer:'通信完了', failed:'通信失敗', denied:'通信拒否' }[value] || '通信記録');
+    const gatewayFailureLabel = value => ({
+      policy:'ポリシーにより拒否', 'transport-unavailable':'通信機能なし', 'capability-unavailable':'通信許可を生成できません',
+      timeout:'タイムアウト', lifecycle:'セッション終了', 'external-abort':'外部中止', 'transport-abort':'通信中止',
+      transport:'通信エラー', http:'HTTPエラー', parse:'応答解析エラー'
+    }[value] || (value ? normalizeVisibleText(value) : 'N/A'));
+    const autoTestStatusLabel = value => ({ running:'実行中', passed:'完了', failed:'失敗', aborted:'中止', error:'エラー' }[value] || 'N/A');
+
+    function calculationEntries(snapshot) {
+      const c = snapshot.calculationSession;
+      if (!c) return [];
+      const rows = [
+        ['入力種別', inputTypeLabel(c.inputType)],
+        ['計算開始日時', recordDate(snapshot, c.startedAt, c.netTimeOffset)],
+        ['入力バイト数', Number.isFinite(Number(c.sourceByteLength)) ? `${c.sourceByteLength} bytes` : 'N/A'],
+        ['反復回数', c.iterations],
+        ['CRC64形式', c.crc64Variant]
+      ];
+      if (c.inputType !== 'file' && c.normalization !== 'none') rows.push(['正規化', normalizationLabel(c.normalization)]);
+      if (c.inputType !== 'file' && c.sanitizeText) rows.push(['不可視文字・改行整形', '有効']);
+      if (c.saltEnabled) rows.push(['Salt', '有効'], ['Salt 値', c.salt]);
+      if (c.hmacEnabled) rows.push(['HMAC', '有効'], ['HMAC Key', c.hmacKey]);
+      if (Number(c.iterations) > 1) rows.push(['反復方式', iterModeLabel(c.iterMode)]);
+      if (c.base64Encode) rows.push(['Base64 Enc', '有効']);
+      if (c.base64Decode) rows.push(['Base64 Dec', '有効'], ['Base64判定', c.base64Strict ? '厳格' : '寛容']);
+      if (c.base85Encode) rows.push(['Base85 Enc', '有効']);
+      if (c.base85Decode) rows.push(['Base85 Dec', '有効']);
+      if (c.base85Encode || c.base85Decode) rows.push(['Base85形式', c.base85Variant]);
+      if (c.baseFileDetect && (c.base64Decode || c.base85Decode)) rows.push(['Base自動判別', '有効']);
+      return rows;
+    }
+
+    function currentSettingEntries(snapshot) {
+      const s = snapshot.settings;
+      const rows = [
+        ['反復回数', s.iterations],
+        ['CRC64形式', s.crc64Variant]
+      ];
+      if (s.normalization !== 'none') rows.push(['正規化', normalizationLabel(s.normalization)]);
+      if (s.sanitizeText) rows.push(['不可視文字・改行整形', '有効']);
+      if (s.salt.enabled) rows.push(['Salt', '有効'], ['Salt 値', s.salt.value]);
+      if (s.hmac.enabled) rows.push(['HMAC', '有効'], ['HMAC Key', s.hmac.key]);
+      if (Number(s.iterations) > 1) rows.push(['反復方式', iterModeLabel(s.iterMode)]);
+      if (s.hexUpper) rows.push(['HEX表記', '大文字']);
+      if (Number(s.grouping) > 0) rows.push(['区切り', `${s.grouping}文字`], ['区切り文字', JSON.stringify(s.separator)]);
+      if (s.copyMode === 'visual') rows.push(['コピー対象', '表示値']);
+      if (s.base.base64Encode) rows.push(['Base64 Enc', '有効']);
+      if (s.base.base64Decode) rows.push(['Base64 Dec', '有効'], ['Base64判定', s.base.base64Strict ? '厳格' : '寛容']);
+      if (s.base.base85Encode) rows.push(['Base85 Enc', '有効']);
+      if (s.base.base85Decode) rows.push(['Base85 Dec', '有効']);
+      if (s.base.base85Encode || s.base.base85Decode || s.outputBase.order.includes('base85')) rows.push(['Base85形式', s.base.base85Variant]);
+      if (s.base.fileAutoDetect && (s.base.base64Decode || s.base.base85Decode)) rows.push(['Base自動判別', '有効']);
+      if (s.outputBase.enabled) rows.push(['すべてBASE化', '有効'], ['受け渡し', handoffLabel(s.outputBase.handoff)], ['適用順序', outputOrderLabel(s.outputBase.order)]);
+      if (s.compare.panelOpen) rows.push(['一致判定', '有効']);
+      if (s.compare.continuousEnabled) rows.push(['連続一致判定', '有効']);
+      if (s.test.panelOpen || s.test.verifyArmed) rows.push(['テストベクトル', s.test.vector]);
+      return rows;
+    }
+
+    function visibleResultIds(snapshot) {
+      return RESULT_IDS.filter(id => {
+        const result = snapshot.results[id];
+        return result?.type === 'hash' || result?.enabled;
+      });
+    }
+
+    function calculationDifferences(snapshot) {
+      const c = snapshot.calculationSession;
+      const s = snapshot.settings;
+      if (!c) return [];
+      const rows = [];
+      const add = (label, startRaw, currentRaw, startText, currentText) => {
+        if (JSON.stringify(startRaw) !== JSON.stringify(currentRaw)) rows.push({ label, start:startText, current:currentText });
+      };
+      add('入力種別', c.inputType, snapshot.input.type, inputTypeLabel(c.inputType), inputTypeLabel(snapshot.input.type));
+      if (c.inputType !== 'file') {
+        add('正規化', c.normalization, s.normalization, normalizationLabel(c.normalization), normalizationLabel(s.normalization));
+        add('不可視文字・改行整形', c.sanitizeText, s.sanitizeText, enabledLabel(c.sanitizeText), enabledLabel(s.sanitizeText));
+      }
+      add('Salt', [c.saltEnabled,c.salt], [s.salt.enabled,s.salt.value], c.saltEnabled ? `有効 / ${displayValue(c.salt)}` : 'なし', s.salt.enabled ? `有効 / ${displayValue(s.salt.value)}` : 'なし');
+      add('HMAC', [c.hmacEnabled,c.hmacKey], [s.hmac.enabled,s.hmac.key], c.hmacEnabled ? `有効 / ${displayValue(c.hmacKey)}` : 'なし', s.hmac.enabled ? `有効 / ${displayValue(s.hmac.key)}` : 'なし');
+      add('反復回数', c.iterations, s.iterations, String(c.iterations), String(s.iterations));
+      if (Number(c.iterations) > 1 || Number(s.iterations) > 1) add('反復方式', c.iterMode, s.iterMode, iterModeLabel(c.iterMode), iterModeLabel(s.iterMode));
+      add('CRC64形式', c.crc64Variant, s.crc64Variant, c.crc64Variant, s.crc64Variant);
+      add('Base64 Enc', c.base64Encode, s.base.base64Encode, enabledLabel(c.base64Encode), enabledLabel(s.base.base64Encode));
+      add('Base64 Dec', c.base64Decode, s.base.base64Decode, enabledLabel(c.base64Decode), enabledLabel(s.base.base64Decode));
+      if (c.base64Decode || s.base.base64Decode) add('Base64判定', c.base64Strict, s.base.base64Strict, c.base64Strict ? '厳格' : '寛容', s.base.base64Strict ? '厳格' : '寛容');
+      add('Base85 Enc', c.base85Encode, s.base.base85Encode, enabledLabel(c.base85Encode), enabledLabel(s.base.base85Encode));
+      add('Base85 Dec', c.base85Decode, s.base.base85Decode, enabledLabel(c.base85Decode), enabledLabel(s.base.base85Decode));
+      if (c.base85Encode || c.base85Decode || s.base.base85Encode || s.base.base85Decode) add('Base85形式', c.base85Variant, s.base.base85Variant, c.base85Variant, s.base.base85Variant);
+      if (c.base64Decode || c.base85Decode || s.base.base64Decode || s.base.base85Decode) add('Base自動判別', c.baseFileDetect, s.base.fileAutoDetect, enabledLabel(c.baseFileDetect), enabledLabel(s.base.fileAutoDetect));
+      return rows;
+    }
+
+    function renderCalculationSession(snapshot) {
+      const entries = calculationEntries(snapshot);
+      if (!entries.length) return '<div class="none">計算開始時設定：なし</div>';
+      const diffs = calculationDifferences(snapshot);
+      const diffBlock = diffs.length
+        ? `<details class="detail-block"><summary>現在設定との差異（${diffs.length}件）</summary><table><thead><tr><th>項目</th><th>計算開始時</th><th>保存時</th></tr></thead><tbody>${diffs.map(item => `<tr><th>${htmlEscape(item.label)}</th><td>${htmlEscape(displayValue(item.start))}</td><td>${htmlEscape(displayValue(item.current))}</td></tr>`).join('')}</tbody></table></details>`
+        : '';
+      return `<div class="subsection"><h3>結果生成時の設定</h3><div class="grid">${entries.map(([label,value]) => kv(label,value)).join('')}</div>${diffBlock}</div>`;
+    }
+
+    function renderCrc64Variants(result) {
+      const raw = result.crc64RawByVariant;
+      const effective = result.crc64EffectiveByVariant;
+      if (!raw && !effective) return '';
+      const variants = Array.from(new Set([...Object.keys(raw || {}), ...Object.keys(effective || {})]));
+      return `<div class="subsection"><h4>CRC64 各形式</h4><table><thead><tr><th>形式</th><th>RAW</th><th>有効値</th></tr></thead><tbody>${variants.map(variant => `<tr><th>${htmlEscape(variant)}</th><td class="mono-cell">${htmlEscape(displayValue(raw?.[variant]))}</td><td class="mono-cell">${htmlEscape(displayValue(effective?.[variant]))}</td></tr>`).join('')}</tbody></table></div>`;
+    }
+
+    function renderGateway(snapshot) {
+      const audit = Array.isArray(snapshot.network?.audit) ? snapshot.network.audit : [];
+      const stats = snapshot.network?.stats || null;
+      const header = `<div class="grid">${kv('通信モード', internetLabel(snapshot.settings.internet.label))}${kv('保存件数', audit.length)}${stats ? kv('累計記録数', stats.total) + kv('省略件数', stats.dropped) + kv('保持上限', stats.limit) : ''}</div>`;
+      if (!audit.length) return `${header}<div class="none">通信記録：なし</div>`;
+      const events = audit.map(entry => {
+        const type = gatewayTypeLabel(entry.type);
+        const outcome = entry.type === 'transfer' ? '完了' : entry.type === 'failed' ? '失敗' : entry.type === 'denied' ? '拒否' : gatewayModeLabel(entry.mode);
+        const main = [
+          ['番号', `#${String(entry.seq ?? '').padStart(3, '0')}`],
+          ['日時', recordDate(snapshot, entry.at)],
+          ['種類', type],
+          ['状態', outcome],
+          ['用途', entry.purpose || (entry.type === 'policy' ? '通信ポリシー設定' : 'N/A')],
+          ['接続先', entry.url ? (() => { try { return new URL(entry.url).host; } catch (_) { return entry.url; } })() : 'なし'],
+          ['通信方式', entry.method || 'なし'],
+          ['所要時間', Number.isFinite(Number(entry.durationMs)) ? `${(Number(entry.durationMs) / 1000).toFixed(3)} 秒` : 'なし'],
+          ['HTTP状態', entry.status === null || entry.status === undefined ? 'N/A' : entry.status],
+          ['失敗理由', entry.type === 'failed' || entry.type === 'denied' ? gatewayFailureLabel(entry.failureKind) : 'なし']
+        ];
+        const requestBytes = entry.requestBytes;
+        const responseBytes = entry.responseBytes;
+        const technical = [
+          ['ルートID', entry.type === 'policy' ? '対象外' : (entry.routeId || 'N/A')],
+          ['通信レベル', entry.type === 'policy' ? '対象外' : (entry.levelLabel || entry.level || 'N/A')],
+          ['ポリシー世代', entry.type === 'policy' ? '対象外' : (entry.policyEpoch ?? 'N/A')],
+          ['内部要求ID', entry.type === 'policy' ? '対象外' : (entry.ticketId || 'N/A')],
+          ['送信バイト数', entry.type === 'policy' ? '対象外' : (requestBytes ?? 'N/A')],
+          ['受信バイト数', entry.type === 'policy' ? '対象外' : entry.type === 'transfer' ? (responseBytes ?? 'N/A') : 'N/A'],
+          ['送信Digest', entry.type === 'policy' ? '対象外' : Number(requestBytes) === 0 ? 'なし' : (entry.requestDigest || 'N/A')],
+          ['受信Digest', entry.type === 'policy' ? '対象外' : entry.type === 'transfer' ? (entry.responseDigest || 'N/A') : 'N/A'],
+          ['URL', entry.type === 'policy' ? '対象外' : (entry.url || 'N/A')]
+        ];
+        return `<article class="event"><div class="event-head"><strong>${htmlEscape(`#${String(entry.seq ?? '').padStart(3, '0')} / ${type}`)}</strong><span class="status">${htmlEscape(outcome)}</span></div><div class="grid compact">${main.map(([label,value]) => kv(label,value)).join('')}</div><details class="detail-block technical"><summary>技術詳細を表示</summary><div class="grid compact">${technical.map(([label,value]) => kv(label,value)).join('')}</div></details></article>`;
+      }).join('');
+      return `${header}${events}`;
+    }
+
+    function renderAutoTest(snapshot) {
+      const report = snapshot.autoTest;
+      if (!report) return '<div class="none">自動検証：なし</div>';
+      const visible = Array.isArray(report.visible) ? report.visible : [];
+      const system = Array.isArray(report.system) ? report.system : [];
+      const internal = Array.isArray(report.internal) ? report.internal : [];
+      const visibleTotal = visible.reduce((sum,item) => sum + (Number(item.total) || 0), 0);
+      const visiblePassed = visible.reduce((sum,item) => sum + (Number(item.passed) || 0), 0);
+      const visibleSkipped = visible.reduce((sum,item) => sum + (Number(item.skipped) || 0), 0);
+      const visibleFailed = visible.reduce((sum,item) => sum + (Array.isArray(item.failed) ? item.failed.length : 0), 0);
+      const systemTotal = system.reduce((sum,item) => sum + (Number(item.total) || 0), 0);
+      const systemPassed = system.reduce((sum,item) => sum + (Number(item.passed) || 0), 0);
+      const systemFailed = system.reduce((sum,item) => sum + (Array.isArray(item.failed) ? item.failed.length : 0), 0);
+      const internalSkipped = internal.filter(item => item.skip).length;
+      const internalPassed = internal.filter(item => !item.skip && item.ok).length;
+      const internalFailed = internal.filter(item => !item.skip && !item.ok).length;
+      const failures = [
+        ...visible.flatMap(item => (item.failed || []).map(text => `${item.label || item.key}: ${text}`)),
+        ...system.flatMap(item => (item.failed || []).map(text => `${item.name}: ${text}`)),
+        ...internal.filter(item => !item.skip && !item.ok).map(item => `${item.group ? `${item.group} / ` : ''}${item.name}${item.detail ? `: ${item.detail}` : ''}`)
+      ];
+      const summary = `<div class="grid">${kv('状態', autoTestStatusLabel(report.status))}${kv('開始日時', recordDate(snapshot, report.startedAt))}${kv('終了日時', report.endedAt ? recordDate(snapshot, report.endedAt) : 'なし')}${kv('可視テスト', `${visiblePassed}/${visibleTotal} 成功 / ${visibleSkipped} スキップ / ${visibleFailed} 失敗`)}${kv('システムテスト', `${systemPassed}/${systemTotal} 成功 / ${systemFailed} 失敗`)}${kv('内部テスト', `${internalPassed}/${internal.length} 成功 / ${internalSkipped} スキップ / ${internalFailed} 失敗`)}${kv('エラー', report.error || 'なし')}</div>`;
+      const failureBlock = failures.length ? `<div class="value-block"><div class="value-label">失敗内容</div><pre>${htmlEscape(failures.join('\n'))}</pre></div>` : '<div class="notice compact-notice">失敗項目：なし</div>';
+      const visibleRows = visible.length ? `<h4>可視テスト</h4><table><thead><tr><th>項目</th><th>状態</th><th>成功</th><th>スキップ</th><th>失敗</th></tr></thead><tbody>${visible.map(item => `<tr><th>${htmlEscape(item.label || item.key || 'N/A')}</th><td>${item.ok ? '完了' : '失敗'}</td><td>${htmlEscape(`${item.passed}/${item.total}`)}</td><td>${htmlEscape(item.skipped)}</td><td>${htmlEscape((item.failed || []).length)}</td></tr>`).join('')}</tbody></table>` : '<div class="none">可視テスト：なし</div>';
+      const systemRows = system.length ? `<h4>システムテスト</h4><table><thead><tr><th>項目</th><th>状態</th><th>成功</th><th>失敗</th></tr></thead><tbody>${system.map(item => `<tr><th>${htmlEscape(item.name || 'N/A')}</th><td>${item.ok ? '完了' : '失敗'}</td><td>${htmlEscape(`${item.passed}/${item.total}`)}</td><td>${htmlEscape((item.failed || []).length)}</td></tr>`).join('')}</tbody></table>` : '<div class="none">システムテスト：なし</div>';
+      const internalRows = internal.length ? `<h4>内部テスト</h4><table><thead><tr><th>グループ</th><th>項目</th><th>状態</th><th>詳細</th></tr></thead><tbody>${internal.map(item => `<tr><td>${htmlEscape(item.group || 'なし')}</td><th>${htmlEscape(item.name || 'N/A')}</th><td>${item.skip ? 'スキップ' : item.ok ? '完了' : '失敗'}</td><td>${htmlEscape(item.detail || 'なし')}</td></tr>`).join('')}</tbody></table>` : '<div class="none">内部テスト：なし</div>';
+      const resetRows = `<h4>リセット検証</h4><div class="grid compact">${kv('非表示リセット検証', report.preHiddenReset ? (report.preHiddenReset.ok ? '完了' : '失敗') : 'なし')}${kv('最終リセット検証', report.finalReset ? (report.finalReset.ok ? '完了' : '失敗') : 'なし')}</div>`;
+      return `${summary}${failureBlock}<details class="detail-block technical"><summary>検証詳細を表示</summary><div class="subsection">${visibleRows}${systemRows}${internalRows}${resetRows}</div></details>`;
+    }
+
+    function renderStage(stage) {
+      const title = stage.mode ? `${stage.mode === 'base64' ? 'Base64' : 'Base85'}${stage.variant ? ` / ${stage.variant}` : ''}` : 'なし';
+      const outputReady = stage.status === 'complete' || stage.output !== '';
+      return `<div class="stage"><div class="stage-head"><strong>STAGE ${stage.index}</strong>${status(stage.status)}<span>${htmlEscape(title)}</span></div><div class="grid compact">${kv('引き渡し', handoffLabel(stage.handoff))}${kv('入力バイト数', stage.inputByteLength || (stage.status === 'complete' ? 0 : 'なし'))}</div>${stage.inputHex ? valueBlock('入力 HEX', stage.inputHex) : ''}${outputReady ? valueBlock('出力', stage.output) : '<div class="none">出力：なし</div>'}${stage.error ? valueBlock('エラー', stage.error) : ''}</div>`;
+    }
+
+    function renderResult(result) {
+      const runtime = result.runtime;
+      const head = `<div class="result-head"><h3>${htmlEscape(result.id)}</h3>${status(result.status)}<span>${result.enabled ? '有効' : 'なし'}</span></div>`;
+      const runtimeGrid = result.type === 'hash'
+        ? `<div class="grid compact">${kv('反復', runtime ? `${runtime.currentIter} / ${runtime.target}` : (result.ui.progress || statusLabel(result.status)))}${kv('履歴', runtime ? `${runtime.historyCount} / ${runtime.historyLimit}` : (result.ui.history || 'なし'))}${kv('実行状態', runtime ? statusLabel(runtime.state) : statusLabel(result.status))}${kv('保存時UI進捗', result.ui.progress || 'なし')}</div>`
+        : `<div class="grid compact">${kv('状態', statusLabel(result.status))}${kv('元データ種別', result.status === 'running' ? 'N/A' : (result.enabled && result.status !== 'not_run' ? sourceTypeLabel(result.sourceType) : 'なし'))}${kv('元データバイト数', result.status === 'running' ? 'N/A' : (result.enabled && result.status !== 'not_run' ? result.sourceByteLength : 'なし'))}${kv('保存時UI進捗', result.ui.progress || 'なし')}</div>`;
+      let body = '';
+      if (result.type === 'hash') {
+        body += valueBlock('反復 RAW バイト', result.iterationRawBytes || (result.status === 'not_run' ? 'なし' : 'N/A'));
+        body += valueBlock('反復 RAW HEX', result.iterationRawHex || (result.status === 'not_run' ? 'なし' : 'N/A'));
+        body += valueBlock('有効バイト', result.effectiveBytes || (result.status === 'not_run' ? 'なし' : 'N/A'));
+        body += valueBlock('原始 HEX', result.originalHex || (result.status === 'not_run' ? 'なし' : 'N/A'));
+        body += valueBlock('表面 HEX', result.surfaceHex || (result.status === 'not_run' ? 'なし' : 'N/A'));
+      } else {
+        body += valueBlock('原始結果', result.status === 'running' ? 'N/A' : (result.enabled && result.status !== 'not_run' ? result.originalResult : 'なし'));
+        if (result.sourceHex) body += valueBlock('元データ HEX', result.sourceHex);
+      }
+      const ob = result.outputBase;
+      if (ob.enabled && result.enabled) {
+        body += `<section class="pipeline"><div class="pipeline-title"><strong>すべてBASE化</strong><span>${htmlEscape(handoffLabel(ob.handoff))} / ${htmlEscape(outputOrderLabel(ob.requestedOrder))}</span></div>${valueBlock('原始', ob.original || (result.type === 'hash' ? result.originalHex : result.originalResult) || 'なし')}<div class="arrow">↓</div>${renderStage(ob.stages[0])}<div class="arrow">↓</div>${renderStage(ob.stages[1])}</section>`;
+      }
+      body += valueBlock('最終実値', result.status === 'running' ? 'N/A' : (result.enabled && result.status !== 'not_run' ? result.finalActual : 'なし'));
+      body += valueBlock('最終表示', result.enabled && result.status !== 'not_run' ? result.finalDisplay : 'なし');
+      body += valueBlock('保存時 UI 表示', result.ui.display || 'なし');
+      body += valueBlock('保存時注記', result.ui.note || 'なし');
+      if (result.id === 'CRC64') body += renderCrc64Variants(result);
+      return `<article class="result-card">${head}${runtimeGrid}${body}</article>`;
+    }
+
+    function markdownFence(value) {
+      const text = displayValue(value);
+      const maxTicks = (text.match(/`+/g) || []).reduce((max, part) => Math.max(max, part.length), 0);
+      return '`'.repeat(Math.max(3, maxTicks + 1));
+    }
+
+    function markdownBlock(label, value) {
+      const text = displayValue(value);
+      const fence = markdownFence(text);
+      return `### ${label}\n\n${fence}text\n${text}\n${fence}\n`;
+    }
+
+    const markdownInline = value => displayValue(value).replace(/\\/g, '\\\\').replace(/([`*_\[\]<>])/g, '\\$1');
+
+    function markdownResultName(id, settings) {
+      if (settings.hmac.enabled && !id.includes('Base') && !id.includes('CRC')) return `HMAC-${id}`;
+      return id;
+    }
+
+    function resultActualValue(result) {
+      if (!result.enabled || result.status === 'not_run') return null;
+      if (result.status === 'running') return undefined;
+      if (result.type === 'hash') return result.originalHex;
+      if (result.sourceType === 'binary') return result.sourceHex || null;
+      return result.originalResult;
+    }
+
+    function resultAppliedValue(result) {
+      if (!result.enabled || !result.outputBase?.enabled) return null;
+      if (result.status === 'running') return undefined;
+      const applied = result.outputBase.stages.some(stage => stage.status === 'complete');
+      return applied ? result.finalActual : null;
+    }
+
+    function buildMarkdown(snapshot) {
+      const s = snapshot.settings;
+      const input = snapshot.input;
+      const settingsEntries = currentSettingEntries(snapshot);
+      const visibleIds = visibleResultIds(snapshot);
+      const panel = snapshot.system.panel || {};
+      const lines = [
+        '# SONY HASH 簡易保存記録',
+        '',
+        `- **スナップショットID：** ${markdownInline(snapshot.identity.id)}`,
+        `- **保存操作日時：** ${markdownInline(SysUtils.fmtJapaneseDate(new Date(snapshot.identity.requestedAt + snapshot.app.netTimeOffset)))}`,
+        `- **状態：** ${markdownInline(snapshotTypeLabel(snapshot.identity.type))}`,
+        `- **アプリケーション：** ${markdownInline(snapshot.app.version)}`,
+        `- **形式：** ${markdownInline(SUMMARY_SCHEMA)}`,
+        '',
+        '## 生成環境',
+        '',
+        `- **システム：** ${markdownInline(normalizeVisibleText(panel.system?.text))}`,
+        `- **デバイス：** ${markdownInline(normalizeVisibleText(panel.device?.text))}`,
+        `- **ブラウザ：** ${markdownInline(normalizeVisibleText(panel.browser?.text))}`,
+        `- **ネットワーク：** ${markdownInline(normalizeVisibleText(panel.connection?.text))}`,
+        `- **IP：** ${markdownInline(normalizeVisibleText(panel.ip?.text))}`,
+        `- **通信モード：** ${markdownInline(internetLabel(s.internet.label))}`,
+        '',
+        '## 入力',
+        ''
+      ];
+
+      if (input.type === 'file') {
+        lines.push(`- **種別：** ファイル`, `- **ファイル名：** ${markdownInline(input.file?.name || 'N/A')}`, `- **サイズ：** ${markdownInline(input.file ? `${input.file.size} bytes` : 'N/A')}`, `- **MIME：** ${markdownInline(input.file?.type || 'N/A')}`, '');
+      } else {
+        lines.push('- **種別：** テキスト', `- **文字数：** ${markdownInline(input.graphemes ?? 'N/A')}`, '');
+        lines.push(markdownBlock('入力内容', input.entered));
+        if (input.sanitized !== input.entered) lines.push(markdownBlock('整形後入力', input.sanitized));
+        if (input.normalized !== input.sanitized) lines.push(markdownBlock('正規化後入力', input.normalized));
+      }
+
+      lines.push('## 現在設定', '');
+      for (const [label, value] of settingsEntries) {
+        if (label === 'Salt 値' || label === 'HMAC Key') continue;
+        lines.push(`- **${label}：** ${markdownInline(value)}`);
+      }
+      lines.push('');
+
+      if (s.salt.enabled) lines.push(markdownBlock('Salt 値', s.salt.value));
+      if (s.hmac.enabled) lines.push(markdownBlock('HMAC Key', s.hmac.key));
+
+      lines.push('## 現在結果', '');
+      for (const id of visibleIds) {
+        const result = snapshot.results[id];
+        const runtime = result.runtime;
+        const actual = resultActualValue(result);
+        const applied = resultAppliedValue(result);
+        lines.push(`### ${markdownResultName(id, s)}`, '', `- **状態：** ${markdownInline(statusLabel(result.status))}`);
+        if (runtime) lines.push(`- **反復：** ${markdownInline(`${runtime.currentIter} / ${runtime.target}`)}`, `- **履歴：** ${markdownInline(`${runtime.historyCount} / ${runtime.historyLimit}`)}`);
+        lines.push('');
+        if (actual === undefined) lines.push('- **実値：** N/A', '');
+        else if (actual === null) lines.push('- **実値：** なし', '');
+        else lines.push(markdownBlock('実値', actual));
+        if (result.outputBase?.enabled && result.enabled) {
+          if (applied === undefined) lines.push('- **すべてBASE化 適用結果：** N/A', '');
+          else if (applied === null) lines.push('- **すべてBASE化 適用結果：** なし', '');
+          else lines.push(markdownBlock(`すべてBASE化 適用結果（${outputOrderLabel(result.outputBase.requestedOrder)}）`, applied));
+        }
+        if (!result.enabled || result.status === 'not_run') lines.push('- **保存時画面表示：** なし', '');
+        else lines.push(markdownBlock('保存時画面表示', result.ui.display));
+        if (result.ui.note) lines.push(`- **注記：** ${markdownInline(normalizeVisibleText(result.ui.note))}`, '');
+      }
+
+      lines.push('---', `SONY HASH / ${markdownInline(SUMMARY_SCHEMA)}`, '非公式・個人制作ツール', '');
+      return lines.join('\n').replace(/\n{4,}/g, '\n\n\n');
+    }
+
+    async function build(snapshot) {
+      const json = JSON.stringify(snapshot, null, 2) + '\n';
+      const jsonBytes = new TextEncoder().encode(json);
+      const jsonDigest = await sha256Hex(jsonBytes);
+      const s = snapshot.settings;
+      const input = snapshot.input;
+      const settingsEntries = currentSettingEntries(snapshot);
+      const visibleIds = visibleResultIds(snapshot);
+      const panelRows = Object.entries(snapshot.system.panel).map(([key, item]) => `<tr><th>${htmlEscape(SYSTEM_PANEL_LABELS[key] || key)}</th><td>${htmlEscape(normalizeVisibleText(item.text))}</td></tr>`).join('');
+      const resultCards = visibleIds.map(id => renderResult(snapshot.results[id])).join('');
+      const calculationSession = renderCalculationSession(snapshot);
+      const gateway = renderGateway(snapshot);
+      const autoTest = renderAutoTest(snapshot);
+      const runtimeCapture = snapshot.runtime.available ? '有効' : 'N/A';
+      const environment = `<div class="subsection"><h3>実行環境</h3><div class="grid">${kv('プラットフォーム', snapshot.app.platform)}${kv('ネイティブ実行', enabledLabel(snapshot.app.native))}${kv('Android', enabledLabel(snapshot.app.android))}${kv('ZESS', enabledLabel(snapshot.app.zess))}${kv('Web Crypto', enabledLabel(snapshot.app.webCrypto))}${kv('通信モード', internetLabel(s.internet.label))}${kv('時刻補正', `${snapshot.app.netTimeOffset} ms`)}</div></div><div class="subsection"><h3>観測日時</h3><div class="grid">${kv('接続確認日時', snapshot.system.observed.connection)}${kv('IP確認日時', snapshot.system.observed.ip)}${kv('位置確認日時', snapshot.system.observed.geo)}${kv('時刻同期日時', snapshot.system.observed.timeSync)}</div></div><div class="subsection"><h3>デバイス・システム詳細</h3><table><thead><tr><th>項目</th><th>値</th></tr></thead><tbody>${panelRows}</tbody></table></div>`;
+      const inputBlocks = input.type === 'text'
+        ? valueBlock('入力内容', input.entered, 'entered')
+          + (input.sanitized !== input.entered ? valueBlock('整形後入力', input.sanitized, 'sanitized') : '')
+          + (input.normalized !== input.sanitized ? valueBlock('正規化後入力', input.normalized, 'normalized') : '')
+        : '';
+      const html = `<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>SONY HASH Session ${htmlEscape(snapshot.identity.id)}</title>
+<style>
+:root{color-scheme:dark;--bg:#000000;--fg:#cccccc;--bright:#ffffff;--muted:#888888;--line:#666666;--dim:#333333}*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--fg);font-family:Consolas,"Cascadia Mono","Cascadia Code",ui-monospace,SFMono-Regular,Menlo,Monaco,"Liberation Mono","DejaVu Sans Mono","Courier New",monospace;line-height:1.5}body{padding:20px;font-size:15px;-webkit-font-smoothing:none;text-rendering:optimizeSpeed}.record{max-width:1280px;margin:0 auto}.mast{padding:0 0 16px;border-bottom:1px solid var(--muted)}.mast h1{margin:0;color:var(--bright);font-size:1.15rem;font-weight:400}.sub,.cmdline{color:var(--fg)}.cmdline{margin-top:8px}.prompt{color:var(--bright)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:0;margin:14px 0;border-top:1px solid var(--dim);border-left:1px solid var(--dim)}.grid.compact{margin:10px 0}.kv{min-width:0;padding:7px 9px;border-right:1px solid var(--dim);border-bottom:1px solid var(--dim);background:#000}.k{font-size:.72rem;color:var(--muted)}.v{margin-top:2px;color:var(--bright);overflow-wrap:anywhere}.section{margin-top:24px}.section>h2{margin:0 0 10px;padding-bottom:5px;font-size:1rem;font-weight:400;color:var(--bright);border-bottom:1px dashed var(--muted)}.subsection{margin-top:16px}.subsection>h3,.subsection>h4{margin:0 0 8px;color:var(--bright);font-size:.9rem;font-weight:400}.result-card,.event{background:#000;border:1px solid var(--muted);padding:14px;margin:14px 0;break-inside:avoid}.result-head,.event-head{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.result-head h3{margin:0;color:var(--bright);font-size:1rem;font-weight:400}.status{display:inline-block;border:1px solid var(--muted);padding:0 6px;font-size:.72rem;color:var(--bright)}.value-block{margin-top:10px}.value-label{font-size:.72rem;color:var(--muted)}.value-block pre,.raw-json{margin:3px 0 0;background:#000;border:1px solid var(--dim);padding:8px 10px;color:var(--bright);white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;max-height:none}.pipeline{margin-top:14px;padding:12px;border:1px dashed var(--muted);background:#000}.pipeline-title,.stage-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.stage{padding:10px;background:#000;border:1px solid var(--dim)}.arrow{text-align:center;color:var(--bright);padding:3px}.none{padding:7px 0;color:var(--muted)}table{width:100%;border-collapse:collapse}th,td{border:1px solid var(--dim);padding:7px;text-align:left;vertical-align:top;overflow-wrap:anywhere}th{color:var(--muted);font-weight:400}.mono-cell{font-family:inherit;word-break:break-all;color:var(--bright)}.notice{border:1px solid var(--muted);padding:10px;color:var(--bright);background:#000}.compact-notice{margin:10px 0}.detail-block{margin-top:10px;border:1px solid var(--dim);padding:8px 10px;background:#000}.detail-block>summary{cursor:pointer;color:var(--bright);user-select:none}.detail-block>summary::marker{color:var(--muted)}.technical{color:var(--fg)}.machine-data{margin-top:12px}.machine-data .raw-json{margin-top:10px}.footer{margin-top:28px;border-top:1px dashed var(--muted);padding-top:12px;color:var(--muted);font-size:.8rem}.small{font-size:.78rem;color:var(--muted)}::-webkit-scrollbar{width:14px;height:14px}::-webkit-scrollbar-track{background:#0c0c0c}::-webkit-scrollbar-thumb{background:#888888;border:3px solid #000000}::-webkit-scrollbar-thumb:hover{background:#cccccc}::selection{background:#ffffff;color:#000000}@media(max-width:640px){body{padding:12px}.grid{grid-template-columns:1fr}.result-card,.event{padding:10px}}@media print{html,body{background:#fff;color:#111}body{padding:0}.mast,.result-card,.event,.pipeline,.kv,.stage,.detail-block{background:#fff;color:#111}.result-card,.event,.pipeline,.mast,.grid,.kv,.stage,.detail-block,th,td{border-color:#999}.mast h1,.section>h2,.subsection>h3,.subsection>h4,.result-head h3,.v,.value-block pre,.raw-json,.status,.detail-block>summary{color:#111}.value-block pre,.raw-json{background:#fff}.result-card,.event{break-inside:avoid-page}.notice{color:#111;background:#fff;border-color:#666}.machine-data{display:none}}
+</style></head><body><main class="record">
+<header class="mast"><h1>SONY HASH / HASH-D55681000</h1><div class="sub">セッションスナップショット記録</div><div class="cmdline"><span class="prompt">C:\\SONY_HASH&gt;</span> session --record ${htmlEscape(snapshot.identity.id)}</div><div class="grid">${kv('スナップショットID', snapshot.identity.id)}${kv('状態', snapshotTypeLabel(snapshot.identity.type))}${kv('保存操作日時', recordDate(snapshot, snapshot.identity.requestedAt))}${kv('実行状態取得日時', recordDate(snapshot, snapshot.identity.runtimeCapturedAt))}${kv('取得遅延', `${snapshot.identity.captureLatencyMs} ms`)}${kv('実行状態取得', runtimeCapture)}${kv('アプリケーション', snapshot.app.version)}${kv('セッション形式', snapshot.schema.session)}${kv('記録形式', snapshot.schema.record)}${kv('セッションデータ SHA-256', jsonDigest || 'N/A')}</div></header>
+<section class="section" id="section-environment"><h2>01 / 生成環境</h2>${environment}</section>
+<section class="section" id="section-network"><h2>02 / 通信記録</h2>${gateway}</section>
+<section class="section" id="section-input"><h2>03 / 入力状態</h2><div class="grid">${kv('種別', inputTypeLabel(input.type))}${kv('文字数', input.type === 'file' ? '対象外' : (input.graphemes ?? 'N/A'))}${kv('エントロピー', input.type === 'file' ? '対象外' : (input.entropy === null ? 'N/A' : `${input.entropy} bit/byte`))}${kv('ファイル', input.file ? `${input.file.name} / ${input.file.size} bytes / ${input.file.type || 'N/A'}` : 'なし')}</div>${inputBlocks}</section>
+<section class="section" id="section-settings"><h2>04 / 計算条件・設定</h2><div class="subsection" data-record-settings="current"><h3>保存時の設定</h3><div class="grid">${settingsEntries.map(([label,value]) => kv(label,value)).join('')}</div></div>${calculationSession}</section>
+<section class="section" id="section-results"><h2>05 / HASH・BASE 結果</h2>${resultCards}</section>
+<section class="section" id="section-tests"><h2>06 / テスト・診断</h2>${autoTest}</section>
+<section class="section" id="section-data"><h2>07 / 保存データ</h2><div class="grid">${kv('セッション形式', snapshot.schema.session)}${kv('記録形式', snapshot.schema.record)}${kv('データ整合性', '正常')}${kv('セッションデータ SHA-256', jsonDigest || 'N/A')}${kv('完全データ', 'HTML内部に保存済み')}</div><p class="small">完全なセッションデータは本記録内に保持されています。通常の確認では展開する必要はありません。</p><details class="detail-block machine-data"><summary>機械可読データを表示</summary><pre id="session-data" class="raw-json">${htmlEscape(json)}</pre></details></section>
+<footer class="footer">セッションデータ SHA-256: ${htmlEscape(jsonDigest || 'N/A')}<br>シリアライズ：正常<br>非公式・個人制作ツール / Sony Group Corporation・IBMとは無関係<br>END OF RECORD</footer>
+</main></body></html>\n`;
+      const htmlBytes = new TextEncoder().encode(html);
+      const markdown = buildMarkdown(snapshot);
+      const markdownBytes = new TextEncoder().encode(markdown);
+      const validation = validateRecord(html, snapshot);
+      const markdownValidation = validateMarkdown(markdown, snapshot);
+      if (validation.length) throw new Error(`Session Record Validation: ${validation.join(' / ')}`);
+      if (markdownValidation.length) throw new Error(`Session Summary Validation: ${markdownValidation.join(' / ')}`);
+      return Object.freeze({ html, bytes:htmlBytes, htmlBytes, markdown, markdownBytes, json, jsonDigest, validation:Object.freeze([]), markdownValidation:Object.freeze([]) });
+    }
+
+    function validateRecord(html, snapshot) {
+      const issues = [];
+      try {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const data = doc.getElementById('session-data')?.textContent || '';
+        const parsed = JSON.parse(data);
+        if (parsed?.identity?.id !== snapshot.identity.id) issues.push('snapshot id round-trip');
+        if (parsed?.schema?.session !== SESSION_SCHEMA) issues.push('schema round-trip');
+        if (parsed?.schema?.record !== RECORD_SCHEMA) issues.push('record schema round-trip');
+        if (JSON.stringify(parsed) !== JSON.stringify(snapshot)) issues.push('session data round-trip');
+        for (const id of RESULT_IDS) if (!parsed?.results?.[id]) issues.push(`result round-trip:${id}`);
+        if (doc.querySelectorAll('.result-card').length !== visibleResultIds(snapshot).length) issues.push('result card count');
+        const machineData = doc.querySelector('details.machine-data');
+        if (!machineData || machineData.hasAttribute('open') || !machineData.contains(doc.getElementById('session-data'))) issues.push('machine data disclosure');
+        if (doc.querySelectorAll('.raw-json').length !== 1) issues.push('raw json surface');
+        if (snapshot.calculationSession && !Array.from(doc.querySelectorAll('#section-settings .subsection > h3')).some(el => el.textContent === '結果生成時の設定')) issues.push('calculation settings presentation');
+        if (doc.querySelectorAll('.event').length !== (snapshot.network?.audit?.length || 0)) issues.push('gateway event count');
+        const environmentSection = doc.getElementById('section-environment');
+        const inputSection = doc.getElementById('section-input');
+        const settingsSection = doc.getElementById('section-settings');
+        if (!environmentSection || !inputSection || html.indexOf('id="section-environment"') > html.indexOf('id="section-input"')) issues.push('environment order');
+        if (snapshot.input.type === 'text' && snapshot.input.sanitized === snapshot.input.entered && inputSection?.querySelector('[data-record-input="sanitized"]')) issues.push('inactive sanitized input');
+        if (snapshot.input.type === 'text' && snapshot.input.normalized === snapshot.input.sanitized && inputSection?.querySelector('[data-record-input="normalized"]')) issues.push('inactive normalized input');
+        if (!snapshot.settings.outputBase.enabled && doc.querySelectorAll('.pipeline').length) issues.push('inactive output base pipeline');
+        const currentSettings = settingsSection?.querySelector('[data-record-settings="current"]');
+        const settingLabels = new Set(Array.from(currentSettings?.querySelectorAll('.kv > .k') || []).map(el => el.textContent));
+        if (!snapshot.settings.outputBase.enabled && settingLabels.has('すべてBASE化')) issues.push('inactive output base setting');
+        if (!snapshot.settings.hexUpper && settingLabels.has('HEX表記')) issues.push('default hex setting');
+        if (!snapshot.settings.grouping && settingLabels.has('区切り')) issues.push('default grouping setting');
+        const footer = doc.querySelector('.footer');
+        if (!footer || !footer.textContent.trim().endsWith('END OF RECORD')) issues.push('record trailer');
+        const styleText = doc.querySelector('style')?.textContent || '';
+        if (!styleText.includes('--bg:#000000') || !styleText.includes('--fg:#cccccc') || !styleText.includes('--bright:#ffffff')) issues.push('cmd palette');
+      } catch (e) { issues.push(`parse:${e?.message || e}`); }
+      return issues;
+    }
+
+    function markdownStructure(markdown) {
+      const lines = String(markdown || '').split('\n');
+      const visible = [];
+      const h1 = [];
+      const h3 = [];
+      let fence = '';
+      for (const line of lines) {
+        if (fence) {
+          if (line === fence) fence = '';
+          continue;
+        }
+        const fenceStart = line.match(/^(`{3,})text$/);
+        if (fenceStart) {
+          fence = fenceStart[1];
+          continue;
+        }
+        visible.push(line);
+        const h1Match = line.match(/^# ([^#].*)$/);
+        if (h1Match) h1.push(h1Match[1]);
+        const h3Match = line.match(/^### (.+)$/);
+        if (h3Match) h3.push(h3Match[1]);
+      }
+      return { visible, h1, h3 };
+    }
+
+    function validateMarkdown(markdown, snapshot) {
+      const issues = [];
+      const structure = markdownStructure(markdown);
+      if (structure.h1[0] !== 'SONY HASH 簡易保存記録') issues.push('summary header');
+      if (!structure.visible.includes(`- **スナップショットID：** ${markdownInline(snapshot.identity.id)}`)) issues.push('summary snapshot id');
+      if (!structure.visible.includes(`SONY HASH / ${markdownInline(SUMMARY_SCHEMA)}`)) issues.push('summary schema');
+      for (const id of visibleResultIds(snapshot)) if (!structure.h3.includes(markdownResultName(id, snapshot.settings))) issues.push(`summary result:${id}`);
+      for (const id of RESULT_IDS.filter(id => !visibleResultIds(snapshot).includes(id))) if (structure.h3.includes(markdownResultName(id, snapshot.settings))) issues.push(`summary hidden result:${id}`);
+      if (!snapshot.settings.outputBase.enabled && structure.h3.some(label => label.startsWith('すべてBASE化 適用結果'))) issues.push('summary inactive output base');
+      if (!markdown.endsWith('\n')) issues.push('summary final newline');
+      return issues;
+    }
+
+    return Object.freeze({ SESSION_SCHEMA, RECORD_SCHEMA, SUMMARY_SCHEMA, RESULT_IDS, nextIdentity, capture, build, buildMarkdown, validateSnapshot, validateRecord, validateMarkdown });
+  })();
+
+  const SessionSave = (() => {
+    function packageNameIssue(value) {
+      const name = String(value || '').trim();
+      if (!name) return '保存フォルダー名を入力してください。';
+      if (name === '.' || name === '..') return '「.」「..」は使用できません。';
+      if (name.length > 120) return '保存フォルダー名は120文字以内にしてください。';
+      if (/[\u0000-\u001f<>:"/\\|?*]/.test(name)) return '保存フォルダー名に使用できない文字が含まれています。';
+      if (/[. ]$/.test(name)) return '保存フォルダー名の末尾にピリオドまたは空白は使用できません。';
+      if (/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i.test(name)) return 'この保存フォルダー名は使用できません。';
+      return '';
+    }
+
+    function requestPackageName(defaultName, promptFn = window.prompt, alertFn = window.alert) {
+      let candidate = defaultName;
+      while (true) {
+        const value = promptFn('保存フォルダー名を入力してください。\n同名の HTML / MD を保存します。', candidate);
+        if (value === null) return null;
+        candidate = String(value).trim();
+        const issue = packageNameIssue(candidate);
+        if (!issue) return candidate;
+        try { alertFn(issue); } catch (_) {}
+        if (!candidate) candidate = defaultName;
+      }
+    }
+
+    function beginDestination(defaultName, options = null) {
+      const promptFn = options?.promptFn || ((...args) => window.prompt(...args));
+      const alertFn = options?.alertFn || ((...args) => window.alert(...args));
+      const confirmFn = options?.confirmFn || ((...args) => window.confirm(...args));
+      const directoryPicker = options?.directoryPicker || (typeof window.showDirectoryPicker === 'function' ? ((...args) => window.showDirectoryPicker(...args)) : null);
+
+      if (typeof directoryPicker !== 'function') {
+        const packageName = requestPackageName(defaultName, promptFn, alertFn);
+        if (packageName === null) return Object.freeze({ method:'cancelled', packageName:'', promise:Promise.resolve(null) });
+        return Object.freeze({ method:'download', packageName, promise:Promise.resolve(null) });
+      }
+
+      try {
+        const promise = directoryPicker({ id:'sony-hash-session-parent', mode:'readwrite' })
+          .then(async parent => {
+            const packageName = requestPackageName(defaultName, promptFn, alertFn);
+            if (packageName === null) throw new DOMException('cancelled', 'AbortError');
+            let exists = false;
+            try {
+              await parent.getDirectoryHandle(packageName, { create:false });
+              exists = true;
+            } catch (error) {
+              if (error?.name !== 'NotFoundError') throw error;
+            }
+            if (exists && !confirmFn(`「${packageName}」フォルダーは既に存在します。\n同名の HTML / MD を上書きして保存しますか？`)) {
+              throw new DOMException('cancelled', 'AbortError');
+            }
+            const directory = await parent.getDirectoryHandle(packageName, { create:true });
+            return { directory, packageName, error:null };
+          })
+          .catch(error => ({ directory:null, packageName:'', error }));
+        return Object.freeze({ method:'directory', packageName:'', promise });
+      } catch (error) {
+        return Object.freeze({ method:'directory', packageName:'', promise:Promise.resolve({ directory:null, packageName:'', error }) });
+      }
+    }
+
+    function browserDownload(bytes, fileName, mime) {
+      const blob = new Blob([bytes], { type:mime });
+      const url = URL.createObjectURL(blob);
+      const a = Object.assign(document.createElement('a'), { href:url, download:fileName });
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
+
+    function browserDownloadPackage(record, packageName) {
+      browserDownload(record.htmlBytes, `${packageName}.html`, 'text/html;charset=utf-8');
+      browserDownload(record.markdownBytes, `${packageName}.md`, 'text/markdown;charset=utf-8');
+      return Object.freeze({ ok:true, verified:false, method:'download', packageName, files:[`${packageName}.html`, `${packageName}.md`] });
+    }
+
+    async function writePackageToDirectory(directory, record, packageName, lifeEpoch) {
+      if (!directory || !Life.same(lifeEpoch)) return { ok:false, verified:false, method:'directory', reason:'lifecycle' };
+      const htmlName = `${packageName}.html`;
+      const mdName = `${packageName}.md`;
+      const htmlHandle = await directory.getFileHandle(htmlName, { create:true });
+      const mdHandle = await directory.getFileHandle(mdName, { create:true });
+      const htmlResult = await writeBytesVerifiedWithFileHandle(htmlHandle, record.htmlBytes, lifeEpoch);
+      if (!htmlResult.ok) return { ok:false, verified:false, method:'directory', reason:htmlResult.reason || 'html-write', packageName, html:htmlResult, markdown:null };
+      const markdownResult = await writeBytesVerifiedWithFileHandle(mdHandle, record.markdownBytes, lifeEpoch);
+      if (!markdownResult.ok) return { ok:false, verified:false, method:'directory', reason:markdownResult.reason || 'markdown-write', packageName, html:htmlResult, markdown:markdownResult };
+      return {
+        ok:true,
+        verified:htmlResult.verified && markdownResult.verified,
+        method:'directory',
+        packageName,
+        files:[htmlName, mdName],
+        html:htmlResult,
+        markdown:markdownResult
+      };
+    }
+
+    async function write(destination, record, lifeEpoch) {
+      if (destination.method === 'cancelled') return { ok:false, verified:false, method:'cancelled', reason:'cancelled' };
+      if (destination.method === 'download') return browserDownloadPackage(record, destination.packageName);
+      const selected = await destination.promise;
+      if (selected?.error) throw selected.error;
+      if (!Life.same(lifeEpoch)) return { ok:false, verified:false, method:'directory', reason:'lifecycle' };
+      const packageName = selected?.packageName || destination.packageName;
+      if (!packageName) return { ok:false, verified:false, method:'directory', reason:'package-name' };
+      return writePackageToDirectory(selected?.directory || null, record, packageName, lifeEpoch);
+    }
+
+    return Object.freeze({ packageNameIssue, requestPackageName, beginDestination, write, writePackageToDirectory });
   })();
 
   const TestIdleGate = (() => {
@@ -11765,15 +12854,99 @@ function showToast(msg, duration = TOAST_DURATION) {
 
       for (const failure of ['write','close']) {
         const writable = makeWritable(failure);
-        try {
-          await writeBlobWithFilePicker(new Blob(['test']), { suggestedName:'test.md' }, lifeEpoch, async () => ({ createWritable:async () => writable }));
-        } catch (_) {}
+        const handle = {
+          createWritable:async () => writable,
+          getFile:async () => new Blob([new Uint8Array([1,2,3])])
+        };
+        try { await writeBytesVerifiedWithFileHandle(handle, new Uint8Array([1,2,3]), lifeEpoch); } catch (_) {}
         checks.push({
-          name:`Markdown ${failure === 'write' ? 'Write' : 'Close'} Failure Cleanup`,
+          name:`Session Record ${failure === 'write' ? 'Write' : 'Close'} Failure Cleanup`,
           ok:writable.state.abort === 1 && !openHandles.has(writable),
           detail:`write=${writable.state.write}, close=${writable.state.close}, abort=${writable.state.abort}, tracked=${openHandles.has(writable) ? 1 : 0}`
         });
       }
+
+      const verifiedState = { bytes:null };
+      const verifiedWritable = {
+        async write(value) { verifiedState.bytes = value instanceof Uint8Array ? value.slice() : new Uint8Array(value); },
+        async close() {},
+        async abort() {}
+      };
+      const verifiedHandle = {
+        createWritable:async () => verifiedWritable,
+        getFile:async () => new Blob([verifiedState.bytes || new Uint8Array(0)])
+      };
+      const verified = await writeBytesVerifiedWithFileHandle(verifiedHandle, new Uint8Array([7,8,9,10]), lifeEpoch);
+      checks.push({ name:'Session Record Read-back Verification', ok:verified.ok && verified.verified && verified.size === 4 });
+
+      const mismatchHandle = {
+        createWritable:async () => ({ async write(){}, async close(){}, async abort(){} }),
+        getFile:async () => new Blob([new Uint8Array([7,8,9,11])])
+      };
+      const mismatch = await writeBytesVerifiedWithFileHandle(mismatchHandle, new Uint8Array([7,8,9,10]), lifeEpoch);
+      checks.push({ name:'Session Record Read-back Mismatch Detection', ok:!mismatch.ok && !mismatch.verified && mismatch.reason === 'read-back-mismatch' });
+
+      const packageFiles = new Map();
+      const directory = {
+        async getFileHandle(name) {
+          if (!packageFiles.has(name)) {
+            const state = { bytes:new Uint8Array(0) };
+            packageFiles.set(name, {
+              async createWritable() {
+                return {
+                  async write(value) { state.bytes = value instanceof Uint8Array ? value.slice() : new Uint8Array(value); },
+                  async close() {},
+                  async abort() {}
+                };
+              },
+              async getFile() { return new Blob([state.bytes]); }
+            });
+          }
+          return packageFiles.get(name);
+        }
+      };
+      const packageResult = await SessionSave.writePackageToDirectory(directory, {
+        htmlBytes:new Uint8Array([1,3,5,7]),
+        markdownBytes:new Uint8Array([2,4,6,8])
+      }, 'session-test', lifeEpoch);
+      checks.push({
+        name:'Session Package HTML / MD Verified Write',
+        ok:packageResult.ok && packageResult.verified && packageFiles.has('session-test.html') && packageFiles.has('session-test.md')
+      });
+      checks.push({
+        name:'Session Package Name Validation',
+        ok:SessionSave.packageNameIssue('session-test') === '' && SessionSave.packageNameIssue('CON') !== '' && SessionSave.packageNameIssue('bad/name') !== ''
+      });
+      const renameEvents = [];
+      const renamedParent = {
+        async getDirectoryHandle(name, options = null) {
+          if (options?.create === false) {
+            const error = new Error('not found');
+            error.name = 'NotFoundError';
+            throw error;
+          }
+          renameEvents.push(`create:${name}`);
+          return directory;
+        }
+      };
+      const renamedDestination = SessionSave.beginDestination('SONY-HASH-SESSION-DEFAULT', {
+        promptFn:() => { renameEvents.push('prompt'); return 'CUSTOM-SESSION'; },
+        alertFn:() => {},
+        confirmFn:() => true,
+        directoryPicker:() => { renameEvents.push('picker'); return Promise.resolve(renamedParent); }
+      });
+      const renamedResult = await SessionSave.write(renamedDestination, {
+        htmlBytes:new Uint8Array([9,7,5,3]),
+        markdownBytes:new Uint8Array([8,6,4,2])
+      }, lifeEpoch);
+      checks.push({
+        name:'Session Package Rename / Picker Activation Order',
+        ok:renamedResult.ok && renamedResult.verified &&
+          renamedResult.packageName === 'CUSTOM-SESSION' &&
+          renameEvents[0] === 'picker' && renameEvents[1] === 'prompt' &&
+          renameEvents.includes('create:CUSTOM-SESSION') &&
+          packageFiles.has('CUSTOM-SESSION.html') && packageFiles.has('CUSTOM-SESSION.md')
+      });
       return checks;
     } finally {
       AppState.Base64Encode = previous.Base64Encode;
@@ -11849,6 +13022,7 @@ function showToast(msg, duration = TOAST_DURATION) {
     } else {
       AppState.currentFile = null;
       const cleaned = AppState.sanitizeText ? Core.sanitizeText(raw) : raw;
+      AppState.inputSanitized = cleaned;
       if (AppState.sanitizeText && cleaned !== raw) {
         const {selectionStart:a, selectionEnd:b} = els.inputEl;
         const delta = cleaned.length - raw.length;
@@ -11857,6 +13031,7 @@ function showToast(msg, duration = TOAST_DURATION) {
         els.inputEl.selectionEnd = Math.max(0, b + delta);
       }
       const v = Core.normalizeText(cleaned, AppState.normalization);
+      AppState.inputNormalized = v;
       if (!v) {
         if (AppState.salt || AppState.showHmac || forceEmptyHashOnce) {
           isEmptyInput = true;
@@ -11890,6 +13065,28 @@ function showToast(msg, duration = TOAST_DURATION) {
     }
 
     AppState.currentEntropy = isFile ? null : Core.shannonEntropy(bytesToHash);
+    AppState.calculationSessionConfig = Object.freeze({
+      inputType:isFile ? 'file' : 'text',
+      normalization:isFile ? 'not_applicable' : AppState.normalization,
+      sanitizeText:isFile ? null : AppState.sanitizeText,
+      saltEnabled:AppState.showSalt,
+      salt:AppState.showSalt ? AppState.salt : null,
+      hmacEnabled:AppState.showHmac,
+      hmacKey:AppState.showHmac ? AppState.hmacKey : null,
+      iterations,
+      iterMode:AppState.iterMode,
+      crc64Variant:AppState.crc64Variant,
+      base64Encode:AppState.Base64Encode,
+      base64Decode:AppState.Base64Decode,
+      base64Strict:AppState.base64Strict,
+      base85Encode:AppState.Base85Encode,
+      base85Decode:AppState.Base85Decode,
+      base85Variant:AppState.base85Variant,
+      baseFileDetect:AppState.baseFileDetect,
+      sourceByteLength:isFile ? AppState.currentFile?.size || 0 : bytesToHash?.length || 0,
+      startedAt:Date.now(),
+      netTimeOffset:Number(AppState.netTimeOffset) || 0
+    });
 
     Engine.resetMasterTask();
     resetHistories();
@@ -11937,7 +13134,6 @@ function showToast(msg, duration = TOAST_DURATION) {
     }
 
     if (isFile) {
-      const isSmallFile = AppState.currentFile.size <= 10 * 1024 * 1024;
       const idsToClear = ['CRC32', 'CRC64', 'MD5', 'SHA-1', 'SHA-224', 'SHA-256', 'SHA-384', 'SHA-512', 'Base64-Enc', 'Base85-Enc'];
       if (AppState.Base64Decode) queueRender('Base64-Dec', { type:'base_message', value:'エラー', note:'ファイルには適用されません。' }, 1, 1, true);
       if (AppState.Base85Decode) queueRender('Base85-Dec', { type:'base_message', value:'エラー', note:'ファイルには適用されません。' }, 1, 1, true);
@@ -12209,6 +13405,7 @@ function showToast(msg, duration = TOAST_DURATION) {
       const t = e.clipboardData.getData('text');
       const clean = Core.sanitizeText(t);
       const {selectionStart:a, selectionEnd:b, value:v} = els.inputEl;
+      AppState.inputEntered = v.slice(0,a) + t + v.slice(b);
       els.inputEl.value = v.slice(0,a) + clean + v.slice(b);
       els.inputEl.selectionStart = els.inputEl.selectionEnd = a + clean.length;
       scheduleUpdate();
@@ -12216,6 +13413,7 @@ function showToast(msg, duration = TOAST_DURATION) {
     on(els.inputEl, 'input', () => {
       fileLoadRevision++;
       if (AppState.currentFile) AppState.currentFile = null;
+      AppState.inputEntered = els.inputEl.value;
       scheduleUpdate();
     });
     on(els.inputEl, 'compositionend', scheduleUpdate);
@@ -12439,11 +13637,9 @@ async function detectBase85Variants(input) {
     const queueAutoProgress = (phase, current, total) => {
       if (!Life.ok()) return;
       AutoTestSession.setProgress(phase, current, total);
-      pendingAutoProgress = true;
       if (autoProgressRaf) return;
       autoProgressRaf = requestAnimationFrame(() => {
         autoProgressRaf = 0;
-        pendingAutoProgress = null;
         if (!Life.ok()) return;
         syncPauseControls();
       });
@@ -13053,7 +14249,6 @@ async function detectBase85Variants(input) {
         if (autoProgressRaf) {
           cancelAnimationFrame(autoProgressRaf);
           autoProgressRaf = 0;
-          pendingAutoProgress = null;
         }
         syncPauseControls();
 
@@ -13086,7 +14281,6 @@ async function detectBase85Variants(input) {
         if (autoProgressRaf) {
           cancelAnimationFrame(autoProgressRaf);
           autoProgressRaf = 0;
-          pendingAutoProgress = null;
         }
         syncPauseControls();
         if (aborted) {
@@ -13098,102 +14292,6 @@ async function detectBase85Variants(input) {
           console.warn('Self-test error:', e);
         }
       }
-    };
-
-    const buildAutoTestReportLines = esc => {
-      const snapshot = AutoTestReport.snapshot();
-      const lines = ['## 5. 自動検証結果', ''];
-      if (!snapshot) {
-        lines.push('**状態：** 未実施（未検証）', '', '自動検証はまだ実行されていません。');
-        return lines;
-      }
-
-      const statusLabel = {
-        running:'実行中', passed:'成功', failed:'失敗', aborted:'中止', error:'エラー'
-      }[snapshot.status] || snapshot.status;
-      const fmtDate = value => value ? SysUtils.fmtJapaneseDate(new Date(value + AppState.netTimeOffset)) : '-';
-      const visiblePassed = snapshot.visible.filter(item => item.ok).length;
-      const visibleFailed = snapshot.visible.length - visiblePassed;
-      const systemPassed = snapshot.system.filter(item => item.ok).length;
-      const systemFailed = snapshot.system.length - systemPassed;
-      const internalPassed = snapshot.internal.filter(item => item.ok).length;
-      const internalSkipped = snapshot.internal.filter(item => item.skip).length;
-      const internalFailed = snapshot.internal.length - internalPassed - internalSkipped;
-      const verifyLabel = item => !item ? '未実施' : item.ok ? `PASS (${item.passed}/${item.total})` : `FAIL (${item.passed}/${item.total})`;
-
-      lines.push(
-        '| 項目 | 結果 |',
-        '| :--- | :--- |',
-        `| 状態 | **${esc(statusLabel)}** |`,
-        `| 開始日時（日本標準時） | ${esc(fmtDate(snapshot.startedAt))} |`,
-        `| 終了日時（日本標準時） | ${esc(fmtDate(snapshot.endedAt))} |`,
-        `| 画面入力検証 | PASS ${visiblePassed} / FAIL ${visibleFailed} / 記録 ${snapshot.visible.length}/${snapshot.visibleTotal} |`,
-        `| システム表示検証 | PASS ${systemPassed} / FAIL ${systemFailed} / 計 ${snapshot.system.length} |`,
-        `| 内部検証 | PASS ${internalPassed} / FAIL ${internalFailed} / SKIP ${internalSkipped} / 計 ${snapshot.internal.length} |`,
-        `| 内部検証前の空復元 | ${verifyLabel(snapshot.preHiddenReset)} |`,
-        `| 最終の空復元 | ${verifyLabel(snapshot.finalReset)} |`,
-        snapshot.error ? `| エラー | ${esc(snapshot.error)} |` : '',
-        ''
-      );
-
-      lines.push('### 5.1 画面入力検証（Visible）', '');
-      if (!snapshot.visible.length) {
-        lines.push('記録なし', '');
-      } else {
-        lines.push('| # | テスト | 結果 | PASS | SKIP | 詳細 |', '| ---: | :--- | :---: | ---: | ---: | :--- |');
-        snapshot.visible.forEach((item, index) => {
-          const detail = item.failed.length ? item.failed.map(esc).join('<br>') : '-';
-          lines.push(`| ${index + 1} | ${esc(item.label || item.key)} | ${item.ok ? 'PASS' : 'FAIL'} | ${item.passed}/${item.total} | ${item.skipped} | ${detail} |`);
-        });
-        lines.push('');
-      }
-
-      lines.push('### 5.2 システム表示・統合検証（System Surface）', '');
-      if (!snapshot.system.length) {
-        lines.push('記録なし', '');
-      } else {
-        lines.push('| # | 項目 | 結果 | PASS | 詳細 |', '| ---: | :--- | :---: | ---: | :--- |');
-        snapshot.system.forEach((item, index) => {
-          const detail = item.failed.length ? item.failed.map(esc).join('<br>') : '-';
-          lines.push(`| ${index + 1} | ${esc(item.name)} | ${item.ok ? 'PASS' : 'FAIL'} | ${item.passed}/${item.total} | ${detail} |`);
-        });
-        lines.push('');
-      }
-
-      lines.push('### 5.3 復元検証', '');
-      for (const [label, item] of [['内部検証前の空復元', snapshot.preHiddenReset], ['最終の空復元', snapshot.finalReset]]) {
-        if (!item) {
-          lines.push(`- **${label}：** 未実施`);
-        } else {
-          const detail = item.failed.length ? ` — ${item.failed.map(esc).join(' / ')}` : '';
-          lines.push(`- **${label}：** ${item.ok ? 'PASS' : 'FAIL'} (${item.passed}/${item.total})${item.skipped ? ` / SKIP ${item.skipped}` : ''}${detail}`);
-        }
-      }
-      lines.push('');
-
-      lines.push('### 5.4 内部検証（Internal）', '');
-      if (!snapshot.internal.length) {
-        lines.push('記録なし', '');
-      } else {
-        const groups = new Map();
-        for (const item of snapshot.internal) {
-          if (!groups.has(item.group)) groups.set(item.group, []);
-          groups.get(item.group).push(item);
-        }
-        for (const [group, items] of groups) {
-          const passed = items.filter(item => item.ok).length;
-          const skipped = items.filter(item => item.skip).length;
-          const failed = items.length - passed - skipped;
-          lines.push(`#### ${esc(group || 'OTHER')}`, '', `PASS ${passed} / FAIL ${failed} / SKIP ${skipped} / 計 ${items.length}`, '');
-          lines.push('| # | 項目 | 結果 | 詳細 |', '| ---: | :--- | :---: | :--- |');
-          items.forEach((item, index) => {
-            const verdict = item.skip ? 'SKIP' : item.ok ? 'PASS' : 'FAIL';
-            lines.push(`| ${index + 1} | ${esc(item.name)} | ${verdict} | ${item.detail ? esc(item.detail) : '-'} |`);
-          });
-          lines.push('');
-        }
-      }
-      return lines;
     };
 
     on(document.body, 'click', async e => {
@@ -13564,181 +14662,62 @@ async function detectBase85Variants(input) {
                 break;
             }
             case 'saveResults': {
-                showToast('Markdownレポートを生成中...');
-                
-                const ts = new Date(Date.now() + AppState.netTimeOffset);
-                const fn = `sony-hash-audit-${SysUtils.fmtJapanTimestamp(ts)}.md`;
-                
-                const systemReport = SystemMonitor.reportSnapshot();
-                const geoInfo = systemReport.geoText;
-                const netInfo = systemReport.networkText;
+                const requestedAt = Date.now();
+                const identity = SessionRecord.nextIdentity(requestedAt);
+                const lifeEpoch = Life.epoch;
+                showToast('セッションスナップショットを取得中...');
 
-                const metaText = document.getElementById('meta').textContent || '';
-                const currentStatus = AppState.currentStatus || '待機';
-
-                const isFile = !!AppState.currentFile;
-                const normVal = isFile ? 'なし（ファイル）' : (AppState.normalization === 'none' ? 'なし' : AppState.normalization);
-                const iterModeStr = AppState.iterMode === 'raw' ? '標準（Raw）' : AppState.iterMode === 'hex' ? '手渡し（Hex）' : 'XOR累積（XOR）';
-                const esc = str => String(str).replace(/\|/g, '\\|').replace(/`/g, '\\`').replace(/\r?\n/g, '<br>');
-
-                const zessStorage = window.__ZESS_MODE__ ? Security.getStorageIsolationStatus() : null;
-                const zessStorageDetail = zessStorage
-                    ? `localStorage=${zessStorage.localStorage ? '正常' : '失敗'}, sessionStorage=${zessStorage.sessionStorage ? '正常' : '失敗'}`
-                    : '';
-
-                const gatewayModeLabel = mode => mode === 'on' ? 'オン' : mode === 'off' ? 'オフ' : '日時';
-                const gatewayAudit = InternetGateway.auditSnapshot().slice(-64);
-                const gatewayAuditText = gatewayAudit.length ? gatewayAudit.map(entry => {
-                    const stamp = SysUtils.fmtJapanTimestamp(new Date(entry.at + AppState.netTimeOffset));
-                    const status = entry.status == null ? '-' : entry.status;
-                    const outBytes = Number.isFinite(entry.requestBytes) ? `${entry.requestBytes}B` : '-';
-                    const inBytes = Number.isFinite(entry.responseBytes) ? `${entry.responseBytes}B` : '-';
-                    const duration = Number.isFinite(entry.durationMs) ? `${entry.durationMs}ms` : '-';
-                    const failure = entry.failureKind || '-';
-                    return `#${entry.seq} ${stamp} ${String(entry.type || '').toUpperCase()} mode=${gatewayModeLabel(entry.mode)} route=${entry.routeId || '-'} level=${entry.levelLabel || '-'} method=${entry.method || '-'} status=${status} failure=${failure} out=${outBytes} in=${inBytes} duration=${duration} ticket=${entry.ticketId || '-'} reqSHA256=${entry.requestDigest || '-'} resSHA256=${entry.responseDigest || '-'}`;
-                }).join('\n') : '記録なし';
-
-                const reportLines = [
-                    '# SONY HASH 総合監査レポート\n',
-                    `- **生成日時（日本標準時）**：${SysUtils.fmtJapaneseDate(ts)}`,
-                    '- **製造：** ソニーグループ株式会社 / インターナショナル・ビジネス・マシーンズ・コーポレーション（IBM） 2026',
-                    window.__ZESS_MODE__ ? '- **ZESS:** ZERO-EGRESS STATELESS SANDBOX 隔離環境にて稼働中' : '',
-                    window.__ZESS_MODE__ && zessStorage && !zessStorage.complete ? `- **【警告】** ZESS Storage 隔離不完全 — ${zessStorageDetail}` : '',
-                    !window.crypto?.subtle ? '- **Web Crypto:** 無効' : '',
-                    
-                    '\n## 1. システム／環境情報\n```text',
-                    systemReport.deviceText,
-                    '',
-                    netInfo,
-                    `位置情報：${geoInfo}`,
-                    '```\n',
-
-                    '### インターネット・ゲートウェイ監査\n```text',
-                    gatewayAuditText,
-                    '```\n',
-                    
-                    '## 2. 設定／パラメータ\n| 設定項目 | パラメータ値 |\n| :--- | :--- |',
-                    `| 全体ステータス | **${currentStatus}** |`,
-                    `| インターネット | ${InternetGateway.modeLabel()} |`,
-                    `| 詳細メタデータ（UI表示） | \`${esc(metaText)}\` |`,
-                    `| 文字コード | ${isFile ? '対象外（ファイルを原データのバイト列として処理）' : 'UTF-8'} |`,
-                    `| 正規化 | ${normVal} |`,
-                    `| 不可視文字・改行整形 | ${isFile ? '対象外（ファイル）' : (AppState.sanitizeText ? 'オン' : 'オフ')} |`,
-                    `| コピー対象 | ${ResultSurface.label()} |`,
-                    `| HEX表記 | ${AppState.hexUpper ? '大文字（UPPERCASE）' : '小文字（lowercase）'} |`,
-                    `| 区切り文字数 | ${AppState.grouping ? AppState.grouping + '文字' : '区切りなし'} |`,
-                    `| カスタム区切り | \`${esc(AppState.separator)}\` |`,
-                    `| 反復回数（目標） | ${els.iterIn.value} 回 |`,
-                    `| 反復モード | ${iterModeStr} |`,
-                    `| Salt | \`${AppState.salt || '（未設定）'}\` |`,
-                    `| HMAC Key | ${AppState.showHmac ? '設定済み（値は監査レポートに記録しません）' : '（未設定）'} |`,
-                    `| CRC64 モード | ${AppState.crc64Variant} |`,
-                    `| Base64 判定 | ${AppState.base64Strict ? '厳格' : '寛容'} |`,
-                    `| Base85 モード | ${AppState.base85Variant} |`,
-                    `| すべてBASE化受け渡し | ${OutputBaseFilter.handoffLabel()} |`,
-                    `| すべてBASE化 | ${OutputBaseFilter.describe(true)} |`,
-                    `| Base自動判別 | ${AppState.baseFileDetect ? 'オン' : 'オフ'} |\n`,
-                    
-                    '## 3. INPUT TARGET'
-                ];
-
-                if (isFile) {
-                    reportLines.push(
-                        '| 項目 | 詳細 |\n| :--- | :--- |',
-                        `| 種別 | ファイル（File） |`,
-                        `| ファイル名 | \`${esc(AppState.currentFile.name)}\` |`,
-                        `| サイズ | ${AppState.currentFile.size.toLocaleString()} bytes |`,
-                        `| MIMEタイプ | ${esc(AppState.currentFile.type || '不明')} |\n`
-                    );
-                } else {
-                    const rawIn = els.inputEl.value || '';
-                    const graphemeCount = Core.countGraphemes(rawIn);
-                    
-                    const MAX_TEXT_LEN = 100000;
-                    let displayIn = rawIn;
-                    if (rawIn.length > MAX_TEXT_LEN) {
-                        displayIn = rawIn.substring(0, MAX_TEXT_LEN) + `\n\n… ［警告：入力テキストが長すぎるため省略されました（全 ${graphemeCount} 文字）］ …`;
-                    }
-
-                    const maxTicks = (displayIn.match(/`+/g) || []).reduce((max, value) => Math.max(max, value.length), 0);
-                    const contentFence = '`'.repeat(Math.max(3, maxTicks + 1));
-
-                    reportLines.push(
-                        `- **種別：** テキスト（Text）`,
-                        `- **文字数：** ${graphemeCount}\n`,
-                        `**--- CONTENT START ---**\n${contentFence}text\n${displayIn}\n${contentFence}\n**--- CONTENT END ---**\n`
-                    );
+                const capturePromise = SessionRecord.capture(identity, requestedAt);
+                const destination = SessionSave.beginDestination(identity.defaultName);
+                if (destination.method === 'cancelled') {
+                  capturePromise.catch(() => {});
+                  showToast('セッション記録の保存がキャンセルされました');
+                  break;
                 }
 
-                reportLines.push('## 4. HASH RESULTS\n');
-                
-                const tableFmt = ['### FORMATTED（表示形式）\n| アルゴリズム | 進捗状況 | 出力 |\n| :--- | :--- | :--- |'];
-                const tableRaw = ['### RAW（生データ）\n| アルゴリズム | 進捗状況 | 出力 |\n| :--- | :--- | :--- |'];
-                
-                const algIds = ['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','Base64-Enc','Base64-Dec','Base85-Enc','Base85-Dec'];
-                
-                for (const id of algIds) {
-                    const el = document.getElementById(id);
-                    if (!el || !el.dataset.raw || el.dataset.empty === '1') continue;
-                    
-                    const progEl = document.getElementById(`prog-${id}`);
-                    const progressText = progEl ? progEl.textContent : '不明';
-                    
-                    let raw, fmt;
-                    if (el.dataset.isBinary === '1' && el._binBytes) {
-                        raw = fmt = `*[バイナリデータ：${el._binBytes.length.toLocaleString()} bytes]*`;
-                    } else if (el.dataset.isTextBlob === '1') {
-                        raw = fmt = `*[巨大データのためテキストレポートから除外]*`;
-                    } else {
-                        raw = `\`${esc(el.dataset.raw)}\``;
-                        fmt = `\`${esc(el.textContent)}\``;
-                    }
-                    
-                    const prefix = (AppState.showHmac && !id.includes('Base') && !id.includes('CRC')) ? `HMAC-${id}` : id;
-                    
-                    tableFmt.push(`| **${prefix}** | ${progressText} | ${fmt} |`);
-                    tableRaw.push(`| **${prefix}** | ${progressText} | ${raw} |`);
+                let snapshot;
+                try {
+                  snapshot = await capturePromise;
+                } catch (err) {
+                  if (!Life.same(lifeEpoch)) break;
+                  try { await destination.promise; } catch (_) {}
+                  console.error('Session Snapshot Error:', err);
+                  showToast('セッションスナップショットの取得に失敗しました');
+                  break;
                 }
+                if (!Life.same(lifeEpoch)) break;
 
-                reportLines.push(...tableFmt, '\n', ...tableRaw, '\n');
-                reportLines.push(...buildAutoTestReportLines(esc));
-                reportLines.push('\n---\n*EOF*');
+                showToast('HTML / MD 記録を検証中...');
+                let record;
+                try {
+                  record = await SessionRecord.build(snapshot);
+                } catch (err) {
+                  if (!Life.same(lifeEpoch)) break;
+                  try { await destination.promise; } catch (_) {}
+                  console.error('Session Record Error:', err);
+                  showToast('HTML / MD 記録の生成・検証に失敗しました');
+                  break;
+                }
+                if (!Life.same(lifeEpoch)) break;
 
-                const blobParts = reportLines.filter(Boolean).map(line => line + '\n');
-                const blob = new Blob(blobParts, { type: 'text/markdown' });
-                
-                const fallbackDownload = () => {
-                    if (!Life.same(lifeEpoch)) return;
-                    const url = URL.createObjectURL(blob);
-                    const a = Object.assign(document.createElement('a'), { href: url, download: fn });
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                    setTimeout(() => URL.revokeObjectURL(url), 0);
-                    showToast('Markdownレポートを保存しました');
-                };
-
-                if ('showSaveFilePicker' in window && !window.__ZESS_MODE__) {
-                    try {
-                        const saved = await writeBlobWithFilePicker(blob, {
-                            suggestedName: fn,
-                            types: [{
-                                description: 'Markdown Report',
-                                accept: { 'text/markdown': ['.md'] },
-                            }],
-                        }, lifeEpoch);
-                        if (!saved || !Life.same(lifeEpoch)) break;
-                        showToast('Markdownレポートを保存しました');
-                    } catch (err) {
-                        if (!Life.same(lifeEpoch)) break;
-                        if (err.name === 'AbortError') {
-                            showToast('レポートの保存がキャンセルされました');
-                            break;
-                        }
-                        fallbackDownload();
-                    }
-                } else {
-                    fallbackDownload();
+                try {
+                  showToast(destination.method === 'directory' ? '保存フォルダーへ書き込み中...' : 'HTML / MD のダウンロードを開始中...');
+                  const result = await SessionSave.write(destination, record, lifeEpoch);
+                  if (!Life.same(lifeEpoch) || !result.ok) {
+                    if (result?.reason === 'read-back-mismatch') showToast('保存後の読戻し検証に失敗しました');
+                    else showToast('セッション記録の保存に失敗しました');
+                    break;
+                  }
+                  if (result.verified) showToast(`「${result.packageName}」へ保存しました（HTML / MD 読戻し検証済み）`);
+                  else showToast('HTML / MD のダウンロードを開始しました（フォルダー作成・保存先検証不可）');
+                } catch (err) {
+                  if (!Life.same(lifeEpoch)) break;
+                  if (err?.name === 'AbortError') {
+                    showToast('セッション記録の保存がキャンセルされました');
+                    break;
+                  }
+                  console.error('Session Save Error:', err);
+                  showToast('セッション記録の保存に失敗しました');
                 }
                 break;
             }
@@ -13970,7 +14949,6 @@ async function detectBase85Variants(input) {
     updateKind = '';
     if (renderRafId) { try { cancelAnimationFrame(renderRafId); } catch (_) {} renderRafId = 0; }
     if (autoProgressRaf) { try { cancelAnimationFrame(autoProgressRaf); } catch (_) {} autoProgressRaf = 0; }
-    pendingAutoProgress = null;
     for (const handle of Array.from(openHandles)) { try { const q = handle.abort(); if (q?.catch) q.catch(() => {}); } catch (_) {} }
     openHandles.clear();
     if (AppState.streamHandles) {
@@ -14051,6 +15029,9 @@ async function detectBase85Variants(input) {
       const result = document.getElementById(id);
       if (!result || result.dataset.alg !== id) add(`UI HASH結果契約の不一致：${id}`);
     }
+    if (SessionRecord.RESULT_IDS.length !== 12) add('Session Record結果契約が不正です');
+    if (typeof Engine.captureIterationSnapshot !== 'function') add('Session Runtime Snapshot APIがありません');
+    if (typeof OutputBaseFilter.traceApplyBytes !== 'function') add('Output BASE Trace APIがありません');
 
     return Array.from(new Set(issues));
   }
