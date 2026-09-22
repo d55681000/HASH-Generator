@@ -977,7 +977,7 @@ applyRuntimePlatform();
 <script>
 applyRuntimePlatform();
 
-const APP_VERSION = '20260922A-N/A-00-G';
+const APP_VERSION = '20260922A-86732f7-01-G';
 
 const Life = (() => {
   let state = 0;
@@ -1511,15 +1511,22 @@ const InternetGateway = (() => {
     return audit.map(entry => Object.freeze({ ...entry }));
   }
 
-  function auditStats() {
+  function auditStatsFor(entries, total, limit = AUDIT_LIMIT) {
+    const list = Array.isArray(entries) ? entries : [];
+    const cap = Math.max(0, Number(limit) || 0);
+    const count = Math.max(0, Number(total) || 0);
     return Object.freeze({
-      limit:AUDIT_LIMIT,
-      total:auditSeq,
-      saved:audit.length,
-      dropped:Math.max(0, auditSeq - audit.length),
-      firstSeq:audit.length ? audit[0].seq : null,
-      lastSeq:audit.length ? audit[audit.length - 1].seq : null
+      limit:cap,
+      total:count,
+      saved:list.length,
+      dropped:Math.max(0, count - list.length),
+      firstSeq:list.length ? (list[0]?.seq ?? null) : null,
+      lastSeq:list.length ? (list[list.length - 1]?.seq ?? null) : null
     });
+  }
+
+  function auditStats() {
+    return auditStatsFor(audit, auditSeq, AUDIT_LIMIT);
   }
 
   function init() {
@@ -1596,6 +1603,14 @@ const InternetGateway = (() => {
       policyEpoch--;
       add('Capability Epoch Revocation', revoked, 'Policy epoch change must revoke older capability');
     }
+
+    const auditSample = Array.from({ length:256 }, (_, index) => ({ seq:index + 45 }));
+    const auditStatSample = auditStatsFor(auditSample, 300, 256);
+    add('Audit Stats / Limit', auditStatSample.limit === 256, 'Audit limit must remain explicit');
+    add('Audit Stats / Total', auditStatSample.total === 300, 'Audit total must preserve the full sequence count');
+    add('Audit Stats / Saved', auditStatSample.saved === 256, 'Audit saved count must match retained entries');
+    add('Audit Stats / Dropped', auditStatSample.dropped === 44, 'Audit dropped count must expose truncated history');
+    add('Audit Stats / Range', auditStatSample.firstSeq === 45 && auditStatSample.lastSeq === 300, 'Audit retained sequence range must be exact');
 
     add('Unknown Route Rejected', issueTicket('__selftest_unknown__') === null, 'Unregistered route must not receive a capability');
     return Object.freeze(checks.slice());
@@ -6590,71 +6605,75 @@ const Engine = (() => {
         postIterState(alg, 'error', message, task.currentIter, task.target, null);
       }
 
-      onmessage = e => {
-        const { action, bytes, key, crc64Variant, iterations, algorithms, saltBytes, algId, iterMode, reqId, target, sessionId = 0, targetRevision = 0, matchTarget = null } = e.data;
-
-        if (action === ENGINE_ACTIONS.SNAPSHOT_STATE) {
-            const snapshotTasks = [];
-            for (const task of IterationRuntime.values()) {
-                if (sessionId && task.sessionId !== sessionId) continue;
-                const history = taskHistories[task.algId] || null;
-                const historyCount = history ? history.count : 0;
-                const item = {
-                    algId:task.algId,
-                    state:task.state,
-                    currentIter:task.currentIter,
-                    target:task.target,
-                    sessionId:task.sessionId,
-                    taskGeneration:task.generation,
-                    targetRevision:task.targetRevision,
-                    iterMode:task.iterMode || 'hex',
-                    hex:String(task.hex || ''),
-                    historyCount,
-                    historyLimit:HISTORY_LIMIT,
-                    rawHex:'',
-                    effectiveHex:String(task.hex || ''),
-                    crc64RawByVariant:null,
-                    crc64EffectiveByVariant:null
-                };
-                if (history && task.currentIter > 0) {
-                    const row = history.get(task.currentIter);
-                    if (row) {
-                        if (task.algId === 'CRC64') {
-                            const rawByVariant = {}, effectiveByVariant = {};
-                            let pos = 0;
+      function snapshotIterationTasks(sessionId = 0) {
+        const snapshotTasks = [];
+        for (const task of IterationRuntime.values()) {
+            if (sessionId && task.sessionId !== sessionId) continue;
+            const history = taskHistories[task.algId] || null;
+            const historyCount = history ? history.count : 0;
+            const item = {
+                algId:task.algId,
+                state:task.state,
+                currentIter:task.currentIter,
+                target:task.target,
+                sessionId:task.sessionId,
+                taskGeneration:task.generation,
+                targetRevision:task.targetRevision,
+                iterMode:task.iterMode || 'hex',
+                hex:String(task.hex || ''),
+                historyCount,
+                historyLimit:HISTORY_LIMIT,
+                rawHex:'',
+                effectiveHex:String(task.hex || ''),
+                crc64RawByVariant:null,
+                crc64EffectiveByVariant:null
+            };
+            if (history && task.currentIter > 0) {
+                const row = history.get(task.currentIter);
+                if (row) {
+                    if (task.algId === 'CRC64') {
+                        const rawByVariant = {}, effectiveByVariant = {};
+                        let pos = 0;
+                        for (const variant of CRC64_VARIANTS) {
+                            rawByVariant[variant] = bytesToHex(row.slice(pos, pos + 8));
+                            pos += 8;
+                        }
+                        if (task.iterMode === 'xor') {
                             for (const variant of CRC64_VARIANTS) {
-                                rawByVariant[variant] = bytesToHex(row.slice(pos, pos + 8));
+                                effectiveByVariant[variant] = bytesToHex(row.slice(pos, pos + 8));
                                 pos += 8;
                             }
-                            if (task.iterMode === 'xor') {
-                                for (const variant of CRC64_VARIANTS) {
-                                    effectiveByVariant[variant] = bytesToHex(row.slice(pos, pos + 8));
-                                    pos += 8;
-                                }
-                            } else {
-                                for (const variant of CRC64_VARIANTS) effectiveByVariant[variant] = rawByVariant[variant];
-                            }
-                            item.crc64RawByVariant = rawByVariant;
-                            item.crc64EffectiveByVariant = effectiveByVariant;
                         } else {
-                            const digestBytes = DIGEST_BYTES[task.algId] || 0;
-                            if (digestBytes && row.length >= digestBytes) {
-                                item.rawHex = bytesToHex(row.slice(0, digestBytes));
-                                if (task.iterMode === 'xor' && row.length >= digestBytes * 2) {
-                                    item.effectiveHex = bytesToHex(row.slice(digestBytes, digestBytes * 2));
-                                }
+                            for (const variant of CRC64_VARIANTS) effectiveByVariant[variant] = rawByVariant[variant];
+                        }
+                        item.crc64RawByVariant = rawByVariant;
+                        item.crc64EffectiveByVariant = effectiveByVariant;
+                    } else {
+                        const digestBytes = DIGEST_BYTES[task.algId] || 0;
+                        if (digestBytes && row.length >= digestBytes) {
+                            item.rawHex = bytesToHex(row.slice(0, digestBytes));
+                            if (task.iterMode === 'xor' && row.length >= digestBytes * 2) {
+                                item.effectiveHex = bytesToHex(row.slice(digestBytes, digestBytes * 2));
                             }
                         }
                     }
                 }
-                snapshotTasks.push(item);
             }
+            snapshotTasks.push(item);
+        }
+        return snapshotTasks;
+      }
+
+      onmessage = e => {
+        const { action, bytes, key, crc64Variant, iterations, algorithms, saltBytes, algId, iterMode, reqId, target, sessionId = 0, targetRevision = 0, matchTarget = null } = e.data;
+
+        if (action === ENGINE_ACTIONS.SNAPSHOT_STATE) {
             postMessage({
                 action:ENGINE_MESSAGES.SNAPSHOT_STATE_RESULT,
                 reqId,
                 sessionId,
                 capturedAt:Date.now(),
-                tasks:snapshotTasks
+                tasks:snapshotIterationTasks(sessionId)
             });
             return;
         }
@@ -6859,6 +6878,50 @@ const Engine = (() => {
               let invalidState = false;
               try { IterationRuntime.setState(alg, 'running'); } catch (e) { invalidState = true; }
               check(invalidState, 'Runtime State Guard');
+
+              const snapshotAlg = 'SHA-256';
+              const snapshotSession = 991;
+              const snapshotTask = IterationRuntime.begin(snapshotAlg, snapshotSession, 77, 3, 2, 'xor');
+              const snapshotHistory = new IterationHistory(DIGEST_BYTES[snapshotAlg] * 2);
+              const snapshotRow = new Uint8Array(DIGEST_BYTES[snapshotAlg] * 2);
+              for (let i = 0; i < DIGEST_BYTES[snapshotAlg]; i++) {
+                snapshotRow[i] = i;
+                snapshotRow[i + DIGEST_BYTES[snapshotAlg]] = 255 - i;
+              }
+              snapshotHistory.push(1, snapshotRow);
+              taskHistories[snapshotAlg] = snapshotHistory;
+              IterationRuntime.update(snapshotAlg, 1, bytesToHex(snapshotRow.slice(DIGEST_BYTES[snapshotAlg])));
+              const snapshotItems = snapshotIterationTasks(snapshotSession);
+              const snapshotItem = snapshotItems.find(item => item.algId === snapshotAlg);
+              check(snapshotItems.length === 1 && !!snapshotItem, 'Snapshot Session Filter');
+              check(snapshotItem?.state === 'running' && snapshotTask.state === 'running', 'Snapshot Observer State');
+              check(snapshotItem?.currentIter === 1 && snapshotItem?.target === 3 && snapshotItem?.targetRevision === 2, 'Snapshot Runtime Metadata');
+              check(snapshotItem?.historyCount === 1 && snapshotItem?.historyLimit === HISTORY_LIMIT, 'Snapshot History Metadata');
+              check(snapshotItem?.rawHex === bytesToHex(snapshotRow.slice(0, DIGEST_BYTES[snapshotAlg])), 'Snapshot RAW HEX');
+              check(snapshotItem?.effectiveHex === bytesToHex(snapshotRow.slice(DIGEST_BYTES[snapshotAlg])), 'Snapshot XOR Effective HEX');
+              snapshotHistory.clear(true);
+              delete taskHistories[snapshotAlg];
+              IterationRuntime.terminate(snapshotAlg);
+
+              const crcSnapshotSession = 992;
+              const crcTask = IterationRuntime.begin('CRC64', crcSnapshotSession, 78, 2, 4, 'xor');
+              const crcWidth = CRC64_VARIANTS.length * 8;
+              const crcHistory = new IterationHistory(crcWidth * 2);
+              const crcRow = new Uint8Array(crcWidth * 2);
+              for (let i = 0; i < crcWidth; i++) {
+                crcRow[i] = (i + 1) & 0xff;
+                crcRow[i + crcWidth] = (0xf0 - i) & 0xff;
+              }
+              crcHistory.push(1, crcRow);
+              taskHistories.CRC64 = crcHistory;
+              IterationRuntime.update('CRC64', 1, 'crc64-effective');
+              const crcSnapshot = snapshotIterationTasks(crcSnapshotSession).find(item => item.algId === 'CRC64');
+              check(!!crcSnapshot && crcSnapshot.state === 'running' && crcTask.state === 'running', 'Snapshot CRC64 Observer State');
+              check(crcSnapshot?.crc64RawByVariant?.[CRC64_VARIANTS[0]] === bytesToHex(crcRow.slice(0, 8)), 'Snapshot CRC64 RAW Variant');
+              check(crcSnapshot?.crc64EffectiveByVariant?.[CRC64_VARIANTS[0]] === bytesToHex(crcRow.slice(crcWidth, crcWidth + 8)), 'Snapshot CRC64 XOR Variant');
+              crcHistory.clear(true);
+              delete taskHistories.CRC64;
+              IterationRuntime.terminate('CRC64');
 
               const sha512Stream = new Sha512FamilyEngine();
               const sha512Bytes = new Uint8Array(129); sha512Bytes.fill(0x61);
@@ -8306,15 +8369,11 @@ const SelfTest = (() => {
 
   let resultObserver = null;
   const expectedCountCache = new Map();
+  const capabilityKey = () => `${Engine.hasWorker ? 1 : 0}:${window.crypto?.subtle ? 1 : 0}`;
 
   async function expectedCount() {
     if (closed || !Life.ok()) return 0;
-    const capabilityKey = `${Engine.hasWorker ? 1 : 0}:${window.crypto?.subtle ? 1 : 0}`;
-    if (expectedCountCache.has(capabilityKey)) return expectedCountCache.get(capabilityKey);
-    const report = await runAll(null);
-    const count = report.length;
-    expectedCountCache.set(capabilityKey, count);
-    return count;
+    return expectedCountCache.get(capabilityKey()) || 0;
   }
 
   async function pushResult(report, item) {
@@ -9018,6 +9077,23 @@ const SelfTest = (() => {
     }
   }
 
+  async function runSessionTests(report, control) {
+    await step(control, 'SESSION', 'Snapshot / Record / Save');
+    try {
+      const checks = await UI.runSessionRecordRegression();
+      if (!Array.isArray(checks) || checks.length === 0) {
+        await addFailure(report, 'SESSION', 'Session Regression', 'Session regression result is empty');
+        return;
+      }
+      for (const check of checks) {
+        if (check.ok) await add(report, 'SESSION', check.name, true, true);
+        else await addFailure(report, 'SESSION', check.name, check.detail || 'Session regression failed');
+      }
+    } catch (e) {
+      await addFailure(report, 'SESSION', 'Session Regression', e);
+    }
+  }
+
   async function runFilterTests(report, control) {
     const canonical = 'fdeab9acf3710362bd2658cdc9a29e8f9c757fcf9811603a8c447cd1d9151108';
     const contexts = [
@@ -9566,9 +9642,11 @@ const SelfTest = (() => {
       await runBase85Tests(report, control);
       await runFileTests(report, control);
       await runWorkerTests(report, control);
+      await runSessionTests(report, control);
       await runFilterTests(report, control);
       await runRegressionTests(report, control);
       await runStreamingTests(report, control);
+      expectedCountCache.set(capabilityKey(), report.length);
       return report;
     } finally {
       resultObserver = previousObserver;
@@ -9919,7 +9997,30 @@ const UI = (() => {
 
     const clear = () => { latest = null; };
 
-    return Object.freeze({ begin, addVisible, addSystem, addInternal, setPreHiddenReset, setFinalReset, finish, snapshot, clear });
+    const selfTest = () => {
+      const checks = [];
+      const add = (name, ok, detail = '') => checks.push(Object.freeze({ name, ok:!!ok, detail:String(detail || '') }));
+      const visibleSource = { key:'k', label:'L', ok:true, total:3, passed:2, skipped:1, failed:['x'] };
+      const visibleCopy = copyVisible(visibleSource);
+      visibleSource.key = 'changed';
+      visibleSource.failed[0] = 'changed';
+      add('AutoTest Report / Visible Copy', visibleCopy.key === 'k' && visibleCopy.failed[0] === 'x', 'Visible report must be detached from its source');
+      add('AutoTest Report / Visible Frozen', Object.isFrozen(visibleCopy) && Object.isFrozen(visibleCopy.failed), 'Visible report copy must be immutable');
+
+      const internalSource = { group:'G', name:'N', ok:false, skip:true, detail:'D' };
+      const internalCopy = copyInternal(internalSource);
+      internalSource.detail = 'changed';
+      add('AutoTest Report / Internal Copy', internalCopy.group === 'G' && internalCopy.detail === 'D' && internalCopy.skip === true, 'Internal report must preserve normalized values');
+      add('AutoTest Report / Internal Frozen', Object.isFrozen(internalCopy), 'Internal report copy must be immutable');
+
+      const verifySource = { ok:true, total:2, passed:2, skipped:0, failed:[] };
+      const verifyCopy = copyVerify(verifySource);
+      add('AutoTest Report / Verify Copy', !!verifyCopy && verifyCopy.ok && verifyCopy.total === 2 && verifyCopy.passed === 2, 'Reset verification copy must preserve counts');
+      add('AutoTest Report / Verify Frozen', !!verifyCopy && Object.isFrozen(verifyCopy) && Object.isFrozen(verifyCopy.failed), 'Reset verification copy must be immutable');
+      return Object.freeze(checks.slice());
+    };
+
+    return Object.freeze({ begin, addVisible, addSystem, addInternal, setPreHiddenReset, setFinalReset, finish, snapshot, clear, selfTest });
   })();
 
   const TEST_VECTORS = {
@@ -11747,8 +11848,8 @@ function showToast(msg, duration = TOAST_DURATION) {
 
   const SessionSave = (() => {
     function packageNameIssue(value) {
-      const name = String(value || '').trim();
-      if (!name) return '保存フォルダー名を入力してください。';
+      const name = String(value ?? '');
+      if (!name.trim()) return '保存フォルダー名を入力してください。';
       if (name === '.' || name === '..') return '「.」「..」は使用できません。';
       if (name.length > 120) return '保存フォルダー名は120文字以内にしてください。';
       if (/[\u0000-\u001f<>:"/\\|?*]/.test(name)) return '保存フォルダー名に使用できない文字が含まれています。';
@@ -11762,11 +11863,11 @@ function showToast(msg, duration = TOAST_DURATION) {
       while (true) {
         const value = promptFn('保存フォルダー名を入力してください。\n同名の HTML / MD を保存します。', candidate);
         if (value === null) return null;
-        candidate = String(value).trim();
+        candidate = String(value);
         const issue = packageNameIssue(candidate);
         if (!issue) return candidate;
         try { alertFn(issue); } catch (_) {}
-        if (!candidate) candidate = defaultName;
+        if (!candidate.trim()) candidate = defaultName;
       }
     }
 
@@ -12947,11 +13048,307 @@ function showToast(msg, duration = TOAST_DURATION) {
           renameEvents.includes('create:CUSTOM-SESSION') &&
           packageFiles.has('CUSTOM-SESSION.html') && packageFiles.has('CUSTOM-SESSION.md')
       });
+
+      const valid120 = 'A'.repeat(120);
+      const invalid121 = 'A'.repeat(121);
+      checks.push({
+        name:'Session Package Name Boundary / Unicode / Reserved',
+        ok:SessionSave.packageNameIssue(valid120) === '' &&
+          SessionSave.packageNameIssue(invalid121) !== '' &&
+          SessionSave.packageNameIssue('日本語セッション') === '' &&
+          SessionSave.packageNameIssue('name.') !== '' &&
+          SessionSave.packageNameIssue('name ') !== '' &&
+          SessionSave.packageNameIssue('COM1') !== '' &&
+          SessionSave.packageNameIssue('LPT9.log') !== ''
+      });
+
+      let overwriteConfirmed = 0;
+      const existingParent = {
+        async getDirectoryHandle(name, options = null) {
+          if (options?.create === false) return directory;
+          return directory;
+        }
+      };
+      const rejectExisting = SessionSave.beginDestination('DEFAULT', {
+        promptFn:() => 'EXISTING',
+        alertFn:() => {},
+        confirmFn:() => { overwriteConfirmed++; return false; },
+        directoryPicker:() => Promise.resolve(existingParent)
+      });
+      const rejectedSelection = await rejectExisting.promise;
+      checks.push({
+        name:'Session Package Existing Folder / Reject Overwrite',
+        ok:overwriteConfirmed === 1 && rejectedSelection?.error?.name === 'AbortError' &&
+          rejectedSelection.directory === null && rejectedSelection.packageName === ''
+      });
+
+      const pickerCancelled = SessionSave.beginDestination('DEFAULT', {
+        promptFn:() => 'IGNORED',
+        alertFn:() => {},
+        confirmFn:() => true,
+        directoryPicker:() => Promise.reject(new DOMException('cancelled', 'AbortError'))
+      });
+      const cancelledSelection = await pickerCancelled.promise;
+      checks.push({
+        name:'Session Package Directory Picker Cancel',
+        ok:cancelledSelection?.error?.name === 'AbortError' &&
+          cancelledSelection.directory === null && cancelledSelection.packageName === ''
+      });
+
+      const partialState = new Map();
+      const partialDirectory = {
+        async getFileHandle(name) {
+          const state = { bytes:new Uint8Array(0) };
+          partialState.set(name, state);
+          return {
+            async createWritable() {
+              return {
+                async write(value) { state.bytes = value instanceof Uint8Array ? value.slice() : new Uint8Array(value); },
+                async close() {},
+                async abort() {}
+              };
+            },
+            async getFile() {
+              if (name.endsWith('.md')) return new Blob([new Uint8Array([0xff])]);
+              return new Blob([state.bytes]);
+            }
+          };
+        }
+      };
+      const partialResult = await SessionSave.writePackageToDirectory(partialDirectory, {
+        htmlBytes:new Uint8Array([1,2,3,4]),
+        markdownBytes:new Uint8Array([5,6,7,8])
+      }, 'partial-session', lifeEpoch);
+      checks.push({
+        name:'Session Package Partial Write Detection',
+        ok:!partialResult.ok && partialResult.html?.verified === true &&
+          partialResult.markdown?.verified === false &&
+          partialResult.markdown?.reason === 'read-back-mismatch'
+      });
+
       return checks;
     } finally {
       AppState.Base64Encode = previous.Base64Encode;
       AppState.Base85Encode = previous.Base85Encode;
     }
+  }
+
+
+  async function runSessionRecordRegression() {
+    const checks = [];
+    const add = (name, ok, detail = '') => checks.push(Object.freeze({ name, ok:!!ok, detail:String(detail || '') }));
+    const clone = value => JSON.parse(JSON.stringify(value));
+    const baseIds = ['Base64-Enc','Base64-Dec','Base85-Enc','Base85-Dec'];
+    const disableOutputBase = snapshot => {
+      snapshot.settings.outputBase = { optionsOpen:false, enabled:false, handoff:'hex', order:[], base64:false, base85:false };
+      for (const result of Object.values(snapshot.results || {})) {
+        if (!result?.outputBase) continue;
+        result.outputBase.enabled = false;
+        result.outputBase.requestedOrder = [];
+        result.outputBase.original = result.type === 'hash' ? (result.originalHex || '') : '';
+        result.outputBase.ok = true;
+        result.outputBase.failedStage = '';
+        result.outputBase.error = '';
+        result.outputBase.stages = [1,2].map(index => ({
+          index, mode:'', variant:'', handoff:'hex', inputByteLength:0, inputHex:'', status:'not_configured', output:'', error:''
+        }));
+      }
+    };
+    const disableBaseResults = snapshot => {
+      for (const id of baseIds) {
+        const result = snapshot.results?.[id];
+        if (!result) continue;
+        result.enabled = false;
+        result.status = 'not_run';
+        result.sourceType = 'text';
+        result.sourceByteLength = 0;
+        result.sourceHex = '';
+        result.originalResult = '';
+        result.fileInfo = null;
+        result.finalActual = '';
+        result.finalDisplay = '';
+        if (result.ui) result.ui.enabled = false;
+      }
+    };
+    const currentSettingLabels = doc => new Set(Array.from(doc.querySelectorAll('[data-record-settings="current"] .kv > .k')).map(node => node.textContent));
+    const kvValue = (root, label) => {
+      for (const row of Array.from(root?.querySelectorAll('.kv') || [])) {
+        if (row.querySelector('.k')?.textContent === label) return row.querySelector('.v')?.textContent ?? null;
+      }
+      return null;
+    };
+
+    const requestedAt = Date.now();
+    const identity = Object.freeze({ id:'SELFTEST-BASELINE', defaultName:'SELFTEST-BASELINE' });
+    const baseline = await SessionRecord.capture(identity, requestedAt);
+    const baselineRecord = await SessionRecord.build(baseline);
+    add('Session Record / Baseline Build', baselineRecord.validation.length === 0 && baselineRecord.markdownValidation.length === 0, 'Baseline HTML/MD must validate');
+    add('Session Record / Canonical JSON Round-trip', JSON.stringify(JSON.parse(baselineRecord.json)) === JSON.stringify(baseline), 'Canonical JSON must round-trip exactly');
+
+    const literal = '不明 UNKNOWN UNAVAILABLE 取得不可 整形後入力 すべてBASE化 HEX表記 区切り\n### Base64-Dec\n``` literal </pre><script>SESSION_XSS<\/script><div>';
+    const saltLiteral = 'SALT-不明-UNKNOWN-<tag>';
+    const hmacLiteral = 'HMAC-取得不可-すべてBASE化-`*_[]<>';
+    const collision = clone(baseline);
+    collision.identity.id = 'SELFTEST-LITERAL';
+    collision.calculationSession = null;
+    collision.input = {
+      type:'text', entered:literal, sanitized:literal, normalized:literal, visible:literal,
+      graphemes:Array.from(literal).length, entropy:0, file:null
+    };
+    collision.settings.normalization = 'none';
+    collision.settings.sanitizeText = false;
+    collision.settings.hexUpper = false;
+    collision.settings.grouping = 4;
+    collision.settings.separator = '*_[x]<>\\';
+    collision.settings.salt = { enabled:true, value:saltLiteral };
+    collision.settings.hmac = { enabled:true, key:hmacLiteral };
+    collision.settings.iterations = 1;
+    collision.settings.iterMode = 'hex';
+    collision.settings.base = {
+      groupOpen:false, base64Encode:false, base64Decode:false, base64Strict:false,
+      base85Encode:false, base85Decode:false, base85Variant:'Standard ASCII85', fileAutoDetect:false
+    };
+    collision.settings.compare = { panelOpen:false, input:'', continuousEnabled:false, continuousTarget:null, continuousHit:null };
+    collision.settings.test = { panelOpen:false, vector:'empty', verifyArmed:false };
+    disableOutputBase(collision);
+    disableBaseResults(collision);
+    const collisionRecord = await SessionRecord.build(collision);
+    const collisionDoc = new DOMParser().parseFromString(collisionRecord.html, 'text/html');
+    const parsedCollision = JSON.parse(collisionDoc.getElementById('session-data')?.textContent || '{}');
+    add('Session Record / Literal Canonical Preservation',
+      parsedCollision.input?.entered === literal &&
+      parsedCollision.settings?.salt?.value === saltLiteral &&
+      parsedCollision.settings?.hmac?.key === hmacLiteral,
+      'Canonical data must preserve literal user values');
+    add('Session Record / Literal HTML Preservation',
+      collisionDoc.querySelector('[data-record-input="entered"] pre')?.textContent === literal,
+      'Human HTML input must not normalize literal user text');
+    add('Session Record / Scriptless Escaping',
+      collisionDoc.querySelectorAll('script').length === 0 && collisionDoc.querySelector('[data-record-input="entered"] pre')?.textContent.includes('<script>SESSION_XSS<\/script>'),
+      'Saved record must keep literal script text without creating executable nodes');
+    add('Session Record / Markdown Literal Preservation',
+      collisionRecord.markdown.includes(literal) && collisionRecord.markdown.includes(saltLiteral) && collisionRecord.markdown.includes(hmacLiteral),
+      'Markdown fenced values must remain literal');
+    add('Session Record / Markdown Dynamic Fence',
+      collisionRecord.markdown.includes('````text'),
+      'Markdown fence must expand beyond embedded backticks');
+    add('Session Record / Markdown Inline Escape',
+      collisionRecord.markdown.includes('\\*\\_\\[x\\]\\<\\>\\\\'),
+      'Markdown inline settings must escape metacharacters');
+
+    const minimal = clone(baseline);
+    minimal.identity.id = 'SELFTEST-MINIMAL';
+    minimal.calculationSession = null;
+    minimal.input = { type:'text', entered:'x', sanitized:'x', normalized:'x', visible:'x', graphemes:1, entropy:0, file:null };
+    minimal.settings.normalization = 'none';
+    minimal.settings.sanitizeText = false;
+    minimal.settings.hexUpper = false;
+    minimal.settings.grouping = 0;
+    minimal.settings.separator = ' ';
+    minimal.settings.copyMode = 'actual';
+    minimal.settings.iterations = 1;
+    minimal.settings.iterMode = 'xor';
+    minimal.settings.salt = { enabled:false, value:null };
+    minimal.settings.hmac = { enabled:false, key:null };
+    minimal.settings.base = {
+      groupOpen:false, base64Encode:false, base64Decode:false, base64Strict:true,
+      base85Encode:false, base85Decode:false, base85Variant:'RFC 1924 Alphabet (Block)', fileAutoDetect:true
+    };
+    minimal.settings.compare = { panelOpen:false, input:'', continuousEnabled:false, continuousTarget:null, continuousHit:null };
+    minimal.settings.test = { panelOpen:false, vector:'empty', verifyArmed:false };
+    disableOutputBase(minimal);
+    disableBaseResults(minimal);
+    const minimalRecord = await SessionRecord.build(minimal);
+    const minimalDoc = new DOMParser().parseFromString(minimalRecord.html, 'text/html');
+    const minimalLabels = currentSettingLabels(minimalDoc);
+    const hiddenLabels = ['HEX表記','区切り','区切り文字','Salt','Salt 値','HMAC','HMAC Key','反復方式','Base64 Enc','Base64 Dec','Base64判定','Base85 Enc','Base85 Dec','Base85形式','Base自動判別','すべてBASE化','受け渡し','適用順序'];
+    add('Session Record / Default Setting Visibility',
+      hiddenLabels.every(label => !minimalLabels.has(label)),
+      `Inactive/default settings leaked: ${hiddenLabels.filter(label => minimalLabels.has(label)).join(', ')}`);
+    add('Session Record / Redundant Input Hidden',
+      !minimalDoc.querySelector('[data-record-input="sanitized"]') && !minimalDoc.querySelector('[data-record-input="normalized"]'),
+      'Unchanged sanitized/normalized input must stay hidden');
+    add('Session Record / Disabled BASE Cards Hidden',
+      baseIds.every(id => !Array.from(minimalDoc.querySelectorAll('.result-card h3')).some(node => node.textContent === id)) &&
+      minimalDoc.querySelectorAll('.pipeline').length === 0,
+      'Disabled BASE results and Output BASE pipeline must stay hidden');
+
+    const inactiveDiff = clone(minimal);
+    inactiveDiff.identity.id = 'SELFTEST-INACTIVE-DIFF';
+    inactiveDiff.calculationSession = {
+      inputType:'text', normalization:'none', sanitizeText:false, saltEnabled:false, salt:null,
+      hmacEnabled:false, hmacKey:null, iterations:1, iterMode:'hex',
+      crc64Variant:inactiveDiff.settings.crc64Variant,
+      base64Encode:false, base64Decode:false, base64Strict:false,
+      base85Encode:false, base85Decode:false, base85Variant:'Standard ASCII85',
+      baseFileDetect:false, sourceByteLength:1, startedAt:1700000000000, netTimeOffset:0
+    };
+    const inactiveDiffRecord = await SessionRecord.build(inactiveDiff);
+    const inactiveDiffDoc = new DOMParser().parseFromString(inactiveDiffRecord.html, 'text/html');
+    const diffLabels = new Set(Array.from(inactiveDiffDoc.querySelectorAll('#section-settings details table tbody th')).map(node => node.textContent));
+    add('Session Record / Inactive Difference Hidden',
+      !diffLabels.has('反復方式') && !diffLabels.has('Base64判定') && !diffLabels.has('Base85形式') && !diffLabels.has('Base自動判別'),
+      'Inactive option differences must not appear');
+
+    const timeCase = clone(inactiveDiff);
+    timeCase.identity.id = 'SELFTEST-TIME-OFFSET';
+    timeCase.app.netTimeOffset = 9 * 60 * 60 * 1000;
+    timeCase.calculationSession.startedAt = 1700000000000;
+    timeCase.calculationSession.netTimeOffset = 0;
+    const timeRecord = await SessionRecord.build(timeCase);
+    const timeDoc = new DOMParser().parseFromString(timeRecord.html, 'text/html');
+    const calculationRoot = Array.from(timeDoc.querySelectorAll('#section-settings .subsection')).find(node => node.querySelector('h3')?.textContent === '結果生成時の設定');
+    const shownStart = kvValue(calculationRoot, '計算開始日時');
+    const expectedStart = SysUtils.fmtJapaneseDate(new Date(timeCase.calculationSession.startedAt));
+    const wrongStart = SysUtils.fmtJapaneseDate(new Date(timeCase.calculationSession.startedAt + timeCase.app.netTimeOffset));
+    add('Session Record / Calculation Start Offset',
+      shownStart === expectedStart && shownStart !== wrongStart,
+      `start=${shownStart}, expected=${expectedStart}, save-offset=${wrongStart}`);
+
+    const gatewayCase = clone(minimal);
+    gatewayCase.identity.id = 'SELFTEST-GATEWAY-STATS';
+    gatewayCase.network = { audit:[], stats:{ limit:256, total:300, saved:256, dropped:44, firstSeq:45, lastSeq:300 } };
+    const gatewayRecord = await SessionRecord.build(gatewayCase);
+    const gatewayDoc = new DOMParser().parseFromString(gatewayRecord.html, 'text/html');
+    const networkRoot = gatewayDoc.getElementById('section-network');
+    add('Session Record / Gateway Audit Stats',
+      kvValue(networkRoot, '保存件数') === '0' &&
+      kvValue(networkRoot, '累計記録数') === '300' &&
+      kvValue(networkRoot, '省略件数') === '44' &&
+      kvValue(networkRoot, '保持上限') === '256',
+      'Human record must expose retained/truncated audit counts');
+
+    const baseEl = document.getElementById('Base64-Enc');
+    if (baseEl) {
+      const previousFlag = AppState.Base64Encode;
+      const previousText = baseEl.textContent;
+      const previousDataset = { ...baseEl.dataset };
+      try {
+        AppState.Base64Encode = false;
+        baseEl.dataset.raw = 'STALE-BASE-PAYLOAD';
+        baseEl.dataset.empty = '0';
+        baseEl.textContent = 'STALE-BASE-PAYLOAD';
+        const staleAt = Date.now();
+        const staleSnapshot = await SessionRecord.capture(Object.freeze({ id:'SELFTEST-STALE-BASE', defaultName:'SELFTEST-STALE-BASE' }), staleAt);
+        const stale = staleSnapshot.results['Base64-Enc'];
+        add('Session Record / Disabled BASE Logical Payload',
+          stale.enabled === false && stale.status === 'not_run' &&
+          stale.sourceByteLength === 0 && stale.sourceHex === '' &&
+          stale.originalResult === '' && stale.finalActual === '' &&
+          stale.ui.raw === 'STALE-BASE-PAYLOAD',
+          'Disabled BASE must keep stale DOM only in UI evidence');
+      } finally {
+        AppState.Base64Encode = previousFlag;
+        baseEl.textContent = previousText;
+        for (const key of Object.keys(baseEl.dataset)) if (!(key in previousDataset)) delete baseEl.dataset[key];
+        for (const [key, value] of Object.entries(previousDataset)) baseEl.dataset[key] = value;
+      }
+    } else {
+      add('Session Record / Disabled BASE Logical Payload', false, 'Base64-Enc DOM missing');
+    }
+
+    for (const check of AutoTestReport.selfTest()) checks.push(check);
+    return checks;
   }
 
   function updateMeta(count, isFile, statusText, iterations = 1) {
@@ -14177,15 +14574,15 @@ async function detectBase85Variants(input) {
         showAutoToast(`表示検証 ${systemPassedLive}/${systemSurface.length}${systemFailedLive.length ? `｜FAIL ${systemFailedLive.length}` : ' 完了'}`, systemFailedLive.length ? 4200 : 1200, true);
         await AutoTestClock.hold(AUTO_TEST_TIMING.phaseTransition, true);
 
-        showAutoToast('内部検証計画を構築中｜総項目数を実測します', 1800, true);
-        setMetaStatus('内部検証計画を構築中');
+        showAutoToast('内部検証計画を確認中', 1200, true);
+        setMetaStatus('内部検証計画を確認中');
         const hiddenPlannedTotal = await SelfTest.expectedCount();
         AutoTestSession.setProgress('internal', 0, hiddenPlannedTotal || 0);
         syncPauseControls();
         showAutoToast(
           hiddenPlannedTotal
             ? `空復元 ${preHiddenResetResult.ok ? 'OK' : 'FAIL'}｜内部検証 0/${hiddenPlannedTotal} へ移行します`
-            : `空復元 ${preHiddenResetResult.ok ? 'OK' : 'FAIL'}｜内部検証へ移行します`,
+            : `空復元 ${preHiddenResetResult.ok ? 'OK' : 'FAIL'}｜内部検証へ移行します（初回は実行後に総数を確定）`,
           preHiddenResetResult.ok ? 1500 : 4200,
           true
         );
@@ -14210,7 +14607,7 @@ async function detectBase85Variants(input) {
             else if (item.ok) hiddenPassedLive++;
             else hiddenFailedLive++;
 
-            const total = hiddenPlannedTotal || Math.max(count, AutoTestSession.total || 0);
+            const total = hiddenPlannedTotal || 0;
             AutoTestSession.setProgress('internal', count, total);
             syncPauseControls();
 
@@ -15030,6 +15427,13 @@ async function detectBase85Variants(input) {
       if (!result || result.dataset.alg !== id) add(`UI HASH結果契約の不一致：${id}`);
     }
     if (SessionRecord.RESULT_IDS.length !== 12) add('Session Record結果契約が不正です');
+    if (SessionRecord.SESSION_SCHEMA !== 'SONY-HASH-SESSION/2') add('Session schema契約が不正です');
+    if (SessionRecord.RECORD_SCHEMA !== 'SONY-HASH-RECORD/6') add('Record schema契約が不正です');
+    if (SessionRecord.SUMMARY_SCHEMA !== 'SONY-HASH-SUMMARY/4') add('Summary schema契約が不正です');
+    if (typeof SessionRecord.validateRecord !== 'function') add('Session Record validatorがありません');
+    if (typeof SessionRecord.validateMarkdown !== 'function') add('Session Markdown validatorがありません');
+    if (typeof SessionSave.writePackageToDirectory !== 'function') add('Session Package writerがありません');
+    if (typeof InternetGateway.auditStats !== 'function') add('Internet Gateway audit stats APIがありません');
     if (typeof Engine.captureIterationSnapshot !== 'function') add('Session Runtime Snapshot APIがありません');
     if (typeof OutputBaseFilter.traceApplyBytes !== 'function') add('Output BASE Trace APIがありません');
 
@@ -15045,7 +15449,7 @@ async function detectBase85Variants(input) {
     attachEvents();
   }
 
-  return { init, validate, updateSysPanel, runResultStateRegression, runFileHandleRegression, shutdown };
+  return { init, validate, updateSysPanel, runResultStateRegression, runFileHandleRegression, runSessionRecordRegression, shutdown };
 })();
 
 const PresetLoader = (() => {
