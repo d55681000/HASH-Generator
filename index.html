@@ -977,7 +977,7 @@ applyRuntimePlatform();
 <script>
 applyRuntimePlatform();
 
-const APP_VERSION = '20260922A-86732f7-01-G';
+const APP_VERSION = '20260922A-86732f7-02-G;
 
 const Life = (() => {
   let state = 0;
@@ -1513,15 +1513,15 @@ const InternetGateway = (() => {
 
   function auditStatsFor(entries, total, limit = AUDIT_LIMIT) {
     const list = Array.isArray(entries) ? entries : [];
-    const cap = Math.max(0, Number(limit) || 0);
     const count = Math.max(0, Number(total) || 0);
+    const keepLimit = Math.max(0, Number(limit) || 0);
     return Object.freeze({
-      limit:cap,
+      limit:keepLimit,
       total:count,
       saved:list.length,
       dropped:Math.max(0, count - list.length),
-      firstSeq:list.length ? (list[0]?.seq ?? null) : null,
-      lastSeq:list.length ? (list[list.length - 1]?.seq ?? null) : null
+      firstSeq:list.length ? list[0].seq : null,
+      lastSeq:list.length ? list[list.length - 1].seq : null
     });
   }
 
@@ -1604,15 +1604,18 @@ const InternetGateway = (() => {
       add('Capability Epoch Revocation', revoked, 'Policy epoch change must revoke older capability');
     }
 
-    const auditSample = Array.from({ length:256 }, (_, index) => ({ seq:index + 45 }));
-    const auditStatSample = auditStatsFor(auditSample, 300, 256);
-    add('Audit Stats / Limit', auditStatSample.limit === 256, 'Audit limit must remain explicit');
-    add('Audit Stats / Total', auditStatSample.total === 300, 'Audit total must preserve the full sequence count');
-    add('Audit Stats / Saved', auditStatSample.saved === 256, 'Audit saved count must match retained entries');
-    add('Audit Stats / Dropped', auditStatSample.dropped === 44, 'Audit dropped count must expose truncated history');
-    add('Audit Stats / Range', auditStatSample.firstSeq === 45 && auditStatSample.lastSeq === 300, 'Audit retained sequence range must be exact');
-
     add('Unknown Route Rejected', issueTicket('__selftest_unknown__') === null, 'Unregistered route must not receive a capability');
+
+    const makeAudit = (start, count) => Array.from({ length:count }, (_, i) => ({ seq:start + i }));
+    const stats0 = auditStatsFor([], 0);
+    const stats256 = auditStatsFor(makeAudit(1, 256), 256);
+    const stats257 = auditStatsFor(makeAudit(2, 256), 257);
+    const stats300 = auditStatsFor(makeAudit(45, 256), 300);
+    add('Audit Stats Empty', stats0.saved === 0 && stats0.dropped === 0 && stats0.firstSeq === null && stats0.lastSeq === null, 'Empty audit stats');
+    add('Audit Stats Limit', stats256.saved === 256 && stats256.dropped === 0 && stats256.firstSeq === 1 && stats256.lastSeq === 256, '256-entry boundary');
+    add('Audit Stats First Drop', stats257.saved === 256 && stats257.dropped === 1 && stats257.firstSeq === 2 && stats257.lastSeq === 257, '257-entry boundary');
+    add('Audit Stats Truncation', stats300.saved === 256 && stats300.dropped === 44 && stats300.firstSeq === 45 && stats300.lastSeq === 300, '300-entry boundary');
+
     return Object.freeze(checks.slice());
   }
 
@@ -8368,12 +8371,57 @@ const SelfTest = (() => {
   }
 
   let resultObserver = null;
-  const expectedCountCache = new Map();
-  const capabilityKey = () => `${Engine.hasWorker ? 1 : 0}:${window.crypto?.subtle ? 1 : 0}`;
 
-  async function expectedCount() {
-    if (closed || !Life.ok()) return 0;
-    return expectedCountCache.get(capabilityKey()) || 0;
+  const SELF_TEST_PLAN = Object.freeze({
+    base:Object.freeze({
+      CONTRACT:45,
+      SECURITY:44,
+      HASH:66,
+      'SHA-512 FAMILY':12,
+      CRC64:5,
+      HMAC:32,
+      'HMAC BOUNDARY':48,
+      HEX:15,
+      'UTF-8':47,
+      BASE64:57,
+      BASE85:144,
+      'BASE85 PRESENTATION':5,
+      FILE:13,
+      WORKER:5,
+      FILTER:38,
+      SESSION:28,
+      REGRESSION:169,
+      STREAM:768
+    }),
+    webCrypto:Object.freeze({ HASH:18, HMAC:6, 'HMAC BOUNDARY':24 })
+  });
+
+  const DEPENDENCY_PLAN = Object.freeze({
+    internetGateway:23,
+    systemMonitor:13,
+    workerGuard:8,
+    workerContract:6,
+    session:28,
+    fileWorkflow:5,
+    writable:11
+  });
+
+  function requirementIssues() {
+    const issues = [];
+    if (!Engine.hasWorker) issues.push('Web Worker');
+    return Object.freeze(issues);
+  }
+
+  function plannedGroups() {
+    const groups = { ...SELF_TEST_PLAN.base };
+    if (window.crypto?.subtle) {
+      for (const [group, delta] of Object.entries(SELF_TEST_PLAN.webCrypto)) groups[group] = (groups[group] || 0) + delta;
+    }
+    return Object.freeze(groups);
+  }
+
+  function plannedCount() {
+    return Object.values(plannedGroups()).reduce((sum, value) => sum + value, 0);
   }
 
   async function pushResult(report, item) {
@@ -8420,6 +8468,39 @@ const SelfTest = (() => {
     await pushResult(report, { group, name, ok:false, skip:true, detail:String(detail || '未対応') });
   }
 
+  async function addPrerequisiteFailure(report, control, group, names, error) {
+    const list = Array.isArray(names) ? names.filter(Boolean) : [];
+    if (!list.length) return;
+    const detail = String(error?.message || error || '前提失敗');
+    await addFailure(report, group, list[0], `前提失敗：${detail}`);
+    for (let i = 1; i < list.length; i++) {
+      await step(control, group, list[i]);
+      await addSkip(report, group, list[i], `前提失敗：${detail}`);
+    }
+  }
+
+  async function emitBridgeChecks(report, control, group, checks, expectedCount, options = {}) {
+    const list = Array.isArray(checks) ? checks : [];
+    const prefix = options.prefix || '';
+    const fallback = options.fallback || 'Bridge';
+    for (const check of list) {
+      const name = `${prefix}${check?.name || fallback}`;
+      if (check?.skip) await addSkip(report, group, name, check.detail || '未対応');
+      else if (check?.ok) await add(report, group, name, true, true);
+      else await addFailure(report, group, name, check?.detail || `${fallback} failed`);
+    }
+    for (let i = list.length; i < expectedCount; i++) {
+      const name = `${fallback} / dependent ${i + 1}`;
+      await step(control, group, name);
+      await addSkip(report, group, name, '前提結果不足');
+    }
+  }
+
+  async function emitBridgeFailure(report, control, group, fallback, expectedCount, error) {
+    const names = Array.from({ length:expectedCount }, (_, index) => index === 0 ? fallback : `${fallback} / dependent ${index + 1}`);
+    await addPrerequisiteFailure(report, control, group, names, error);
+  }
+
   async function step(control, group, name) {
     if (closed || !Life.ok()) throw new Error('Unavailable');
     if (control && typeof control.checkpoint === 'function') await control.checkpoint();
@@ -8433,35 +8514,30 @@ const SelfTest = (() => {
     try {
       const checks = InternetGateway.selfTest();
       if (!Array.isArray(checks) || checks.length === 0) {
-        await addFailure(report, 'SECURITY', 'Internet Gateway Capability', 'Self-test result is empty');
+        await emitBridgeFailure(report, control, 'SECURITY', 'Internet Gateway Capability', DEPENDENCY_PLAN.internetGateway, 'Self-test result is empty');
       } else {
-        for (const check of checks) {
-          if (check.ok) await add(report, 'SECURITY', `Internet / ${check.name}`, true, true);
-          else await addFailure(report, 'SECURITY', `Internet / ${check.name}`, check.detail || 'Security check failed');
-        }
+        await emitBridgeChecks(report, control, 'SECURITY', checks, DEPENDENCY_PLAN.internetGateway, { prefix:'Internet / ', fallback:'Internet Gateway Capability' });
       }
     } catch (e) {
-      await addFailure(report, 'SECURITY', 'Internet Gateway Capability', e);
+      await emitBridgeFailure(report, control, 'SECURITY', 'Internet Gateway Capability', DEPENDENCY_PLAN.internetGateway, e);
     }
 
     await step(control, 'SECURITY', 'System Monitor');
     try {
       const checks = SystemMonitor.selfTest();
       if (!Array.isArray(checks) || checks.length === 0) {
-        await addFailure(report, 'SECURITY', 'System Monitor', 'Self-test result is empty');
+        await emitBridgeFailure(report, control, 'SECURITY', 'System Monitor', DEPENDENCY_PLAN.systemMonitor, 'Self-test result is empty');
       } else {
-        for (const check of checks) {
-          if (check.ok) await add(report, 'SECURITY', `System Monitor / ${check.name}`, true, true);
-          else await addFailure(report, 'SECURITY', `System Monitor / ${check.name}`, check.detail || 'Monitor check failed');
-        }
+        await emitBridgeChecks(report, control, 'SECURITY', checks, DEPENDENCY_PLAN.systemMonitor, { prefix:'System Monitor / ', fallback:'System Monitor' });
       }
     } catch (e) {
-      await addFailure(report, 'SECURITY', 'System Monitor', e);
+      await emitBridgeFailure(report, control, 'SECURITY', 'System Monitor', DEPENDENCY_PLAN.systemMonitor, e);
     }
 
     await step(control, 'SECURITY', 'Worker Network Guard');
+    const workerGuardNames = ['fetch','XMLHttpRequest','WebSocket','EventSource','Worker','SharedWorker','importScripts','fetchLater'].map(label => `Worker Guard / ${label}`);
     if (!WorkerBroker.available) {
-      await addSkip(report, 'SECURITY', 'Worker Network Guard', 'Worker未対応');
+      await addPrerequisiteFailure(report, control, 'SECURITY', workerGuardNames, 'Web Worker unavailable');
       return;
     }
 
@@ -8500,7 +8576,7 @@ const SelfTest = (() => {
         await add(report, 'SECURITY', `Worker Guard / ${label}`, result[name], true);
       }
     } catch (e) {
-      await addFailure(report, 'SECURITY', 'Worker Network Guard', e);
+      await addPrerequisiteFailure(report, control, 'SECURITY', workerGuardNames, e);
     } finally {
       try { worker?.terminate(); } catch (_) {}
     }
@@ -8517,10 +8593,9 @@ const SelfTest = (() => {
       await add(report, 'HASH', `Core SHA-224 / ${name}`, Core.sha224Hex(bytes), vector.expect['SHA-224']);
 
       const workerResult = await Engine.runWorkerSelfTest('hash', { bytes, crc64Variant:CRC64_VARIANTS[0] });
-      if (!workerResult) {
-        await addSkip(report, 'HASH', `Worker / ${name}`, 'Worker未対応');
-      } else if (workerResult.status !== 'ok' || !workerResult.results) {
-        await addFailure(report, 'HASH', `Worker / ${name}`, workerResult.error || 'Worker Error');
+      const workerNames = ['CRC32','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512'].map(alg => `Worker ${alg} / ${name}`);
+      if (!workerResult || workerResult.status !== 'ok' || !workerResult.results) {
+        await addPrerequisiteFailure(report, control, 'HASH', workerNames, workerResult?.error || 'Worker Error');
       } else {
         await add(report, 'HASH', `Worker CRC32 / ${name}`, workerResult.results.crc, vector.expect['CRC32']);
         await add(report, 'HASH', `Worker MD5 / ${name}`, workerResult.results.md5, vector.expect['MD5']);
@@ -8532,13 +8607,12 @@ const SelfTest = (() => {
       }
 
       if (window.crypto?.subtle) {
-        try {
-          await add(report, 'HASH', `WebCrypto SHA-1 / ${name}`, await Core.digestHex('SHA-1', bytes), vector.expect['SHA-1']);
-          await add(report, 'HASH', `WebCrypto SHA-256 / ${name}`, await Core.digestHex('SHA-256', bytes), vector.expect['SHA-256']);
-          await add(report, 'HASH', `WebCrypto SHA-384 / ${name}`, await Core.digestHex('SHA-384', bytes), vector.expect['SHA-384']);
-          await add(report, 'HASH', `WebCrypto SHA-512 / ${name}`, await Core.digestHex('SHA-512', bytes), vector.expect['SHA-512']);
-        } catch (e) {
-          await addFailure(report, 'HASH', `WebCrypto / ${name}`, e);
+        for (const alg of ['SHA-1','SHA-256','SHA-384','SHA-512']) {
+          try {
+            await add(report, 'HASH', `WebCrypto ${alg} / ${name}`, await Core.digestHex(alg, bytes), vector.expect[alg]);
+          } catch (e) {
+            await addFailure(report, 'HASH', `WebCrypto ${alg} / ${name}`, e);
+          }
         }
       } else {
         await addSkip(report, 'HASH', `WebCrypto / ${name}`, 'Web Crypto API未対応');
@@ -8551,11 +8625,12 @@ const SelfTest = (() => {
       const bytes = new Uint8Array(vector.length);
       bytes.fill(0x61);
       const workerResult = await Engine.runWorkerSelfTest('hash', { bytes, crc64Variant:CRC64_VARIANTS[0] });
+      const workerNames = [`Worker SHA-384 / ${vector.length} Bytes`, `Worker SHA-512 / ${vector.length} Bytes`];
       if (!workerResult || workerResult.status !== 'ok' || !workerResult.results) {
-        await addFailure(report, 'SHA-512 FAMILY', `Worker / ${vector.length} Bytes`, workerResult?.error || 'Worker Error');
+        await addPrerequisiteFailure(report, control, 'SHA-512 FAMILY', workerNames, workerResult?.error || 'Worker Error');
       } else {
-        await add(report, 'SHA-512 FAMILY', `Worker SHA-384 / ${vector.length} Bytes`, workerResult.results.sha384, vector.sha384);
-        await add(report, 'SHA-512 FAMILY', `Worker SHA-512 / ${vector.length} Bytes`, workerResult.results.sha512, vector.sha512);
+        await add(report, 'SHA-512 FAMILY', workerNames[0], workerResult.results.sha384, vector.sha384);
+        await add(report, 'SHA-512 FAMILY', workerNames[1], workerResult.results.sha512, vector.sha512);
       }
     }
 
@@ -8564,10 +8639,8 @@ const SelfTest = (() => {
       bytes:Core.utf8Encode('123456789'),
       crc64Variant:CRC64_VARIANTS[0]
     });
-    if (!crcResult) {
-      await addSkip(report, 'CRC64', 'All Variants', 'Worker未対応');
-    } else if (crcResult.status !== 'ok' || !crcResult.results?.crc64All) {
-      await addFailure(report, 'CRC64', 'All Variants', crcResult.error || 'Worker Error');
+    if (!crcResult || crcResult.status !== 'ok' || !crcResult.results?.crc64All) {
+      await addPrerequisiteFailure(report, control, 'CRC64', Array.from(CRC64_VARIANTS), crcResult?.error || 'Worker Error');
     } else {
       for (const variant of CRC64_VARIANTS) {
         await add(report, 'CRC64', variant, crcResult.results.crc64All[variant], CRC64_CHECK[variant]);
@@ -8582,17 +8655,13 @@ const SelfTest = (() => {
       const data = Core.hexToBytes(vector.dataHex);
       const workerResult = await Engine.runWorkerSelfTest('hmac', { key, bytes:data, crc64Variant:CRC64_VARIANTS[0] });
 
-      if (!workerResult) {
-        await addSkip(report, 'HMAC', `Worker / ${vector.name}`, 'Worker未対応');
-      } else if (workerResult.status !== 'ok' || !workerResult.results) {
-        await addFailure(report, 'HMAC', `Worker / ${vector.name}`, workerResult.error || 'Worker Error');
+      const workerAlgs = ['MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512'].filter(alg => vector.expect[alg]);
+      const workerNames = workerAlgs.map(alg => `Worker ${alg} / ${vector.name}`);
+      if (!workerResult || workerResult.status !== 'ok' || !workerResult.results) {
+        await addPrerequisiteFailure(report, control, 'HMAC', workerNames, workerResult?.error || 'Worker Error');
       } else {
-        if (vector.expect['MD5']) await add(report, 'HMAC', `Worker MD5 / ${vector.name}`, workerResult.results.md5, vector.expect['MD5']);
-        if (vector.expect['SHA-1']) await add(report, 'HMAC', `Worker SHA-1 / ${vector.name}`, workerResult.results.sha1, vector.expect['SHA-1']);
-        if (vector.expect['SHA-224']) await add(report, 'HMAC', `Worker SHA-224 / ${vector.name}`, workerResult.results.sha224, vector.expect['SHA-224']);
-        if (vector.expect['SHA-256']) await add(report, 'HMAC', `Worker SHA-256 / ${vector.name}`, workerResult.results.sha256, vector.expect['SHA-256']);
-        if (vector.expect['SHA-384']) await add(report, 'HMAC', `Worker SHA-384 / ${vector.name}`, workerResult.results.sha384, vector.expect['SHA-384']);
-        if (vector.expect['SHA-512']) await add(report, 'HMAC', `Worker SHA-512 / ${vector.name}`, workerResult.results.sha512, vector.expect['SHA-512']);
+        const resultKeys = { 'MD5':'md5', 'SHA-1':'sha1', 'SHA-224':'sha224', 'SHA-256':'sha256', 'SHA-384':'sha384', 'SHA-512':'sha512' };
+        for (const alg of workerAlgs) await add(report, 'HMAC', `Worker ${alg} / ${vector.name}`, workerResult.results[resultKeys[alg]], vector.expect[alg]);
       }
 
       if (vector.expect['MD5']) await add(report, 'HMAC', `Core MD5 / ${vector.name}`, Core.hmacMd5Hex(key, data), vector.expect['MD5']);
@@ -8616,17 +8685,16 @@ const SelfTest = (() => {
     const emptyKey = new Uint8Array(0);
     const emptyData = Core.hexToBytes(EMPTY_HMAC_VECTOR.dataHex);
     const emptyResult = await Engine.runWorkerSelfTest('hmac', { key:emptyKey, bytes:emptyData, crc64Variant:CRC64_VARIANTS[0] });
-    if (!emptyResult) {
-      await addSkip(report, 'HMAC', 'Worker / Empty Key', 'Worker未対応');
-    } else if (emptyResult.status !== 'ok' || !emptyResult.results) {
-      await addFailure(report, 'HMAC', 'Worker / Empty Key', emptyResult.error || 'Worker Error');
+    const emptyKeyNames = ['MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512'].map(alg => `Worker ${alg} / Empty Key`);
+    if (!emptyResult || emptyResult.status !== 'ok' || !emptyResult.results) {
+      await addPrerequisiteFailure(report, control, 'HMAC', emptyKeyNames, emptyResult?.error || 'Worker Error');
     } else {
-      await add(report, 'HMAC', 'Worker MD5 / Empty Key', emptyResult.results.md5, EMPTY_HMAC_VECTOR.expect['MD5']);
-      await add(report, 'HMAC', 'Worker SHA-1 / Empty Key', emptyResult.results.sha1, EMPTY_HMAC_VECTOR.expect['SHA-1']);
-      await add(report, 'HMAC', 'Worker SHA-224 / Empty Key', emptyResult.results.sha224, EMPTY_HMAC_VECTOR.expect['SHA-224']);
-      await add(report, 'HMAC', 'Worker SHA-256 / Empty Key', emptyResult.results.sha256, EMPTY_HMAC_VECTOR.expect['SHA-256']);
-      await add(report, 'HMAC', 'Worker SHA-384 / Empty Key', emptyResult.results.sha384, EMPTY_HMAC_VECTOR.expect['SHA-384']);
-      await add(report, 'HMAC', 'Worker SHA-512 / Empty Key', emptyResult.results.sha512, EMPTY_HMAC_VECTOR.expect['SHA-512']);
+      await add(report, 'HMAC', emptyKeyNames[0], emptyResult.results.md5, EMPTY_HMAC_VECTOR.expect['MD5']);
+      await add(report, 'HMAC', emptyKeyNames[1], emptyResult.results.sha1, EMPTY_HMAC_VECTOR.expect['SHA-1']);
+      await add(report, 'HMAC', emptyKeyNames[2], emptyResult.results.sha224, EMPTY_HMAC_VECTOR.expect['SHA-224']);
+      await add(report, 'HMAC', emptyKeyNames[3], emptyResult.results.sha256, EMPTY_HMAC_VECTOR.expect['SHA-256']);
+      await add(report, 'HMAC', emptyKeyNames[4], emptyResult.results.sha384, EMPTY_HMAC_VECTOR.expect['SHA-384']);
+      await add(report, 'HMAC', emptyKeyNames[5], emptyResult.results.sha512, EMPTY_HMAC_VECTOR.expect['SHA-512']);
     }
     await add(report, 'HMAC', 'Core MD5 / Empty Key', Core.hmacMd5Hex(emptyKey, emptyData), EMPTY_HMAC_VECTOR.expect['MD5']);
     await add(report, 'HMAC', 'Core SHA-224 / Empty Key', Core.hmacSha224Hex(emptyKey, emptyData), EMPTY_HMAC_VECTOR.expect['SHA-224']);
@@ -8636,10 +8704,11 @@ const SelfTest = (() => {
       const key = Core.hexToBytes(vector.keyHex);
       const data = Core.hexToBytes(vector.dataHex);
       const workerResult = await Engine.runWorkerSelfTest('hmac', { key, bytes:data, crc64Variant:CRC64_VARIANTS[0] });
+      const resultKeys = { 'MD5':'md5', 'SHA-1':'sha1', 'SHA-224':'sha224', 'SHA-256':'sha256', 'SHA-384':'sha384', 'SHA-512':'sha512' };
+      const workerNames = Object.keys(resultKeys).map(alg => `Worker ${alg} / ${vector.name}`);
       if (!workerResult || workerResult.status !== 'ok' || !workerResult.results) {
-        await addFailure(report, 'HMAC BOUNDARY', `Worker / ${vector.name}`, workerResult?.error || 'Worker Error');
+        await addPrerequisiteFailure(report, control, 'HMAC BOUNDARY', workerNames, workerResult?.error || 'Worker Error');
       } else {
-        const resultKeys = { 'MD5':'md5', 'SHA-1':'sha1', 'SHA-224':'sha224', 'SHA-256':'sha256', 'SHA-384':'sha384', 'SHA-512':'sha512' };
         for (const [alg, resultKey] of Object.entries(resultKeys)) {
           await add(report, 'HMAC BOUNDARY', `Worker ${alg} / ${vector.name}`, workerResult.results[resultKey], vector.expect[alg]);
         }
@@ -8661,11 +8730,12 @@ const SelfTest = (() => {
     const emptyDataKey = Core.utf8Encode('Jefe');
     const zeroData = new Uint8Array(0);
     const emptyDataResult = await Engine.runWorkerSelfTest('hmac', { key:emptyDataKey, bytes:zeroData, crc64Variant:CRC64_VARIANTS[0] });
+    const emptyDataNames = ['Worker SHA-256 / Empty Data','Worker SHA-512 / Empty Data'];
     if (!emptyDataResult || emptyDataResult.status !== 'ok' || !emptyDataResult.results) {
-      await addFailure(report, 'HMAC', 'Worker / Empty Data', emptyDataResult?.error || 'Worker Error');
+      await addPrerequisiteFailure(report, control, 'HMAC', emptyDataNames, emptyDataResult?.error || 'Worker Error');
     } else {
-      await add(report, 'HMAC', 'Worker SHA-256 / Empty Data', emptyDataResult.results.sha256, '923598ca6d64af2a5dba79dcd021a8a0fe5c5f557519adaaf0ad532d4506dd30');
-      await add(report, 'HMAC', 'Worker SHA-512 / Empty Data', emptyDataResult.results.sha512, 'b9d14c51a6d4dd41604eb06c9c240f1f64f143b5cfdea37129b28bb75d1371d326fc219216171261a84e6c05707cd3be0f61e0a973a33f706d190db9acffc68f');
+      await add(report, 'HMAC', emptyDataNames[0], emptyDataResult.results.sha256, '923598ca6d64af2a5dba79dcd021a8a0fe5c5f557519adaaf0ad532d4506dd30');
+      await add(report, 'HMAC', emptyDataNames[1], emptyDataResult.results.sha512, 'b9d14c51a6d4dd41604eb06c9c240f1f64f143b5cfdea37129b28bb75d1371d326fc219216171261a84e6c05707cd3be0f61e0a973a33f706d190db9acffc68f');
     }
   }
 
@@ -9075,22 +9145,55 @@ const SelfTest = (() => {
     } else {
       await add(report, 'WORKER', 'History / Runtime', true, true);
     }
+
+    await step(control, 'WORKER', 'Iteration Snapshot / Observer');
+    if (!Engine.hasWorker) {
+      for (const name of ['Iteration Snapshot Shape','Iteration Snapshot Observer State','Iteration Snapshot Task Contract','Iteration Snapshot Session Stability']) {
+        await addSkip(report, 'WORKER', name, 'Worker未対応');
+      }
+    } else {
+      const activeBefore = Engine.hasIterationSession;
+      const first = await Engine.captureIterationSnapshot(1500);
+      const activeAfter = Engine.hasIterationSession;
+      const shapeOk = first && typeof first === 'object' &&
+        Array.isArray(first.tasks) &&
+        Number.isFinite(Number(first.requestedAt)) &&
+        Number.isFinite(Number(first.capturedAt));
+      const stateOk = activeBefore
+        ? first.available === true && Number.isFinite(Number(first.sessionId))
+        : first.available === false && first.reason === 'no-active-session';
+      await add(report, 'WORKER', 'Iteration Snapshot Shape', shapeOk && stateOk, true);
+      await add(report, 'WORKER', 'Iteration Snapshot Observer State', activeAfter === activeBefore, true);
+
+      if (first.available) {
+        const known = new Set(InternalContract.HASH_IDS);
+        const tasksOk = first.tasks.every(task =>
+          known.has(task.algId) &&
+          Number(task.currentIter) >= 0 &&
+          Number(task.target) >= 1 &&
+          Number(task.currentIter) <= Number(task.target) &&
+          Number(task.historyCount) >= 0 &&
+          Number(task.historyLimit) >= 1
+        );
+        await add(report, 'WORKER', 'Iteration Snapshot Task Contract', tasksOk, true);
+
+        const second = await Engine.captureIterationSnapshot(1500);
+        await add(report, 'WORKER', 'Iteration Snapshot Session Stability',
+          second.available === true && Number(second.sessionId) === Number(first.sessionId), true);
+      } else {
+        await addSkip(report, 'WORKER', 'Iteration Snapshot Task Contract', '実行中セッションなし');
+        await addSkip(report, 'WORKER', 'Iteration Snapshot Session Stability', '実行中セッションなし');
+      }
+    }
   }
 
   async function runSessionTests(report, control) {
-    await step(control, 'SESSION', 'Snapshot / Record / Save');
+    await step(control, 'SESSION', 'Snapshot / Record');
     try {
       const checks = await UI.runSessionRecordRegression();
-      if (!Array.isArray(checks) || checks.length === 0) {
-        await addFailure(report, 'SESSION', 'Session Regression', 'Session regression result is empty');
-        return;
-      }
-      for (const check of checks) {
-        if (check.ok) await add(report, 'SESSION', check.name, true, true);
-        else await addFailure(report, 'SESSION', check.name, check.detail || 'Session regression failed');
-      }
+      await emitBridgeChecks(report, control, 'SESSION', checks, DEPENDENCY_PLAN.session, { fallback:'Snapshot / Record' });
     } catch (e) {
-      await addFailure(report, 'SESSION', 'Session Regression', e);
+      await emitBridgeFailure(report, control, 'SESSION', 'Snapshot / Record', DEPENDENCY_PLAN.session, e);
     }
   }
 
@@ -9332,16 +9435,17 @@ const SelfTest = (() => {
 
     await step(control, 'CONTRACT', 'Worker Contract');
     const worker = await Engine.runWorkerSelfTest('contract');
+    const workerContractNames = ['Worker Hash IDs','Worker Generic Iteration IDs','Worker CRC64 Variants','Worker Digest Widths','Worker Action Registry','Worker Message Registry'];
     if (!worker || worker.status !== 'ok') {
-      await addFailure(report, 'CONTRACT', 'Worker Contract', worker?.error || 'Worker Error');
+      await addPrerequisiteFailure(report, control, 'CONTRACT', workerContractNames, worker?.error || 'Worker Error');
     } else {
-      await add(report, 'CONTRACT', 'Worker Hash IDs', JSON.stringify(worker.hashIds), JSON.stringify(Array.from(InternalContract.HASH_IDS)));
-      await add(report, 'CONTRACT', 'Worker Generic Iteration IDs', JSON.stringify(worker.genericIterationIds), JSON.stringify(Array.from(InternalContract.GENERIC_ITERATION_IDS)));
-      await add(report, 'CONTRACT', 'Worker CRC64 Variants', JSON.stringify(worker.crc64Variants), JSON.stringify(Array.from(CRC64_VARIANTS)));
+      await add(report, 'CONTRACT', workerContractNames[0], JSON.stringify(worker.hashIds), JSON.stringify(Array.from(InternalContract.HASH_IDS)));
+      await add(report, 'CONTRACT', workerContractNames[1], JSON.stringify(worker.genericIterationIds), JSON.stringify(Array.from(InternalContract.GENERIC_ITERATION_IDS)));
+      await add(report, 'CONTRACT', workerContractNames[2], JSON.stringify(worker.crc64Variants), JSON.stringify(Array.from(CRC64_VARIANTS)));
       const expectedDigestBytes = Object.fromEntries(InternalContract.GENERIC_ITERATION_IDS.map(id => [id, InternalContract.HASH_ALGORITHMS[id].digestBytes]));
-      await add(report, 'CONTRACT', 'Worker Digest Widths', JSON.stringify(worker.digestBytes), JSON.stringify(expectedDigestBytes));
-      await add(report, 'CONTRACT', 'Worker Action Registry', JSON.stringify(worker.engineActions), JSON.stringify(InternalContract.ENGINE_ACTIONS));
-      await add(report, 'CONTRACT', 'Worker Message Registry', JSON.stringify(worker.engineMessages), JSON.stringify(InternalContract.ENGINE_MESSAGES));
+      await add(report, 'CONTRACT', workerContractNames[3], JSON.stringify(worker.digestBytes), JSON.stringify(expectedDigestBytes));
+      await add(report, 'CONTRACT', workerContractNames[4], JSON.stringify(worker.engineActions), JSON.stringify(InternalContract.ENGINE_ACTIONS));
+      await add(report, 'CONTRACT', workerContractNames[5], JSON.stringify(worker.engineMessages), JSON.stringify(InternalContract.ENGINE_MESSAGES));
     }
   }
 
@@ -9401,15 +9505,20 @@ const SelfTest = (() => {
       await addFailure(report, 'REGRESSION', 'Base Message State Recovery', e);
     }
 
+    await step(control, 'REGRESSION', 'File Workflow');
+    try {
+      const fileWorkflowChecks = await UI.runFileWorkflowRegression();
+      await emitBridgeChecks(report, control, 'REGRESSION', fileWorkflowChecks, DEPENDENCY_PLAN.fileWorkflow, { fallback:'File Workflow' });
+    } catch (e) {
+      await emitBridgeFailure(report, control, 'REGRESSION', 'File Workflow', DEPENDENCY_PLAN.fileWorkflow, e);
+    }
+
     await step(control, 'REGRESSION', 'Writable Cleanup');
     try {
       const writableChecks = await UI.runFileHandleRegression();
-      for (const check of writableChecks) {
-        if (check.ok) await add(report, 'REGRESSION', check.name, true, true);
-        else await addFailure(report, 'REGRESSION', check.name, check.detail || 'Writable cleanup failed');
-      }
+      await emitBridgeChecks(report, control, 'REGRESSION', writableChecks, DEPENDENCY_PLAN.writable, { fallback:'Writable Cleanup' });
     } catch (e) {
-      await addFailure(report, 'REGRESSION', 'Writable Cleanup', e);
+      await emitBridgeFailure(report, control, 'REGRESSION', 'Writable Cleanup', DEPENDENCY_PLAN.writable, e);
     }
 
     const chunkPatterns = [
@@ -9422,7 +9531,8 @@ const SelfTest = (() => {
       const bytes = makeDeterministicBytes(length, 0xD5568100 ^ length);
       const reference = await Engine.runWorkerSelfTest('hash', { bytes, crc64Variant:CRC64_VARIANTS[0] });
       if (!reference || reference.status !== 'ok' || !reference.results) {
-        await addFailure(report, 'REGRESSION', `Chunk Reference / ${length} Bytes`, reference?.error || 'Worker Error');
+        const names = chunkPatterns.map((_, p) => `Hash Chunk P${p + 1} / ${length} Bytes`);
+        await addPrerequisiteFailure(report, control, 'REGRESSION', names, reference?.error || 'Worker Reference Error');
         continue;
       }
       for (let p = 0; p < chunkPatterns.length; p++) {
@@ -9612,7 +9722,11 @@ const SelfTest = (() => {
         };
         let expected;
         try { expected = OutputBaseFilter.applyBytes(bytes, context); }
-        catch (_) { continue; }
+        catch (e) {
+          const names = patterns.map((_, p) => `すべてBASE化 ${item.name} P${p + 1} / ${length} Bytes`);
+          await addPrerequisiteFailure(report, control, 'STREAM', names, e);
+          continue;
+        }
         for (let p = 0; p < patterns.length; p++) {
           await step(control, 'STREAM', `すべてBASE化 ${item.name} ${length} / P${p + 1}`);
           try {
@@ -9628,6 +9742,8 @@ const SelfTest = (() => {
 
   async function runAll(control = null) {
     if (closed || !Life.ok()) throw new Error('Unavailable');
+    const requirements = requirementIssues();
+    if (requirements.length) throw new Error(`Required capability unavailable: ${requirements.join(', ')}`);
     const report = [];
     const previousObserver = resultObserver;
     resultObserver = control && typeof control.onResult === 'function' ? control.onResult : null;
@@ -9642,11 +9758,12 @@ const SelfTest = (() => {
       await runBase85Tests(report, control);
       await runFileTests(report, control);
       await runWorkerTests(report, control);
-      await runSessionTests(report, control);
       await runFilterTests(report, control);
+      await runSessionTests(report, control);
       await runRegressionTests(report, control);
       await runStreamingTests(report, control);
-      expectedCountCache.set(capabilityKey(), report.length);
+      const expectedBeforePlanCheck = plannedCount() - 1;
+      await add(report, 'CONTRACT', 'SelfTest Plan Count', report.length, expectedBeforePlanCheck);
       return report;
     } finally {
       resultObserver = previousObserver;
@@ -9659,10 +9776,9 @@ const SelfTest = (() => {
     for (const id of timers) { try { clearTimeout(id); } catch (_) {} }
     timers.clear();
     resultObserver = null;
-    expectedCountCache.clear();
   }
 
-  return { runAll, expectedCount, shutdown };
+  return { runAll, plannedCount, plannedGroups, requirementIssues, shutdown };
 })();
 const UI = (() => {
   const els = {};
@@ -11351,9 +11467,33 @@ function showToast(msg, duration = TOAST_DURATION) {
         const result = snapshot?.results?.[id];
         if (!result) { issues.push(`result:${id}`); continue; }
         if (!Array.isArray(result.outputBase?.stages) || result.outputBase.stages.length !== 2) issues.push(`stages:${id}`);
+        if (result.type === 'base' && !result.enabled) {
+          if (result.status !== 'not_run' || Number(result.sourceByteLength) !== 0 || result.sourceHex || result.originalResult || result.finalActual) {
+            issues.push(`disabled base payload:${id}`);
+          }
+        }
       }
       const panelKeys = Object.keys(snapshot?.system?.panel || {});
       if (panelKeys.length !== 19) issues.push('system panel');
+      const audit = snapshot?.network?.audit;
+      const stats = snapshot?.network?.stats;
+      if (!Array.isArray(audit)) {
+        issues.push('network audit');
+      } else if (!stats || typeof stats !== 'object') {
+        issues.push('network stats');
+      } else {
+        const limit = Math.max(0, Number(stats.limit) || 0);
+        const total = Math.max(0, Number(stats.total) || 0);
+        const saved = Math.max(0, Number(stats.saved) || 0);
+        const dropped = Math.max(0, Number(stats.dropped) || 0);
+        if (saved !== audit.length) issues.push('network saved count');
+        if (saved > limit) issues.push('network saved limit');
+        if (dropped !== Math.max(0, total - saved)) issues.push('network dropped count');
+        const firstSeq = audit.length ? (audit[0]?.seq ?? null) : null;
+        const lastSeq = audit.length ? (audit[audit.length - 1]?.seq ?? null) : null;
+        if ((stats.firstSeq ?? null) !== firstSeq) issues.push('network first seq');
+        if ((stats.lastSeq ?? null) !== lastSeq) issues.push('network last seq');
+      }
       return issues;
     }
 
@@ -11848,8 +11988,8 @@ function showToast(msg, duration = TOAST_DURATION) {
 
   const SessionSave = (() => {
     function packageNameIssue(value) {
-      const name = String(value ?? '');
-      if (!name.trim()) return '保存フォルダー名を入力してください。';
+      const name = String(value || '').trim();
+      if (!name) return '保存フォルダー名を入力してください。';
       if (name === '.' || name === '..') return '「.」「..」は使用できません。';
       if (name.length > 120) return '保存フォルダー名は120文字以内にしてください。';
       if (/[\u0000-\u001f<>:"/\\|?*]/.test(name)) return '保存フォルダー名に使用できない文字が含まれています。';
@@ -11863,11 +12003,11 @@ function showToast(msg, duration = TOAST_DURATION) {
       while (true) {
         const value = promptFn('保存フォルダー名を入力してください。\n同名の HTML / MD を保存します。', candidate);
         if (value === null) return null;
-        candidate = String(value);
+        candidate = String(value).trim();
         const issue = packageNameIssue(candidate);
         if (!issue) return candidate;
         try { alertFn(issue); } catch (_) {}
-        if (!candidate.trim()) candidate = defaultName;
+        if (!candidate) candidate = defaultName;
       }
     }
 
@@ -12921,6 +13061,305 @@ function showToast(msg, duration = TOAST_DURATION) {
     }
   }
 
+  async function runSessionRecordRegression() {
+    const checks = [];
+    const add = (name, ok, detail = '') => checks.push(Object.freeze({ name, ok:!!ok, detail:String(detail || '') }));
+    const clone = value => JSON.parse(JSON.stringify(value));
+    const baseIds = ['Base64-Enc','Base64-Dec','Base85-Enc','Base85-Dec'];
+    const disableOutputBase = snapshot => {
+      snapshot.settings.outputBase = { optionsOpen:false, enabled:false, handoff:'hex', order:[], base64:false, base85:false };
+      for (const result of Object.values(snapshot.results || {})) {
+        if (!result?.outputBase) continue;
+        result.outputBase.enabled = false;
+        result.outputBase.requestedOrder = [];
+        result.outputBase.original = result.type === 'hash' ? (result.originalHex || '') : '';
+        result.outputBase.ok = true;
+        result.outputBase.failedStage = '';
+        result.outputBase.error = '';
+        result.outputBase.stages = [1,2].map(index => ({
+          index, mode:'', variant:'', handoff:'hex', inputByteLength:0, inputHex:'', status:'not_configured', output:'', error:''
+        }));
+      }
+    };
+    const disableBaseResults = snapshot => {
+      for (const id of baseIds) {
+        const result = snapshot.results?.[id];
+        if (!result) continue;
+        result.enabled = false;
+        result.status = 'not_run';
+        result.sourceType = 'text';
+        result.sourceByteLength = 0;
+        result.sourceHex = '';
+        result.originalResult = '';
+        result.fileInfo = null;
+        result.finalActual = '';
+        result.finalDisplay = '';
+        if (result.ui) result.ui.enabled = false;
+      }
+    };
+    const currentSettingLabels = doc => new Set(Array.from(doc.querySelectorAll('[data-record-settings="current"] .kv > .k')).map(node => node.textContent));
+    const kvValue = (root, label) => {
+      for (const row of Array.from(root?.querySelectorAll('.kv') || [])) {
+        if (row.querySelector('.k')?.textContent === label) return row.querySelector('.v')?.textContent ?? null;
+      }
+      return null;
+    };
+
+    const requestedAt = Date.now();
+    const identity = Object.freeze({ id:'SELFTEST-BASELINE', defaultName:'SELFTEST-BASELINE' });
+    const baseline = await SessionRecord.capture(identity, requestedAt);
+    add('Session Record / Snapshot Validation', SessionRecord.validateSnapshot(baseline).length === 0, 'Snapshot schema must validate independently');
+    const baselineRecord = await SessionRecord.build(baseline);
+    add('Session Record / Baseline Build', baselineRecord.validation.length === 0 && baselineRecord.markdownValidation.length === 0, 'Baseline HTML/MD must validate');
+    add('Session Record / Canonical JSON Round-trip', JSON.stringify(JSON.parse(baselineRecord.json)) === JSON.stringify(baseline), 'Canonical JSON must round-trip exactly');
+
+    if (baselineRecord.jsonDigest) {
+      const recalculatedDigest = await Core.digestHex('SHA-256', new TextEncoder().encode(baselineRecord.json));
+      add('Session Record / Canonical SHA-256', recalculatedDigest === baselineRecord.jsonDigest, `${recalculatedDigest} != ${baselineRecord.jsonDigest}`);
+      const digestOccurrences = baselineRecord.html.split(baselineRecord.jsonDigest).length - 1;
+      add('Session Record / SHA-256 Report Surfaces', digestOccurrences === 3, `count=${digestOccurrences}`);
+    } else {
+      checks.push(Object.freeze({ name:'Session Record / Canonical SHA-256', ok:false, skip:true, detail:'Web Crypto API未対応' }));
+      checks.push(Object.freeze({ name:'Session Record / SHA-256 Report Surfaces', ok:false, skip:true, detail:'Web Crypto API未対応' }));
+    }
+
+    const literal = '不明 UNKNOWN UNAVAILABLE 取得不可 整形後入力 すべてBASE化 HEX表記 区切り\n### Base64-Dec\n``` literal </pre><script>SESSION_XSS<\/script><div>';
+    const saltLiteral = 'SALT-不明-UNKNOWN-<tag>';
+    const hmacLiteral = 'HMAC-取得不可-すべてBASE化-`*_[]<>';
+    const collision = clone(baseline);
+    collision.identity.id = 'SELFTEST-LITERAL';
+    collision.calculationSession = null;
+    collision.input = {
+      type:'text', entered:literal, sanitized:literal, normalized:literal, visible:literal,
+      graphemes:Array.from(literal).length, entropy:0, file:null
+    };
+    collision.settings.normalization = 'none';
+    collision.settings.sanitizeText = false;
+    collision.settings.hexUpper = false;
+    collision.settings.grouping = 4;
+    collision.settings.separator = '*_[x]<>\\';
+    collision.settings.salt = { enabled:true, value:saltLiteral };
+    collision.settings.hmac = { enabled:true, key:hmacLiteral };
+    collision.settings.iterations = 1;
+    collision.settings.iterMode = 'hex';
+    collision.settings.base = {
+      groupOpen:false, base64Encode:false, base64Decode:false, base64Strict:false,
+      base85Encode:false, base85Decode:false, base85Variant:'Standard ASCII85', fileAutoDetect:false
+    };
+    collision.settings.compare = { panelOpen:false, input:'', continuousEnabled:false, continuousTarget:null, continuousHit:null };
+    collision.settings.test = { panelOpen:false, vector:'empty', verifyArmed:false };
+    disableOutputBase(collision);
+    disableBaseResults(collision);
+    const collisionRecord = await SessionRecord.build(collision);
+    const collisionDoc = new DOMParser().parseFromString(collisionRecord.html, 'text/html');
+    const parsedCollision = JSON.parse(collisionDoc.getElementById('session-data')?.textContent || '{}');
+    add('Session Record / Literal Canonical Preservation',
+      parsedCollision.input?.entered === literal &&
+      parsedCollision.settings?.salt?.value === saltLiteral &&
+      parsedCollision.settings?.hmac?.key === hmacLiteral,
+      'Canonical data must preserve literal user values');
+    add('Session Record / Literal HTML Preservation',
+      collisionDoc.querySelector('[data-record-input="entered"] pre')?.textContent === literal,
+      'Human HTML input must not normalize literal user text');
+    add('Session Record / Scriptless Escaping',
+      collisionDoc.querySelectorAll('script').length === 0 && collisionDoc.querySelector('[data-record-input="entered"] pre')?.textContent.includes('<script>SESSION_XSS<\/script>'),
+      'Saved record must keep literal script text without creating executable nodes');
+    add('Session Record / Markdown Literal Preservation',
+      collisionRecord.markdown.includes(literal) && collisionRecord.markdown.includes(saltLiteral) && collisionRecord.markdown.includes(hmacLiteral),
+      'Markdown fenced values must remain literal');
+    add('Session Record / Markdown Dynamic Fence',
+      collisionRecord.markdown.includes('````text'),
+      'Markdown fence must expand beyond embedded backticks');
+    add('Session Record / Markdown Inline Escape',
+      collisionRecord.markdown.includes('\\*\\_\\[x\\]\\<\\>\\\\'),
+      'Markdown inline settings must escape metacharacters');
+
+    const brokenTrailer = collisionRecord.html.replace('END OF RECORD', 'BROKEN RECORD');
+    add('Session Record / Validator Rejects Broken Trailer',
+      SessionRecord.validateRecord(brokenTrailer, collision).includes('record trailer'),
+      'Record validator must reject a missing trailer');
+    const openedMachine = collisionRecord.html.replace(
+      '<details class="detail-block machine-data">',
+      '<details class="detail-block machine-data" open>'
+    );
+    add('Session Record / Validator Rejects Open Machine Data',
+      SessionRecord.validateRecord(openedMachine, collision).includes('machine data disclosure'),
+      'Machine data must remain collapsed by default');
+    add('Session Record / Markdown Rejects Missing Final Newline',
+      SessionRecord.validateMarkdown(collisionRecord.markdown.replace(/\n$/, ''), collision).includes('summary final newline'),
+      'Markdown validator must reject a missing final newline');
+
+    const minimal = clone(baseline);
+    minimal.identity.id = 'SELFTEST-MINIMAL';
+    minimal.calculationSession = null;
+    minimal.input = { type:'text', entered:'x', sanitized:'x', normalized:'x', visible:'x', graphemes:1, entropy:0, file:null };
+    minimal.settings.normalization = 'none';
+    minimal.settings.sanitizeText = false;
+    minimal.settings.hexUpper = false;
+    minimal.settings.grouping = 0;
+    minimal.settings.separator = ' ';
+    minimal.settings.copyMode = 'actual';
+    minimal.settings.iterations = 1;
+    minimal.settings.iterMode = 'xor';
+    minimal.settings.salt = { enabled:false, value:null };
+    minimal.settings.hmac = { enabled:false, key:null };
+    minimal.settings.base = {
+      groupOpen:false, base64Encode:false, base64Decode:false, base64Strict:true,
+      base85Encode:false, base85Decode:false, base85Variant:'RFC 1924 Alphabet (Block)', fileAutoDetect:true
+    };
+    minimal.settings.compare = { panelOpen:false, input:'', continuousEnabled:false, continuousTarget:null, continuousHit:null };
+    minimal.settings.test = { panelOpen:false, vector:'empty', verifyArmed:false };
+    disableOutputBase(minimal);
+    disableBaseResults(minimal);
+    const minimalRecord = await SessionRecord.build(minimal);
+    const minimalDoc = new DOMParser().parseFromString(minimalRecord.html, 'text/html');
+    const minimalLabels = currentSettingLabels(minimalDoc);
+    const hiddenLabels = ['HEX表記','区切り','区切り文字','Salt','Salt 値','HMAC','HMAC Key','反復方式','Base64 Enc','Base64 Dec','Base64判定','Base85 Enc','Base85 Dec','Base85形式','Base自動判別','すべてBASE化','受け渡し','適用順序'];
+    add('Session Record / Default Setting Visibility',
+      hiddenLabels.every(label => !minimalLabels.has(label)),
+      `Inactive/default settings leaked: ${hiddenLabels.filter(label => minimalLabels.has(label)).join(', ')}`);
+    add('Session Record / Redundant Input Hidden',
+      !minimalDoc.querySelector('[data-record-input="sanitized"]') && !minimalDoc.querySelector('[data-record-input="normalized"]'),
+      'Unchanged sanitized/normalized input must stay hidden');
+    add('Session Record / Disabled BASE Cards Hidden',
+      baseIds.every(id => !Array.from(minimalDoc.querySelectorAll('.result-card h3')).some(node => node.textContent === id)) &&
+      minimalDoc.querySelectorAll('.pipeline').length === 0,
+      'Disabled BASE results and Output BASE pipeline must stay hidden');
+
+    const inactiveDiff = clone(minimal);
+    inactiveDiff.identity.id = 'SELFTEST-INACTIVE-DIFF';
+    inactiveDiff.calculationSession = {
+      inputType:'text', normalization:'none', sanitizeText:false, saltEnabled:false, salt:null,
+      hmacEnabled:false, hmacKey:null, iterations:1, iterMode:'hex',
+      crc64Variant:inactiveDiff.settings.crc64Variant,
+      base64Encode:false, base64Decode:false, base64Strict:false,
+      base85Encode:false, base85Decode:false, base85Variant:'Standard ASCII85',
+      baseFileDetect:false, sourceByteLength:1, startedAt:1700000000000, netTimeOffset:0
+    };
+    const inactiveDiffRecord = await SessionRecord.build(inactiveDiff);
+    const inactiveDiffDoc = new DOMParser().parseFromString(inactiveDiffRecord.html, 'text/html');
+    const diffLabels = new Set(Array.from(inactiveDiffDoc.querySelectorAll('#section-settings details table tbody th')).map(node => node.textContent));
+    add('Session Record / Inactive Difference Hidden',
+      !diffLabels.has('反復方式') && !diffLabels.has('Base64判定') && !diffLabels.has('Base85形式') && !diffLabels.has('Base自動判別'),
+      'Inactive option differences must not appear');
+
+    const timeCase = clone(inactiveDiff);
+    timeCase.identity.id = 'SELFTEST-TIME-OFFSET';
+    timeCase.app.netTimeOffset = 9 * 60 * 60 * 1000;
+    timeCase.calculationSession.startedAt = 1700000000000;
+    timeCase.calculationSession.netTimeOffset = 0;
+    const timeRecord = await SessionRecord.build(timeCase);
+    const timeDoc = new DOMParser().parseFromString(timeRecord.html, 'text/html');
+    const calculationRoot = Array.from(timeDoc.querySelectorAll('#section-settings .subsection')).find(node => node.querySelector('h3')?.textContent === '結果生成時の設定');
+    const shownStart = kvValue(calculationRoot, '計算開始日時');
+    const expectedStart = SysUtils.fmtJapaneseDate(new Date(timeCase.calculationSession.startedAt));
+    const wrongStart = SysUtils.fmtJapaneseDate(new Date(timeCase.calculationSession.startedAt + timeCase.app.netTimeOffset));
+    add('Session Record / Calculation Start Offset',
+      shownStart === expectedStart && shownStart !== wrongStart,
+      `start=${shownStart}, expected=${expectedStart}, save-offset=${wrongStart}`);
+
+    const gatewayCase = clone(minimal);
+    gatewayCase.identity.id = 'SELFTEST-GATEWAY-STATS';
+    gatewayCase.network = {
+      audit:[{ seq:45, at:1700000000000, type:'policy', mode:'time', purpose:'通信ポリシー設定' }],
+      stats:{ limit:256, total:45, saved:1, dropped:44, firstSeq:45, lastSeq:45 }
+    };
+    const gatewayRecord = await SessionRecord.build(gatewayCase);
+    const gatewayDoc = new DOMParser().parseFromString(gatewayRecord.html, 'text/html');
+    const networkRoot = gatewayDoc.getElementById('section-network');
+    add('Session Record / Gateway Audit Stats',
+      kvValue(networkRoot, '保存件数') === '1' &&
+      kvValue(networkRoot, '累計記録数') === '45' &&
+      kvValue(networkRoot, '省略件数') === '44' &&
+      kvValue(networkRoot, '保持上限') === '256',
+      'Human record must expose retained/truncated audit counts');
+    const inconsistentGateway = clone(gatewayCase);
+    inconsistentGateway.network.stats.saved = 2;
+    add('Session Record / Gateway Stats Consistency',
+      SessionRecord.validateSnapshot(inconsistentGateway).includes('network saved count'),
+      'Snapshot validator must reject audit/stats count mismatch');
+
+    const baseEl = document.getElementById('Base64-Enc');
+    if (baseEl) {
+      const previousFlag = AppState.Base64Encode;
+      const previousText = baseEl.textContent;
+      const previousDataset = { ...baseEl.dataset };
+      try {
+        AppState.Base64Encode = false;
+        baseEl.dataset.raw = 'STALE-BASE-PAYLOAD';
+        baseEl.dataset.empty = '0';
+        baseEl.textContent = 'STALE-BASE-PAYLOAD';
+        const staleAt = Date.now();
+        const staleSnapshot = await SessionRecord.capture(Object.freeze({ id:'SELFTEST-STALE-BASE', defaultName:'SELFTEST-STALE-BASE' }), staleAt);
+        const stale = staleSnapshot.results['Base64-Enc'];
+        add('Session Record / Disabled BASE Logical Payload',
+          stale.enabled === false && stale.status === 'not_run' &&
+          stale.sourceByteLength === 0 && stale.sourceHex === '' &&
+          stale.originalResult === '' && stale.finalActual === '' &&
+          stale.ui.raw === 'STALE-BASE-PAYLOAD',
+          'Disabled BASE must keep stale DOM only in UI evidence');
+      } finally {
+        AppState.Base64Encode = previousFlag;
+        baseEl.textContent = previousText;
+        for (const key of Object.keys(baseEl.dataset)) if (!(key in previousDataset)) delete baseEl.dataset[key];
+        for (const [key, value] of Object.entries(previousDataset)) baseEl.dataset[key] = value;
+      }
+    } else {
+      add('Session Record / Disabled BASE Logical Payload', false, 'Base64-Enc DOM missing');
+    }
+
+    for (const check of AutoTestReport.selfTest()) checks.push(check);
+    return checks;
+  }
+
+
+  async function runFileWorkflowRegression() {
+    const checks = [];
+    const MB = 1024 * 1024;
+    const noStream50 = fileLoadPolicy({ size:50 * MB }, false);
+    const noStreamOver = fileLoadPolicy({ size:50 * MB + 1 }, false);
+    const stream300 = fileLoadPolicy({ size:300 * MB }, true);
+    const streamOver = fileLoadPolicy({ size:300 * MB + 1 }, true);
+
+    checks.push({
+      name:'File Workflow / 50MB Boundary',
+      ok:!noStream50.rejected && !noStream50.huge && noStream50.maxMB === 50
+    });
+    checks.push({
+      name:'File Workflow / Unsupported Oversize Reject',
+      ok:noStreamOver.rejected && !noStreamOver.huge && noStreamOver.maxMB === 50
+    });
+    checks.push({
+      name:'File Workflow / 300MB Boundary',
+      ok:!stream300.rejected && !stream300.huge && stream300.maxMB === 300
+    });
+    checks.push({
+      name:'File Workflow / Streaming Huge Path',
+      ok:!streamOver.rejected && streamOver.huge && streamOver.maxMB === 300
+    });
+
+    const previousFile = AppState.currentFile;
+    const previousValue = els.inputEl?.value;
+    const previousRevision = fileLoadRevision;
+    const sentinel = { name:'SELFTEST-KEEP.bin', size:1, type:'application/octet-stream', lastModified:0 };
+    try {
+      AppState.currentFile = sentinel;
+      if (els.inputEl) els.inputEl.value = '[SELFTEST KEEP]';
+      const rejected = beginFileLoad({ name:'TOO-LARGE.bin', size:50 * MB + 1 }, false);
+      checks.push({
+        name:'File Workflow / Reject Preserves Existing State',
+        ok:!rejected.accepted && rejected.policy.rejected &&
+          AppState.currentFile === sentinel &&
+          fileLoadRevision === previousRevision &&
+          (!els.inputEl || els.inputEl.value === '[SELFTEST KEEP]')
+      });
+    } finally {
+      AppState.currentFile = previousFile;
+      if (els.inputEl) els.inputEl.value = previousValue;
+    }
+    return checks;
+  }
+
   async function runFileHandleRegression() {
     const previous = {
       Base64Encode:AppState.Base64Encode,
@@ -13056,8 +13495,8 @@ function showToast(msg, duration = TOAST_DURATION) {
         ok:SessionSave.packageNameIssue(valid120) === '' &&
           SessionSave.packageNameIssue(invalid121) !== '' &&
           SessionSave.packageNameIssue('日本語セッション') === '' &&
+          SessionSave.requestPackageName('DEFAULT', () => '  日本語セッション  ', () => {}) === '日本語セッション' &&
           SessionSave.packageNameIssue('name.') !== '' &&
-          SessionSave.packageNameIssue('name ') !== '' &&
           SessionSave.packageNameIssue('COM1') !== '' &&
           SessionSave.packageNameIssue('LPT9.log') !== ''
       });
@@ -13133,223 +13572,6 @@ function showToast(msg, duration = TOAST_DURATION) {
     }
   }
 
-
-  async function runSessionRecordRegression() {
-    const checks = [];
-    const add = (name, ok, detail = '') => checks.push(Object.freeze({ name, ok:!!ok, detail:String(detail || '') }));
-    const clone = value => JSON.parse(JSON.stringify(value));
-    const baseIds = ['Base64-Enc','Base64-Dec','Base85-Enc','Base85-Dec'];
-    const disableOutputBase = snapshot => {
-      snapshot.settings.outputBase = { optionsOpen:false, enabled:false, handoff:'hex', order:[], base64:false, base85:false };
-      for (const result of Object.values(snapshot.results || {})) {
-        if (!result?.outputBase) continue;
-        result.outputBase.enabled = false;
-        result.outputBase.requestedOrder = [];
-        result.outputBase.original = result.type === 'hash' ? (result.originalHex || '') : '';
-        result.outputBase.ok = true;
-        result.outputBase.failedStage = '';
-        result.outputBase.error = '';
-        result.outputBase.stages = [1,2].map(index => ({
-          index, mode:'', variant:'', handoff:'hex', inputByteLength:0, inputHex:'', status:'not_configured', output:'', error:''
-        }));
-      }
-    };
-    const disableBaseResults = snapshot => {
-      for (const id of baseIds) {
-        const result = snapshot.results?.[id];
-        if (!result) continue;
-        result.enabled = false;
-        result.status = 'not_run';
-        result.sourceType = 'text';
-        result.sourceByteLength = 0;
-        result.sourceHex = '';
-        result.originalResult = '';
-        result.fileInfo = null;
-        result.finalActual = '';
-        result.finalDisplay = '';
-        if (result.ui) result.ui.enabled = false;
-      }
-    };
-    const currentSettingLabels = doc => new Set(Array.from(doc.querySelectorAll('[data-record-settings="current"] .kv > .k')).map(node => node.textContent));
-    const kvValue = (root, label) => {
-      for (const row of Array.from(root?.querySelectorAll('.kv') || [])) {
-        if (row.querySelector('.k')?.textContent === label) return row.querySelector('.v')?.textContent ?? null;
-      }
-      return null;
-    };
-
-    const requestedAt = Date.now();
-    const identity = Object.freeze({ id:'SELFTEST-BASELINE', defaultName:'SELFTEST-BASELINE' });
-    const baseline = await SessionRecord.capture(identity, requestedAt);
-    const baselineRecord = await SessionRecord.build(baseline);
-    add('Session Record / Baseline Build', baselineRecord.validation.length === 0 && baselineRecord.markdownValidation.length === 0, 'Baseline HTML/MD must validate');
-    add('Session Record / Canonical JSON Round-trip', JSON.stringify(JSON.parse(baselineRecord.json)) === JSON.stringify(baseline), 'Canonical JSON must round-trip exactly');
-
-    const literal = '不明 UNKNOWN UNAVAILABLE 取得不可 整形後入力 すべてBASE化 HEX表記 区切り\n### Base64-Dec\n``` literal </pre><script>SESSION_XSS<\/script><div>';
-    const saltLiteral = 'SALT-不明-UNKNOWN-<tag>';
-    const hmacLiteral = 'HMAC-取得不可-すべてBASE化-`*_[]<>';
-    const collision = clone(baseline);
-    collision.identity.id = 'SELFTEST-LITERAL';
-    collision.calculationSession = null;
-    collision.input = {
-      type:'text', entered:literal, sanitized:literal, normalized:literal, visible:literal,
-      graphemes:Array.from(literal).length, entropy:0, file:null
-    };
-    collision.settings.normalization = 'none';
-    collision.settings.sanitizeText = false;
-    collision.settings.hexUpper = false;
-    collision.settings.grouping = 4;
-    collision.settings.separator = '*_[x]<>\\';
-    collision.settings.salt = { enabled:true, value:saltLiteral };
-    collision.settings.hmac = { enabled:true, key:hmacLiteral };
-    collision.settings.iterations = 1;
-    collision.settings.iterMode = 'hex';
-    collision.settings.base = {
-      groupOpen:false, base64Encode:false, base64Decode:false, base64Strict:false,
-      base85Encode:false, base85Decode:false, base85Variant:'Standard ASCII85', fileAutoDetect:false
-    };
-    collision.settings.compare = { panelOpen:false, input:'', continuousEnabled:false, continuousTarget:null, continuousHit:null };
-    collision.settings.test = { panelOpen:false, vector:'empty', verifyArmed:false };
-    disableOutputBase(collision);
-    disableBaseResults(collision);
-    const collisionRecord = await SessionRecord.build(collision);
-    const collisionDoc = new DOMParser().parseFromString(collisionRecord.html, 'text/html');
-    const parsedCollision = JSON.parse(collisionDoc.getElementById('session-data')?.textContent || '{}');
-    add('Session Record / Literal Canonical Preservation',
-      parsedCollision.input?.entered === literal &&
-      parsedCollision.settings?.salt?.value === saltLiteral &&
-      parsedCollision.settings?.hmac?.key === hmacLiteral,
-      'Canonical data must preserve literal user values');
-    add('Session Record / Literal HTML Preservation',
-      collisionDoc.querySelector('[data-record-input="entered"] pre')?.textContent === literal,
-      'Human HTML input must not normalize literal user text');
-    add('Session Record / Scriptless Escaping',
-      collisionDoc.querySelectorAll('script').length === 0 && collisionDoc.querySelector('[data-record-input="entered"] pre')?.textContent.includes('<script>SESSION_XSS<\/script>'),
-      'Saved record must keep literal script text without creating executable nodes');
-    add('Session Record / Markdown Literal Preservation',
-      collisionRecord.markdown.includes(literal) && collisionRecord.markdown.includes(saltLiteral) && collisionRecord.markdown.includes(hmacLiteral),
-      'Markdown fenced values must remain literal');
-    add('Session Record / Markdown Dynamic Fence',
-      collisionRecord.markdown.includes('````text'),
-      'Markdown fence must expand beyond embedded backticks');
-    add('Session Record / Markdown Inline Escape',
-      collisionRecord.markdown.includes('\\*\\_\\[x\\]\\<\\>\\\\'),
-      'Markdown inline settings must escape metacharacters');
-
-    const minimal = clone(baseline);
-    minimal.identity.id = 'SELFTEST-MINIMAL';
-    minimal.calculationSession = null;
-    minimal.input = { type:'text', entered:'x', sanitized:'x', normalized:'x', visible:'x', graphemes:1, entropy:0, file:null };
-    minimal.settings.normalization = 'none';
-    minimal.settings.sanitizeText = false;
-    minimal.settings.hexUpper = false;
-    minimal.settings.grouping = 0;
-    minimal.settings.separator = ' ';
-    minimal.settings.copyMode = 'actual';
-    minimal.settings.iterations = 1;
-    minimal.settings.iterMode = 'xor';
-    minimal.settings.salt = { enabled:false, value:null };
-    minimal.settings.hmac = { enabled:false, key:null };
-    minimal.settings.base = {
-      groupOpen:false, base64Encode:false, base64Decode:false, base64Strict:true,
-      base85Encode:false, base85Decode:false, base85Variant:'RFC 1924 Alphabet (Block)', fileAutoDetect:true
-    };
-    minimal.settings.compare = { panelOpen:false, input:'', continuousEnabled:false, continuousTarget:null, continuousHit:null };
-    minimal.settings.test = { panelOpen:false, vector:'empty', verifyArmed:false };
-    disableOutputBase(minimal);
-    disableBaseResults(minimal);
-    const minimalRecord = await SessionRecord.build(minimal);
-    const minimalDoc = new DOMParser().parseFromString(minimalRecord.html, 'text/html');
-    const minimalLabels = currentSettingLabels(minimalDoc);
-    const hiddenLabels = ['HEX表記','区切り','区切り文字','Salt','Salt 値','HMAC','HMAC Key','反復方式','Base64 Enc','Base64 Dec','Base64判定','Base85 Enc','Base85 Dec','Base85形式','Base自動判別','すべてBASE化','受け渡し','適用順序'];
-    add('Session Record / Default Setting Visibility',
-      hiddenLabels.every(label => !minimalLabels.has(label)),
-      `Inactive/default settings leaked: ${hiddenLabels.filter(label => minimalLabels.has(label)).join(', ')}`);
-    add('Session Record / Redundant Input Hidden',
-      !minimalDoc.querySelector('[data-record-input="sanitized"]') && !minimalDoc.querySelector('[data-record-input="normalized"]'),
-      'Unchanged sanitized/normalized input must stay hidden');
-    add('Session Record / Disabled BASE Cards Hidden',
-      baseIds.every(id => !Array.from(minimalDoc.querySelectorAll('.result-card h3')).some(node => node.textContent === id)) &&
-      minimalDoc.querySelectorAll('.pipeline').length === 0,
-      'Disabled BASE results and Output BASE pipeline must stay hidden');
-
-    const inactiveDiff = clone(minimal);
-    inactiveDiff.identity.id = 'SELFTEST-INACTIVE-DIFF';
-    inactiveDiff.calculationSession = {
-      inputType:'text', normalization:'none', sanitizeText:false, saltEnabled:false, salt:null,
-      hmacEnabled:false, hmacKey:null, iterations:1, iterMode:'hex',
-      crc64Variant:inactiveDiff.settings.crc64Variant,
-      base64Encode:false, base64Decode:false, base64Strict:false,
-      base85Encode:false, base85Decode:false, base85Variant:'Standard ASCII85',
-      baseFileDetect:false, sourceByteLength:1, startedAt:1700000000000, netTimeOffset:0
-    };
-    const inactiveDiffRecord = await SessionRecord.build(inactiveDiff);
-    const inactiveDiffDoc = new DOMParser().parseFromString(inactiveDiffRecord.html, 'text/html');
-    const diffLabels = new Set(Array.from(inactiveDiffDoc.querySelectorAll('#section-settings details table tbody th')).map(node => node.textContent));
-    add('Session Record / Inactive Difference Hidden',
-      !diffLabels.has('反復方式') && !diffLabels.has('Base64判定') && !diffLabels.has('Base85形式') && !diffLabels.has('Base自動判別'),
-      'Inactive option differences must not appear');
-
-    const timeCase = clone(inactiveDiff);
-    timeCase.identity.id = 'SELFTEST-TIME-OFFSET';
-    timeCase.app.netTimeOffset = 9 * 60 * 60 * 1000;
-    timeCase.calculationSession.startedAt = 1700000000000;
-    timeCase.calculationSession.netTimeOffset = 0;
-    const timeRecord = await SessionRecord.build(timeCase);
-    const timeDoc = new DOMParser().parseFromString(timeRecord.html, 'text/html');
-    const calculationRoot = Array.from(timeDoc.querySelectorAll('#section-settings .subsection')).find(node => node.querySelector('h3')?.textContent === '結果生成時の設定');
-    const shownStart = kvValue(calculationRoot, '計算開始日時');
-    const expectedStart = SysUtils.fmtJapaneseDate(new Date(timeCase.calculationSession.startedAt));
-    const wrongStart = SysUtils.fmtJapaneseDate(new Date(timeCase.calculationSession.startedAt + timeCase.app.netTimeOffset));
-    add('Session Record / Calculation Start Offset',
-      shownStart === expectedStart && shownStart !== wrongStart,
-      `start=${shownStart}, expected=${expectedStart}, save-offset=${wrongStart}`);
-
-    const gatewayCase = clone(minimal);
-    gatewayCase.identity.id = 'SELFTEST-GATEWAY-STATS';
-    gatewayCase.network = { audit:[], stats:{ limit:256, total:300, saved:256, dropped:44, firstSeq:45, lastSeq:300 } };
-    const gatewayRecord = await SessionRecord.build(gatewayCase);
-    const gatewayDoc = new DOMParser().parseFromString(gatewayRecord.html, 'text/html');
-    const networkRoot = gatewayDoc.getElementById('section-network');
-    add('Session Record / Gateway Audit Stats',
-      kvValue(networkRoot, '保存件数') === '0' &&
-      kvValue(networkRoot, '累計記録数') === '300' &&
-      kvValue(networkRoot, '省略件数') === '44' &&
-      kvValue(networkRoot, '保持上限') === '256',
-      'Human record must expose retained/truncated audit counts');
-
-    const baseEl = document.getElementById('Base64-Enc');
-    if (baseEl) {
-      const previousFlag = AppState.Base64Encode;
-      const previousText = baseEl.textContent;
-      const previousDataset = { ...baseEl.dataset };
-      try {
-        AppState.Base64Encode = false;
-        baseEl.dataset.raw = 'STALE-BASE-PAYLOAD';
-        baseEl.dataset.empty = '0';
-        baseEl.textContent = 'STALE-BASE-PAYLOAD';
-        const staleAt = Date.now();
-        const staleSnapshot = await SessionRecord.capture(Object.freeze({ id:'SELFTEST-STALE-BASE', defaultName:'SELFTEST-STALE-BASE' }), staleAt);
-        const stale = staleSnapshot.results['Base64-Enc'];
-        add('Session Record / Disabled BASE Logical Payload',
-          stale.enabled === false && stale.status === 'not_run' &&
-          stale.sourceByteLength === 0 && stale.sourceHex === '' &&
-          stale.originalResult === '' && stale.finalActual === '' &&
-          stale.ui.raw === 'STALE-BASE-PAYLOAD',
-          'Disabled BASE must keep stale DOM only in UI evidence');
-      } finally {
-        AppState.Base64Encode = previousFlag;
-        baseEl.textContent = previousText;
-        for (const key of Object.keys(baseEl.dataset)) if (!(key in previousDataset)) delete baseEl.dataset[key];
-        for (const [key, value] of Object.entries(previousDataset)) baseEl.dataset[key] = value;
-      }
-    } else {
-      add('Session Record / Disabled BASE Logical Payload', false, 'Base64-Enc DOM missing');
-    }
-
-    for (const check of AutoTestReport.selfTest()) checks.push(check);
-    return checks;
-  }
 
   function updateMeta(count, isFile, statusText, iterations = 1) {
     AppState.currentStatus = statusText;
@@ -13581,27 +13803,47 @@ function showToast(msg, duration = TOAST_DURATION) {
     }
   }
 
-  async function handleFiles(files) {
-    if (!Life.ok() || !files.length) return;
+  function fileLoadPolicy(file, hasStreamSave = ('showSaveFilePicker' in window && !window.__ZESS_MODE__)) {
+    const maxMB = hasStreamSave ? 300 : 50;
+    const limitBytes = maxMB * 1024 * 1024;
+    const size = Math.max(0, Number(file?.size) || 0);
+    return Object.freeze({
+      hasStreamSave:!!hasStreamSave,
+      maxMB,
+      limitBytes,
+      rejected:!hasStreamSave && size > limitBytes,
+      huge:!!hasStreamSave && size > limitBytes
+    });
+  }
+
+  function beginFileLoad(file, hasStreamSave = ('showSaveFilePicker' in window && !window.__ZESS_MODE__)) {
+    const policy = fileLoadPolicy(file, hasStreamSave);
+    if (policy.rejected) return Object.freeze({ accepted:false, policy, lifeEpoch:Life.epoch, revision:fileLoadRevision });
     const lifeEpoch = Life.epoch;
     const revision = ++fileLoadRevision;
-    const f = files[0];
     AppState.currentFile = null;
+    return Object.freeze({ accepted:true, policy, lifeEpoch, revision });
+  }
 
-    const hasStreamSave = ('showSaveFilePicker' in window && !window.__ZESS_MODE__);
-    const maxMB = hasStreamSave ? 300 : 50;
+  async function handleFiles(files) {
+    if (!Life.ok() || !files.length) return;
+    const f = files[0];
+    const transaction = beginFileLoad(f);
+    const { policy } = transaction;
 
-    if (f.size > maxMB * 1024 * 1024 && !hasStreamSave) {
-        showToast(`ストリーム保存非対応環境のため、ファイルサイズを${maxMB}MBに制限しています`);
+    if (!transaction.accepted) {
+        showToast(`ストリーム保存非対応環境のため、ファイルサイズを${policy.maxMB}MBに制限しています`);
         return;
     }
+
+    const { lifeEpoch, revision } = transaction;
 
     if (AppState.continuousCompareEnabled) disarmContinuousCompare(true);
     BaseRenderGate.invalidateAll();
     Engine.resetMasterTask();
     resetHistories();
 
-    if (f.size > maxMB * 1024 * 1024) {
+    if (policy.huge) {
         AppState.currentFile = f;
         els.inputEl.value = `[File: ${f.name} (${(f.size/1048576).toFixed(2)} MB)]\n※ファイルが300MBを超えています。下の「巨大ファイル出力開始」ボタンで直接ディスクへ保存してください。`;
         els.hugeFileBtn.style.display = 'inline-block';
@@ -14475,6 +14717,12 @@ async function detectBase85Variants(input) {
 
     const runAutomaticSelfTest = async () => {
       if (AutoTestSession.active) return;
+      const requirementIssues = SelfTest.requirementIssues();
+      if (requirementIssues.length) {
+        setMetaStatus('自動検証不可');
+        showToast(`自動検証を実行できません｜必須機能：${requirementIssues.join(' / ')}`, 7000);
+        return;
+      }
       const keys = Object.keys(TEST_VECTORS);
       const visible = [];
       let systemSurface = [];
@@ -14496,6 +14744,29 @@ async function detectBase85Variants(input) {
       );
       const applyButton = document.querySelector('[data-action="applyTest"]');
       const verifyButton = document.querySelector('[data-action="verifyTest"]');
+
+      const cleanBaselineIssues = () => {
+        const issues = [];
+        const expect = (ok, label) => { if (!ok) issues.push(label); };
+        expect((els.inputEl?.value || '') === '', 'Input');
+        expect(AppState.currentFile === null, 'currentFile');
+        expect(AppState.normalization === 'none', 'Normalization');
+        expect(AppState.sanitizeText === false, 'Sanitize');
+        expect(AppState.showSalt === false && AppState.salt === '', 'Salt');
+        expect(AppState.showHmac === false && AppState.hmacKey === '', 'HMAC');
+        expect(AppState.Base64Encode === false && AppState.Base64Decode === false, 'Base64');
+        expect(AppState.Base85Encode === false && AppState.Base85Decode === false, 'Base85');
+        expect(AppState.base64Strict === false, 'Base64判定');
+        expect(AppState.base85Variant === 'Standard ASCII85', 'Base85形式');
+        expect(AppState.baseFileDetect === false, 'Base自動判別');
+        expect(AppState.outputBaseOrder.length === 0 && AppState.outputBaseHandoff === 'hex', 'すべてBASE化');
+        expect(AppState.showOutputBase === false && AppState.showBaseGroup === false, 'BASE表示状態');
+        expect(Number(AppState.iterations) === 1 && AppState.iterMode === 'hex', '反復');
+        expect(AppState.testVector === 'empty' && AppState.testVerifyArmed === false, 'Test Vector');
+        expect(AppState.continuousCompareEnabled === false && AppState.continuousCompareTarget === null && AppState.continuousCompareHit === null, 'Continuous Compare');
+        expect(autoVerifyWaiters.size === 0, 'AutoVerify Waiter');
+        return issues;
+      };
 
       const verifyEmptyBaseline = async label => {
         const emptyButton = setTestButtons.get('empty');
@@ -14521,8 +14792,16 @@ async function detectBase85Variants(input) {
         await waitForTestIdle();
         await AutoTestClock.hold(AUTO_TEST_TIMING.afterVerify, true);
 
-        showAutoToast(`${label}｜空｜${result.ok ? 'PASS' : 'FAIL'}`, result.ok ? 1200 : 4200, true);
-        return result;
+        const baselineIssues = cleanBaselineIssues();
+        const combined = {
+          ...result,
+          ok:result.ok && baselineIssues.length === 0,
+          total:(Number(result.total) || 0) + 1,
+          passed:(Number(result.passed) || 0) + (baselineIssues.length === 0 ? 1 : 0),
+          failed:[...(result.failed || []), ...baselineIssues.map(item => `Baseline: ${item}`)]
+        };
+        showAutoToast(`${label}｜空＋基準状態｜${combined.ok ? 'PASS' : 'FAIL'}`, combined.ok ? 1200 : 4200, true);
+        return combined;
       };
 
       try {
@@ -14574,23 +14853,17 @@ async function detectBase85Variants(input) {
         showAutoToast(`表示検証 ${systemPassedLive}/${systemSurface.length}${systemFailedLive.length ? `｜FAIL ${systemFailedLive.length}` : ' 完了'}`, systemFailedLive.length ? 4200 : 1200, true);
         await AutoTestClock.hold(AUTO_TEST_TIMING.phaseTransition, true);
 
-        showAutoToast('内部検証計画を確認中', 1200, true);
-        setMetaStatus('内部検証計画を確認中');
-        const hiddenPlannedTotal = await SelfTest.expectedCount();
-        AutoTestSession.setProgress('internal', 0, hiddenPlannedTotal || 0);
+        const hiddenPlannedTotal = SelfTest.plannedCount();
+        showAutoToast(`内部検証 0/${hiddenPlannedTotal} へ移行します`, 1500, true);
+        setMetaStatus(`内部検証 0/${hiddenPlannedTotal}`);
+        AutoTestSession.setProgress('internal', 0, hiddenPlannedTotal);
         syncPauseControls();
         showAutoToast(
-          hiddenPlannedTotal
-            ? `空復元 ${preHiddenResetResult.ok ? 'OK' : 'FAIL'}｜内部検証 0/${hiddenPlannedTotal} へ移行します`
-            : `空復元 ${preHiddenResetResult.ok ? 'OK' : 'FAIL'}｜内部検証へ移行します（初回は実行後に総数を確定）`,
+          `空復元 ${preHiddenResetResult.ok ? 'OK' : 'FAIL'}｜内部検証 0/${hiddenPlannedTotal} を開始します`,
           preHiddenResetResult.ok ? 1500 : 4200,
           true
         );
         await AutoTestClock.hold(AUTO_TEST_TIMING.phaseTransition, true);
-
-        let hiddenPassedLive = 0;
-        let hiddenFailedLive = 0;
-        let hiddenSkippedLive = 0;
 
         hidden = await SelfTest.runAll({
           checkpoint: () => AutoTestSession.checkpoint(),
@@ -14603,16 +14876,11 @@ async function detectBase85Variants(input) {
           },
           onResult: async (item, count) => {
             AutoTestReport.addInternal(item);
-            if (item.skip) hiddenSkippedLive++;
-            else if (item.ok) hiddenPassedLive++;
-            else hiddenFailedLive++;
-
-            const total = hiddenPlannedTotal || 0;
-            AutoTestSession.setProgress('internal', count, total);
+            AutoTestSession.setProgress('internal', count, hiddenPlannedTotal);
             syncPauseControls();
 
             const verdict = item.skip ? 'SKIP' : item.ok ? 'PASS' : 'FAIL';
-            const fraction = total ? `${count}/${total}` : `${count}`;
+            const fraction = `${count}/${hiddenPlannedTotal}`;
             setMetaStatus(`内部検証 ${fraction} [${item.group}] ${item.name}`);
             showAutoToast(`内部検証 ${fraction}｜${item.group}｜${item.name}｜${verdict}`, 900, true);
 
@@ -14621,9 +14889,9 @@ async function detectBase85Variants(input) {
           }
         });
 
-        AutoTestSession.setProgress('visible', keys.length, keys.length);
+        AutoTestSession.setProgress('internal', hidden.length, hiddenPlannedTotal);
         syncPauseControls();
-        showAutoToast('内部検証完了｜最終の空復元へ', 1500, true);
+        showAutoToast(`内部検証 ${hidden.length}/${hiddenPlannedTotal} 完了｜最終の空復元へ`, 1500, true);
         await AutoTestClock.hold(AUTO_TEST_TIMING.phaseTransition, true);
         const resetResult = await verifyEmptyBaseline('最終復元');
         AutoTestReport.setFinalReset(resetResult);
@@ -15430,12 +15698,18 @@ async function detectBase85Variants(input) {
     if (SessionRecord.SESSION_SCHEMA !== 'SONY-HASH-SESSION/2') add('Session schema契約が不正です');
     if (SessionRecord.RECORD_SCHEMA !== 'SONY-HASH-RECORD/6') add('Record schema契約が不正です');
     if (SessionRecord.SUMMARY_SCHEMA !== 'SONY-HASH-SUMMARY/4') add('Summary schema契約が不正です');
-    if (typeof SessionRecord.validateRecord !== 'function') add('Session Record validatorがありません');
-    if (typeof SessionRecord.validateMarkdown !== 'function') add('Session Markdown validatorがありません');
-    if (typeof SessionSave.writePackageToDirectory !== 'function') add('Session Package writerがありません');
-    if (typeof InternetGateway.auditStats !== 'function') add('Internet Gateway audit stats APIがありません');
+    if (typeof SessionRecord.validateSnapshot !== 'function') add('Session Snapshot Validatorがありません');
+    if (typeof SessionRecord.validateRecord !== 'function') add('Session Record Validatorがありません');
+    if (typeof SessionRecord.validateMarkdown !== 'function') add('Session Summary Validatorがありません');
+    if (typeof SessionSave.writePackageToDirectory !== 'function') add('Session Package Writerがありません');
+    if (typeof InternetGateway.auditStats !== 'function') add('Gateway Audit Stats APIがありません');
     if (typeof Engine.captureIterationSnapshot !== 'function') add('Session Runtime Snapshot APIがありません');
     if (typeof OutputBaseFilter.traceApplyBytes !== 'function') add('Output BASE Trace APIがありません');
+    if (typeof SelfTest.plannedCount !== 'function' || SelfTest.plannedCount() <= 0) add('SelfTest Plan APIがありません');
+    if (typeof SelfTest.plannedGroups !== 'function' || !Object.keys(SelfTest.plannedGroups()).length) add('SelfTest Plan Group APIがありません');
+    if (typeof SelfTest.requirementIssues !== 'function') add('SelfTest Required Capability APIがありません');
+    if (typeof runSessionRecordRegression !== 'function') add('Session Record Regressionがありません');
+    if (typeof runFileWorkflowRegression !== 'function') add('File Workflow Regressionがありません');
 
     return Array.from(new Set(issues));
   }
@@ -15449,7 +15723,7 @@ async function detectBase85Variants(input) {
     attachEvents();
   }
 
-  return { init, validate, updateSysPanel, runResultStateRegression, runFileHandleRegression, runSessionRecordRegression, shutdown };
+  return { init, validate, updateSysPanel, runResultStateRegression, runSessionRecordRegression, runFileWorkflowRegression, runFileHandleRegression, shutdown };
 })();
 
 const PresetLoader = (() => {
