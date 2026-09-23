@@ -427,6 +427,12 @@ applyRuntimePlatform();
   .spinner-btn:hover { color: var(--fg-bright); }
   .spinner-btn:active { transform: scale(0.9); }
 
+  .grouping-manual-control{display:inline-flex;align-items:center;gap:4px}
+  .grouping-manual-control[hidden]{display:none}
+  .grouping-manual-control .link{margin-left:0}
+  .meta-separator-full{display:inline;vertical-align:baseline;user-select:all;cursor:text}
+  .meta-separator-value{display:inline-block;max-inline-size:8ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+
   .hint{color:var(--muted);font-size:clamp(.6875em,2.6vw,.8125em);margin-top:6px; transition: color 0.4s ease;}
   .toolbar{display:flex;align-items:center;gap:12px;padding:0 clamp(12px,3vw,18px);flex-wrap:wrap}
   .toolbar .sep{opacity:.5}
@@ -578,7 +584,7 @@ applyRuntimePlatform();
   <main class="container" role="main">
     <section class="input-wrap" id="drop-zone">
       <textarea id="in" placeholder="ここに入力、またはファイルをドロップして計算します" autocomplete="one-time-code" spellcheck="false" autocorrect="off"></textarea>
-      <div id="meta" class="hint">文字数 0｜エントロピー（Entropy）：—｜文字コード：UTF-8｜正規化：なし｜不可視文字・改行整形：オフ｜コピー：実値｜HEX: lowercase｜区切り：区切りなし｜区切り文字：" "｜ステータス：待機</div>
+      <div id="meta" class="hint"><span id="meta-count">文字数 0</span>｜エントロピー（Entropy）：<span id="meta-entropy">—</span>｜文字コード：<span id="meta-encoding">UTF-8</span>｜正規化：<span id="meta-normalization">なし</span>｜不可視文字・改行整形：<span id="meta-sanitize">オフ</span>｜コピー：<span id="meta-copy">実値</span>｜HEX: <span id="meta-hex">lowercase</span>｜区切り：<span id="meta-grouping">区切りなし</span>｜区切り文字：<span id="meta-separator-full" class="meta-separator-full" title=" "><span id="meta-separator-value" class="meta-separator-value"> </span></span><span id="meta-options"></span><span id="meta-iteration"></span>｜ステータス：<span id="meta-status">待機</span></div>
       <input type="file" id="f-hidden" />
     </section>
     
@@ -608,10 +614,24 @@ applyRuntimePlatform();
     <div class="toolbar">
       <span class="hint">オプション：</span>
       <button id="groupingToggle" class="link" aria-label="区切り文字数の切替" data-action="toggleGrouping">区切り：区切りなし [+]</button>
+      <span id="groupingManualControl" class="grouping-manual-control" hidden>
+        <span class="hint">区切り：</span>
+        <span class="number-wrap">
+          <input type="number" id="grouping-manual" class="text-input number-input" value="0" min="0" max="65535" step="1" aria-label="区切り文字数" autocomplete="off" spellcheck="false" autocorrect="off">
+          <span class="spinner-controls">
+            <span class="spinner-btn" id="grouping-manual-up" data-action="groupingManualUp">△</span>
+            <span class="spinner-btn" id="grouping-manual-down" data-action="groupingManualDown">▽</span>
+          </span>
+        </span>
+        <span class="hint">文字</span>
+        <button id="groupingManualToggle" class="link" aria-label="区切り文字数の切替" data-action="toggleGrouping">[+]</button>
+      </span>
 
       <span id="groupingOptionsContainer" class="base-group-container hidden">
         <span class="sep hint">/</span>
         <button class="link" data-action="setGrouping" data-grouping="0">なし</button>
+        <span class="sep hint">/</span>
+        <button class="link" data-action="setGroupingManual">文字</button>
         <span class="sep hint">/</span>
         <button class="link" data-action="setGrouping" data-grouping="2">2文字</button>
         <span class="sep hint">/</span>
@@ -977,7 +997,7 @@ applyRuntimePlatform();
 <script>
 applyRuntimePlatform();
 
-const APP_VERSION = '20260923A-86732f7-04-G';
+const APP_VERSION = '20260923B-N/A-00-G';
 
 const Life = (() => {
   let state = 0;
@@ -2387,6 +2407,9 @@ const VisualTheme = (() => {
   return { defaults, init, cycle, label, summary, validate, hasKind };
 })();
 
+const GROUPING_PRESETS = Object.freeze([2,4,6,8,10,12,14,16,32,64]);
+const GROUPING_MAX = 65535;
+
 const AppState = {
   showTheme: false,
   visualSystem: VisualTheme.defaults.system,
@@ -2395,6 +2418,7 @@ const AppState = {
   normalization: 'none',
   sanitizeText: false,
   hexUpper: false,
+  groupingMode: 'none',
   grouping: 0,
   showGrouping: false,
   separator: ' ',
@@ -8389,7 +8413,7 @@ const SelfTest = (() => {
       FILE:13,
       WORKER:5,
       FILTER:38,
-      SESSION:28,
+      SESSION:33,
       REGRESSION:169,
       STREAM:768
     }),
@@ -8401,7 +8425,7 @@ const SelfTest = (() => {
     systemMonitor:13,
     workerGuard:8,
     workerContract:6,
-    session:28,
+    session:33,
     fileWorkflow:5,
     writable:11
   });
@@ -10921,6 +10945,19 @@ const UI = (() => {
   function initDOM() {
     els.inputEl = document.getElementById('in');
     els.metaEl = document.getElementById('meta');
+    els.metaCount = document.getElementById('meta-count');
+    els.metaEntropy = document.getElementById('meta-entropy');
+    els.metaEncoding = document.getElementById('meta-encoding');
+    els.metaNormalization = document.getElementById('meta-normalization');
+    els.metaSanitize = document.getElementById('meta-sanitize');
+    els.metaCopy = document.getElementById('meta-copy');
+    els.metaHex = document.getElementById('meta-hex');
+    els.metaGrouping = document.getElementById('meta-grouping');
+    els.metaSeparatorFull = document.getElementById('meta-separator-full');
+    els.metaSeparatorValue = document.getElementById('meta-separator-value');
+    els.metaOptions = document.getElementById('meta-options');
+    els.metaIteration = document.getElementById('meta-iteration');
+    els.metaStatus = document.getElementById('meta-status');
     els.themeBtn = document.getElementById('themeToggle');
     els.themeOptionsContainer = document.getElementById('themeOptionsContainer');
     els.systemThemeToggleBtn = document.getElementById('systemThemeToggle');
@@ -10938,6 +10975,9 @@ const UI = (() => {
     els.verifyTestBtn = document.getElementById('verify');
     els.selfTestBtn = document.getElementById('selftest');
     els.groupingToggle = document.getElementById('groupingToggle');
+    els.groupingManualControl = document.getElementById('groupingManualControl');
+    els.groupingManualIn = document.getElementById('grouping-manual');
+    els.groupingManualToggle = document.getElementById('groupingManualToggle');
     els.groupingOptionsContainer = document.getElementById('groupingOptionsContainer');
     els.sepIn = document.getElementById('sep-in');
     els.internetSep = document.getElementById('internetSep');
@@ -11131,9 +11171,9 @@ function showToast(msg, duration = TOAST_DURATION) {
   })();
 
   const SessionRecord = (() => {
-    const SESSION_SCHEMA = 'SONY-HASH-SESSION/2';
-    const RECORD_SCHEMA = 'SONY-HASH-RECORD/6';
-    const SUMMARY_SCHEMA = 'SONY-HASH-SUMMARY/4';
+    const SESSION_SCHEMA = 'SONY-HASH-SESSION/3';
+    const RECORD_SCHEMA = 'SONY-HASH-RECORD/7';
+    const SUMMARY_SCHEMA = 'SONY-HASH-SUMMARY/5';
     const RESULT_IDS = Object.freeze(['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','Base64-Enc','Base64-Dec','Base85-Enc','Base85-Dec']);
     let sequenceSecond = '';
     let sequence = 0;
@@ -11356,6 +11396,7 @@ function showToast(msg, duration = TOAST_DURATION) {
           normalization:AppState.normalization,
           sanitizeText:AppState.sanitizeText,
           hexUpper:AppState.hexUpper,
+          groupingMode:AppState.groupingMode,
           grouping:AppState.grouping,
           groupingOptionsOpen:AppState.showGrouping,
           separator:AppState.separator,
@@ -11463,6 +11504,12 @@ function showToast(msg, duration = TOAST_DURATION) {
       if (!snapshot?.identity?.id) issues.push('snapshot id');
       if (!snapshot?.settings?.hmac || !Object.prototype.hasOwnProperty.call(snapshot.settings.hmac, 'key')) issues.push('hmac');
       if (!snapshot?.settings?.salt || !Object.prototype.hasOwnProperty.call(snapshot.settings.salt, 'value')) issues.push('salt');
+      const groupingMode = snapshot?.settings?.groupingMode;
+      const grouping = Number(snapshot?.settings?.grouping);
+      if (!['none','manual','preset'].includes(groupingMode)) issues.push('grouping mode');
+      if (!Number.isInteger(grouping) || grouping < 0 || grouping > GROUPING_MAX) issues.push('grouping value');
+      if (groupingMode === 'none' && grouping !== 0) issues.push('grouping none');
+      if (groupingMode === 'preset' && !GROUPING_PRESETS.includes(grouping)) issues.push('grouping preset');
       for (const id of RESULT_IDS) {
         const result = snapshot?.results?.[id];
         if (!result) { issues.push(`result:${id}`); continue; }
@@ -11585,7 +11632,7 @@ function showToast(msg, duration = TOAST_DURATION) {
       if (s.hmac.enabled) rows.push(['HMAC', '有効'], ['HMAC Key', s.hmac.key]);
       if (Number(s.iterations) > 1) rows.push(['反復方式', iterModeLabel(s.iterMode)]);
       if (s.hexUpper) rows.push(['HEX表記', '大文字']);
-      if (Number(s.grouping) > 0) rows.push(['区切り', `${s.grouping}文字`], ['区切り文字', JSON.stringify(s.separator)]);
+      if (s.groupingMode === 'manual' || s.groupingMode === 'preset') rows.push(['区切り', `${s.grouping}文字`], ['区切り文字', JSON.stringify(s.separator)]);
       if (s.copyMode === 'visual') rows.push(['コピー対象', '表示値']);
       if (s.base.base64Encode) rows.push(['Base64 Enc', '有効']);
       if (s.base.base64Decode) rows.push(['Base64 Dec', '有効'], ['Base64判定', s.base.base64Strict ? '厳格' : '寛容']);
@@ -11936,7 +11983,18 @@ function showToast(msg, duration = TOAST_DURATION) {
         const settingLabels = new Set(Array.from(currentSettings?.querySelectorAll('.kv > .k') || []).map(el => el.textContent));
         if (!snapshot.settings.outputBase.enabled && settingLabels.has('すべてBASE化')) issues.push('inactive output base setting');
         if (!snapshot.settings.hexUpper && settingLabels.has('HEX表記')) issues.push('default hex setting');
-        if (!snapshot.settings.grouping && settingLabels.has('区切り')) issues.push('default grouping setting');
+        const groupingActive = snapshot.settings.groupingMode === 'manual' || snapshot.settings.groupingMode === 'preset';
+        const settingValue = label => {
+          for (const row of Array.from(currentSettings?.querySelectorAll('.kv') || [])) {
+            if (row.querySelector('.k')?.textContent === label) return row.querySelector('.v')?.textContent ?? null;
+          }
+          return null;
+        };
+        if (!groupingActive && (settingLabels.has('区切り') || settingLabels.has('区切り文字'))) issues.push('inactive grouping setting');
+        if (groupingActive) {
+          if (settingValue('区切り') !== `${snapshot.settings.grouping}文字`) issues.push('grouping setting');
+          if (settingValue('区切り文字') !== JSON.stringify(snapshot.settings.separator)) issues.push('separator setting');
+        }
         const footer = doc.querySelector('.footer');
         if (!footer || !footer.textContent.trim().endsWith('END OF RECORD')) issues.push('record trailer');
         const styleText = doc.querySelector('style')?.textContent || '';
@@ -11979,6 +12037,15 @@ function showToast(msg, duration = TOAST_DURATION) {
       for (const id of visibleResultIds(snapshot)) if (!structure.h3.includes(markdownResultName(id, snapshot.settings))) issues.push(`summary result:${id}`);
       for (const id of RESULT_IDS.filter(id => !visibleResultIds(snapshot).includes(id))) if (structure.h3.includes(markdownResultName(id, snapshot.settings))) issues.push(`summary hidden result:${id}`);
       if (!snapshot.settings.outputBase.enabled && structure.h3.some(label => label.startsWith('すべてBASE化 適用結果'))) issues.push('summary inactive output base');
+      const groupingActive = snapshot.settings.groupingMode === 'manual' || snapshot.settings.groupingMode === 'preset';
+      const groupingLine = `- **区切り：** ${markdownInline(`${snapshot.settings.grouping}文字`)}`;
+      const separatorLine = `- **区切り文字：** ${markdownInline(JSON.stringify(snapshot.settings.separator))}`;
+      if (groupingActive) {
+        if (!structure.visible.includes(groupingLine)) issues.push('summary grouping setting');
+        if (!structure.visible.includes(separatorLine)) issues.push('summary separator setting');
+      } else if (structure.visible.some(line => line.startsWith('- **区切り：**') || line.startsWith('- **区切り文字：**'))) {
+        issues.push('summary inactive grouping');
+      }
       if (!markdown.endsWith('\n')) issues.push('summary final newline');
       return issues;
     }
@@ -12160,22 +12227,23 @@ function showToast(msg, duration = TOAST_DURATION) {
     resetResultNotes();
   }
 
+  function groupingStateLabel() {
+    return AppState.groupingMode === 'none' ? '区切りなし' : `${AppState.grouping}文字`;
+  }
+
   function updateIterationMetaTarget(target) {
-    if (!els.metaEl) return;
-    let meta = els.metaEl.textContent.replace(/｜反復：\d+回（[^）]*）/g, '');
+    if (!els.metaIteration) return;
     if (target > 1) {
       const mode = AppState.iterMode === 'raw' ? '標準' : AppState.iterMode === 'hex' ? '手渡し' : 'XOR累積';
-      meta = meta.replace('｜ステータス：', `｜反復：${target}回（${mode}）｜ステータス：`);
+      els.metaIteration.textContent = `｜反復：${target}回（${mode}）`;
+    } else {
+      els.metaIteration.textContent = '';
     }
-    els.metaEl.textContent = meta;
   }
 
   function setMetaStatus(status) {
-    if (!els.metaEl) return;
     AppState.currentStatus = status;
-    if (/ステータス：[^｜]+/.test(els.metaEl.textContent)) {
-      els.metaEl.textContent = els.metaEl.textContent.replace(/ステータス：[^｜]+/, `ステータス：${status}`);
-    }
+    if (els.metaStatus) els.metaStatus.textContent = status;
   }
 
   function commitIterationTarget() {
@@ -12983,8 +13051,10 @@ function showToast(msg, duration = TOAST_DURATION) {
     const testEl = document.createElement('div');
     const testNote = document.createElement('span');
     const previous = {
+      groupingMode:AppState.groupingMode,
       grouping:AppState.grouping,
       separator:AppState.separator,
+      status:AppState.currentStatus,
       outputBaseOrder:AppState.outputBaseOrder.slice(),
       outputBaseHandoff:AppState.outputBaseHandoff
     };
@@ -13045,19 +13115,48 @@ function showToast(msg, duration = TOAST_DURATION) {
       const appliedNoted = appliedRows.every(Boolean);
       const progressPunctuation = formatProgressText('完了', 1, 1) === '完了（1/1）';
 
+      AppState.groupingMode = 'manual';
+      AppState.grouping = 0;
+      AppState.separator = 'ABCDEFGHIJKLMNO';
+      updateMeta(1, false, 'SELFTEST', 1);
+      const manualZeroLabel = els.metaGrouping?.textContent === '0文字';
+      const separatorExpected = JSON.stringify(AppState.separator).slice(1, -1);
+      const separatorFull = els.metaSeparatorFull?.textContent === separatorExpected &&
+        els.metaSeparatorFull?.title === separatorExpected;
+      const range = document.createRange();
+      if (els.metaSeparatorFull) range.selectNodeContents(els.metaSeparatorFull);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      const separatorSelection = selection?.toString() === separatorExpected;
+      selection?.removeAllRanges();
+      const separatorStyle = els.metaSeparatorValue ? getComputedStyle(els.metaSeparatorValue) : null;
+      const separatorClipped = separatorStyle?.overflow === 'hidden' && separatorStyle?.textOverflow === 'ellipsis';
+      setMetaStatus('SELFTEST-STATUS');
+      updateIterationMetaTarget(2);
+      const metaNodesStable = els.metaStatus?.textContent === 'SELFTEST-STATUS' &&
+        els.metaIteration?.textContent.includes('反復：2回') &&
+        els.metaSeparatorFull?.textContent === separatorExpected;
+
       return {
-        ok:messageMarked && messageCleared && regrouped && appliedNoted && progressPunctuation,
-        detail:`message=${messageMarked ? 1 : 0}, cleared=${messageCleared ? 1 : 0}, regrouped=${regrouped ? 1 : 0}, applied=${appliedNoted ? 1 : 0}, progress=${progressPunctuation ? 1 : 0}`
+        ok:messageMarked && messageCleared && regrouped && appliedNoted && progressPunctuation &&
+          manualZeroLabel && separatorFull && separatorSelection && separatorClipped && metaNodesStable,
+        detail:`message=${messageMarked ? 1 : 0}, cleared=${messageCleared ? 1 : 0}, regrouped=${regrouped ? 1 : 0}, applied=${appliedNoted ? 1 : 0}, progress=${progressPunctuation ? 1 : 0}, manual0=${manualZeroLabel ? 1 : 0}, separator=${separatorFull ? 1 : 0}, selection=${separatorSelection ? 1 : 0}, clipping=${separatorClipped ? 1 : 0}, meta=${metaNodesStable ? 1 : 0}`
       };
     } finally {
       testEl.remove();
       testNote.remove();
       for (const [note, id] of renamedNotes) note.id = id;
       for (const [el, id] of renamed) el.id = id;
+      AppState.groupingMode = previous.groupingMode;
       AppState.grouping = previous.grouping;
       AppState.separator = previous.separator;
       AppState.outputBaseOrder = previous.outputBaseOrder;
       AppState.outputBaseHandoff = previous.outputBaseHandoff;
+      const restoreFile = !!AppState.currentFile;
+      const restoreCount = restoreFile ? AppState.currentFile.size : Core.countGraphemes(els.inputEl?.value || '');
+      const restoreIterations = Math.max(1, parseInt(els.iterIn?.value, 10) || 1);
+      updateMeta(restoreCount, restoreFile, previous.status || '待機', restoreIterations);
     }
   }
 
@@ -13136,6 +13235,7 @@ function showToast(msg, duration = TOAST_DURATION) {
     collision.settings.normalization = 'none';
     collision.settings.sanitizeText = false;
     collision.settings.hexUpper = false;
+    collision.settings.groupingMode = 'preset';
     collision.settings.grouping = 4;
     collision.settings.separator = '*_[x]<>\\';
     collision.settings.salt = { enabled:true, value:saltLiteral };
@@ -13196,6 +13296,7 @@ function showToast(msg, duration = TOAST_DURATION) {
     minimal.settings.normalization = 'none';
     minimal.settings.sanitizeText = false;
     minimal.settings.hexUpper = false;
+    minimal.settings.groupingMode = 'none';
     minimal.settings.grouping = 0;
     minimal.settings.separator = ' ';
     minimal.settings.copyMode = 'actual';
@@ -13218,6 +13319,40 @@ function showToast(msg, duration = TOAST_DURATION) {
     add('Session Record / Default Setting Visibility',
       hiddenLabels.every(label => !minimalLabels.has(label)),
       `Inactive/default settings leaked: ${hiddenLabels.filter(label => minimalLabels.has(label)).join(', ')}`);
+
+    const manualZero = clone(minimal);
+    manualZero.identity.id = 'SELFTEST-GROUPING-MANUAL-ZERO';
+    manualZero.settings.groupingMode = 'manual';
+    manualZero.settings.grouping = 0;
+    manualZero.settings.separator = 'ABCDEFGHIJKLMNO';
+    const manualZeroRecord = await SessionRecord.build(manualZero);
+    const manualZeroDoc = new DOMParser().parseFromString(manualZeroRecord.html, 'text/html');
+    const manualZeroRoot = manualZeroDoc.querySelector('[data-record-settings="current"]');
+    const manualZeroParsed = JSON.parse(manualZeroDoc.getElementById('session-data')?.textContent || '{}');
+    add('Session Record / Manual Zero Canonical State',
+      manualZeroParsed.settings?.groupingMode === 'manual' && Number(manualZeroParsed.settings?.grouping) === 0,
+      'Manual 0 must remain distinct from none in canonical data');
+    add('Session Record / Manual Zero Human Visibility',
+      kvValue(manualZeroRoot, '区切り') === '0文字' &&
+      kvValue(manualZeroRoot, '区切り文字') === JSON.stringify(manualZero.settings.separator),
+      'Manual 0 must remain visible in the human record');
+    add('Session Record / Manual Zero Markdown Visibility',
+      manualZeroRecord.markdown.includes('- **区切り：** 0文字') &&
+      manualZeroRecord.markdown.includes(`- **区切り文字：** ${JSON.stringify(manualZero.settings.separator)}`),
+      'Manual 0 must remain visible in Markdown');
+
+    const invalidGroupingMode = clone(minimal);
+    invalidGroupingMode.settings.groupingMode = 'invalid';
+    add('Session Record / Invalid Grouping Mode Rejected',
+      SessionRecord.validateSnapshot(invalidGroupingMode).includes('grouping mode'),
+      'Snapshot validator must reject unknown grouping mode');
+    const invalidGroupingPreset = clone(minimal);
+    invalidGroupingPreset.settings.groupingMode = 'preset';
+    invalidGroupingPreset.settings.grouping = 3;
+    add('Session Record / Invalid Grouping Preset Rejected',
+      SessionRecord.validateSnapshot(invalidGroupingPreset).includes('grouping preset'),
+      'Snapshot validator must reject non-preset values in preset mode');
+
     add('Session Record / Redundant Input Hidden',
       !minimalDoc.querySelector('[data-record-input="sanitized"]') && !minimalDoc.querySelector('[data-record-input="normalized"]'),
       'Unchanged sanitized/normalized input must stay hidden');
@@ -13579,10 +13714,10 @@ function showToast(msg, duration = TOAST_DURATION) {
     const countLabel = isFile ? 'ファイル' : '文字数';
     const countUnit = isFile ? ' バイト' : '';
     const encodingLabel = isFile ? '対象外（原データ）' : 'UTF-8';
-    const groupLabel = AppState.grouping ? `${AppState.grouping}文字` : '区切りなし';
     const hexLabel = AppState.hexUpper ? 'UPPERCASE' : 'lowercase';
     const copyLabel = ResultSurface.label();
     const separatorLabel = JSON.stringify(AppState.separator);
+    const separatorBody = separatorLabel.length >= 2 ? separatorLabel.slice(1, -1) : separatorLabel;
     let activeOpts = [];
     if (AppState.salt) activeOpts.push('Salt適用');
     if (AppState.showHmac) activeOpts.push('HMAC稼働');
@@ -13594,7 +13729,19 @@ function showToast(msg, duration = TOAST_DURATION) {
     const iterLabel = iterations > 1 ? `｜反復：${iterations}回（${AppState.iterMode === 'raw' ? '標準' : AppState.iterMode === 'hex' ? '手渡し' : 'XOR累積'}）` : '';
     const sanitizeLabel = isFile ? '対象外' : (AppState.sanitizeText ? 'オン' : 'オフ');
     const entropyLabel = isFile ? '対象外' : (Number.isFinite(AppState.currentEntropy) ? `${AppState.currentEntropy.toFixed(6)} bit/byte` : '—');
-    els.metaEl.textContent = `${countLabel} ${count}${countUnit}｜エントロピー（Entropy）：${entropyLabel}｜文字コード：${encodingLabel}｜正規化：${normLabel}｜不可視文字・改行整形：${sanitizeLabel}｜コピー：${copyLabel}｜HEX: ${hexLabel}｜区切り：${groupLabel}｜区切り文字：${separatorLabel}${optLabel}${iterLabel}｜ステータス：${statusText}`;
+    if (els.metaCount) els.metaCount.textContent = `${countLabel} ${count}${countUnit}`;
+    if (els.metaEntropy) els.metaEntropy.textContent = entropyLabel;
+    if (els.metaEncoding) els.metaEncoding.textContent = encodingLabel;
+    if (els.metaNormalization) els.metaNormalization.textContent = normLabel;
+    if (els.metaSanitize) els.metaSanitize.textContent = sanitizeLabel;
+    if (els.metaCopy) els.metaCopy.textContent = copyLabel;
+    if (els.metaHex) els.metaHex.textContent = hexLabel;
+    if (els.metaGrouping) els.metaGrouping.textContent = groupingStateLabel();
+    if (els.metaSeparatorValue) els.metaSeparatorValue.textContent = separatorBody;
+    if (els.metaSeparatorFull) els.metaSeparatorFull.title = separatorBody;
+    if (els.metaOptions) els.metaOptions.textContent = optLabel;
+    if (els.metaIteration) els.metaIteration.textContent = iterLabel;
+    if (els.metaStatus) els.metaStatus.textContent = statusText;
   }
 
   async function updateAll() {
@@ -13886,6 +14033,68 @@ function showToast(msg, duration = TOAST_DURATION) {
     };
     const CRC64_VARIANTS = InternalContract.CRC64_VARIANTS;
 
+    const normalizeGroupingValue = value => {
+      const numeric = Number(value);
+      const integer = Number.isFinite(numeric) ? Math.trunc(numeric) : 0;
+      return Math.max(0, Math.min(GROUPING_MAX, integer));
+    };
+
+    const syncGroupingControl = () => {
+      const expanded = !!AppState.showGrouping;
+      if (els.groupingOptionsContainer) els.groupingOptionsContainer.classList.toggle('hidden', !expanded);
+      if (expanded) {
+        if (els.groupingToggle) {
+          els.groupingToggle.hidden = false;
+          els.groupingToggle.textContent = '区切り：[-]';
+        }
+        if (els.groupingManualControl) els.groupingManualControl.hidden = true;
+        return;
+      }
+      if (AppState.groupingMode === 'manual') {
+        if (els.groupingToggle) els.groupingToggle.hidden = true;
+        if (els.groupingManualControl) els.groupingManualControl.hidden = false;
+        if (els.groupingManualIn) els.groupingManualIn.value = String(AppState.grouping);
+        if (els.groupingManualToggle) els.groupingManualToggle.textContent = '[+]';
+        return;
+      }
+      if (els.groupingManualControl) els.groupingManualControl.hidden = true;
+      if (els.groupingToggle) {
+        els.groupingToggle.hidden = false;
+        els.groupingToggle.textContent = `区切り：${groupingStateLabel()} [+]`;
+      }
+    };
+
+    const commitGroupingState = (mode, value, close = true) => {
+      let nextMode = mode;
+      let nextGrouping = normalizeGroupingValue(value);
+      if (nextMode === 'none') nextGrouping = 0;
+      else if (nextMode === 'preset') {
+        if (!GROUPING_PRESETS.includes(nextGrouping)) return false;
+      } else if (nextMode !== 'manual') {
+        return false;
+      }
+
+      const previousMode = AppState.groupingMode;
+      const previousGrouping = AppState.grouping;
+      const numericChanged = nextGrouping !== previousGrouping;
+      const stateChanged = numericChanged || nextMode !== previousMode;
+      if (!stateChanged && (!close || !AppState.showGrouping)) {
+        syncGroupingControl();
+        return false;
+      }
+
+      if (AppState.copyMode === 'visual' && numericChanged && AppState.continuousCompareEnabled) disarmContinuousCompare(true);
+      AppState.groupingMode = nextMode;
+      AppState.grouping = nextGrouping;
+      if (close) AppState.showGrouping = false;
+      syncGroupingControl();
+      if (numericChanged) reformatAll();
+      refreshCurrentMeta();
+      return true;
+    };
+
+    const commitManualGrouping = () => commitGroupingState('manual', els.groupingManualIn?.value ?? 0, false);
+
     const syncVisualThemeControls = () => {
       els.themeBtn.textContent = AppState.showTheme
         ? 'テーマ：[-]'
@@ -13904,6 +14113,7 @@ function showToast(msg, duration = TOAST_DURATION) {
     };
 
     syncVisualThemeControls();
+    syncGroupingControl();
 
     const setConditionalControlVisible = (separatorEl, controlEl, visible) => {
       if (separatorEl) separatorEl.hidden = !visible;
@@ -14082,6 +14292,15 @@ on(els.iterIn, 'keydown', e => {
   }
 });
 on(els.iterIn, 'change', commitIterationTarget);
+
+on(els.groupingManualIn, 'keydown', e => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    commitManualGrouping();
+    els.groupingManualIn.blur();
+  }
+});
+on(els.groupingManualIn, 'change', commitManualGrouping);
 
 const captureCompareContext = () => ({
   outputOrder: AppState.outputBaseOrder.slice(),
@@ -15110,26 +15329,30 @@ async function detectBase85Variants(input) {
 
             case 'toggleGrouping': {
                 AppState.showGrouping = !AppState.showGrouping;
-                els.groupingToggle.textContent = AppState.showGrouping
-                    ? '区切り：[-]'
-                    : `区切り：${AppState.grouping ? AppState.grouping + '文字' : '区切りなし'} [+]`;
-                if (AppState.showGrouping) {
-                    els.groupingOptionsContainer.classList.remove('hidden');
-                } else {
-                    els.groupingOptionsContainer.classList.add('hidden');
-                }
+                syncGroupingControl();
                 break;
             }
 
             case 'setGrouping': {
                 const nextGrouping = parseInt(actionEl.dataset.grouping, 10) || 0;
-                if (AppState.copyMode === 'visual' && nextGrouping !== AppState.grouping && AppState.continuousCompareEnabled) disarmContinuousCompare(true);
-                AppState.grouping = nextGrouping;
-                AppState.showGrouping = false;
-                els.groupingOptionsContainer.classList.add('hidden');
-                els.groupingToggle.textContent = `区切り：${AppState.grouping ? AppState.grouping + '文字' : '区切りなし'} [+]`;
-                reformatAll();
-                refreshCurrentMeta();
+                commitGroupingState(nextGrouping === 0 ? 'none' : 'preset', nextGrouping, true);
+                break;
+            }
+
+            case 'setGroupingManual': {
+                commitGroupingState('manual', 0, true);
+                break;
+            }
+
+            case 'groupingManualUp': {
+                if (els.groupingManualIn) els.groupingManualIn.value = String(normalizeGroupingValue((parseInt(els.groupingManualIn.value, 10) || 0) + 1));
+                commitManualGrouping();
+                break;
+            }
+
+            case 'groupingManualDown': {
+                if (els.groupingManualIn) els.groupingManualIn.value = String(Math.max(0, normalizeGroupingValue(els.groupingManualIn.value) - 1));
+                commitManualGrouping();
                 break;
             }
 
@@ -15684,6 +15907,10 @@ async function detectBase85Variants(input) {
     if (!document.getElementById('internetToggle')) add('インターネット制御DOMがありません：#internetToggle');
     if (document.getElementById('geoToggle')) add('旧位置情報スイッチが残存：#geoToggle');
 
+    for (const id of ['groupingToggle','groupingManualControl','grouping-manual','grouping-manual-up','grouping-manual-down','groupingOptionsContainer','meta-grouping','meta-separator-full','meta-separator-value','meta-iteration','meta-status']) {
+      if (!document.getElementById(id)) add(`区切り・状態表示 DOMがありません：#${id}`);
+    }
+
     for (const id of ['outputBaseToggle','outputBaseOptionsContainer','outputBaseHandoffToggle','outputBase64Toggle','outputBase85Toggle']) {
       if (!document.getElementById(id)) add(`すべてBASE化 DOMがありません：#${id}`);
     }
@@ -15695,9 +15922,9 @@ async function detectBase85Variants(input) {
       if (!result || result.dataset.alg !== id) add(`UI HASH結果契約の不一致：${id}`);
     }
     if (SessionRecord.RESULT_IDS.length !== 12) add('Session Record結果契約が不正です');
-    if (SessionRecord.SESSION_SCHEMA !== 'SONY-HASH-SESSION/2') add('Session schema契約が不正です');
-    if (SessionRecord.RECORD_SCHEMA !== 'SONY-HASH-RECORD/6') add('Record schema契約が不正です');
-    if (SessionRecord.SUMMARY_SCHEMA !== 'SONY-HASH-SUMMARY/4') add('Summary schema契約が不正です');
+    if (SessionRecord.SESSION_SCHEMA !== 'SONY-HASH-SESSION/3') add('Session schema契約が不正です');
+    if (SessionRecord.RECORD_SCHEMA !== 'SONY-HASH-RECORD/7') add('Record schema契約が不正です');
+    if (SessionRecord.SUMMARY_SCHEMA !== 'SONY-HASH-SUMMARY/5') add('Summary schema契約が不正です');
     if (typeof SessionRecord.validateSnapshot !== 'function') add('Session Snapshot Validatorがありません');
     if (typeof SessionRecord.validateRecord !== 'function') add('Session Record Validatorがありません');
     if (typeof SessionRecord.validateMarkdown !== 'function') add('Session Summary Validatorがありません');
