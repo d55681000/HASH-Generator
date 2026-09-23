@@ -294,7 +294,7 @@ applyRuntimePlatform();
   html.capacitor-android #adv-inputs{padding-bottom:var(--android-10px) !important;gap:var(--android-20px) !important}
   html.capacitor-android #compare-inputs{padding-bottom:var(--android-10px) !important;gap:var(--android-10px) !important}
   html.capacitor-android #salt-in,html.capacitor-android #hmac-in,html.capacitor-android #compare-in{min-width:var(--android-200px) !important}
-  html.capacitor-android #sep-in{width:var(--android-50px) !important}
+  html.capacitor-android #sep-in,html.capacitor-android #edge-in{width:var(--android-50px) !important}
   html.capacitor-android .toolbar label.hint{margin-right:var(--android-neg4px) !important}
   html.capacitor-android .number-input{width:var(--android-64px);padding-right:var(--android-16px)}
   html.capacitor-android .hint{font-size:clamp(.6875em,var(--android-2_6vw),.8125em);margin-top:var(--android-6px)}
@@ -430,8 +430,8 @@ applyRuntimePlatform();
   .grouping-manual-control{display:inline-flex;align-items:center;gap:4px}
   .grouping-manual-control[hidden]{display:none}
   .grouping-manual-control .link{margin-left:0}
-  .meta-separator-full{display:inline;vertical-align:baseline;user-select:all;cursor:text}
-  .meta-separator-value{display:inline-block;max-inline-size:8ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+  .meta-literal-full{display:inline;vertical-align:baseline;user-select:all;cursor:text}
+  .meta-literal-value{display:inline-block;max-inline-size:8ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 
   .hint{color:var(--muted);font-size:clamp(.6875em,2.6vw,.8125em);margin-top:6px; transition: color 0.4s ease;}
   .toolbar{display:flex;align-items:center;gap:12px;padding:0 clamp(12px,3vw,18px);flex-wrap:wrap}
@@ -584,7 +584,7 @@ applyRuntimePlatform();
   <main class="container" role="main">
     <section class="input-wrap" id="drop-zone">
       <textarea id="in" placeholder="ここに入力、またはファイルをドロップして計算します" autocomplete="one-time-code" spellcheck="false" autocorrect="off"></textarea>
-      <div id="meta" class="hint"><span id="meta-count">文字数 0</span>｜エントロピー（Entropy）：<span id="meta-entropy">—</span>｜文字コード：<span id="meta-encoding">UTF-8</span>｜正規化：<span id="meta-normalization">なし</span>｜不可視文字・改行整形：<span id="meta-sanitize">オフ</span>｜コピー：<span id="meta-copy">実値</span>｜HEX: <span id="meta-hex">lowercase</span>｜区切り：<span id="meta-grouping">区切りなし</span>｜区切り文字：<span id="meta-separator-full" class="meta-separator-full" title=" "><span id="meta-separator-value" class="meta-separator-value"> </span></span><span id="meta-options"></span><span id="meta-iteration"></span>｜ステータス：<span id="meta-status">待機</span></div>
+      <div id="meta" class="hint"><span id="meta-count">文字数 0</span>｜エントロピー（Entropy）：<span id="meta-entropy">—</span>｜文字コード：<span id="meta-encoding">UTF-8</span>｜正規化：<span id="meta-normalization">なし</span>｜不可視文字・改行整形：<span id="meta-sanitize">オフ</span>｜コピー：<span id="meta-copy">実値</span>｜HEX: <span id="meta-hex">lowercase</span>｜区切り：<span id="meta-grouping">区切りなし</span>｜区切り文字：<span id="meta-separator-full" class="meta-literal-full" title=""><span id="meta-separator-value" class="meta-literal-value"></span></span>｜開始と終了文字：<span id="meta-edge-full" class="meta-literal-full" title=""><span id="meta-edge-value" class="meta-literal-value"></span></span><span id="meta-options"></span><span id="meta-iteration"></span>｜ステータス：<span id="meta-status">待機</span></div>
       <input type="file" id="f-hidden" />
     </section>
     
@@ -613,6 +613,13 @@ applyRuntimePlatform();
 
     <div class="toolbar">
       <span class="hint">オプション：</span>
+      <label for="edge-in" class="hint" style="margin-right: -4px;">開始と終了文字：</label>
+      <input type="text" id="edge-in" class="text-input" value="" style="width: 50px;" placeholder="なし" autocomplete="off" spellcheck="false" title="表示値の先頭と末尾に同じ任意文字列を付加します。計算値には影響しません">
+
+      <span class="sep hint">/</span>
+      <label for="sep-in" class="hint" style="margin-right: -4px;">区切り文字：</label>
+      <input type="text" id="sep-in" class="text-input" value="" style="width: 50px;" placeholder="なし" autocomplete="off" spellcheck="false" title="任意の文字列を入力（例：空白、カンマ、AND など）">
+      <span class="sep hint">/</span>
       <button id="groupingToggle" class="link" aria-label="区切り文字数の切替" data-action="toggleGrouping">区切り：区切りなし [+]</button>
       <span id="groupingManualControl" class="grouping-manual-control" hidden>
         <span class="hint">区切り：</span>
@@ -654,10 +661,7 @@ applyRuntimePlatform();
         <button class="link" data-action="setGrouping" data-grouping="64">64文字</button>
       </span>
 
-      <span class="sep hint">/</span>
-      <label for="sep-in" class="hint" style="margin-right: -4px;">区切り文字：</label>
-      <input type="text" id="sep-in" class="text-input" value=" " style="width: 50px;" placeholder="空（なし）" autocomplete="off" spellcheck="false" title="任意の文字列を入力（例：空白、カンマ、AND など）">
-      <span class="sep hint">/</span>
+      <span id="hexcaseSep" class="sep hint">/</span>
       <button id="hexcase" class="link" aria-label="HEX大文字・小文字の切替" data-action="toggleHex">HEX: lowercase</button>
       <span class="sep hint">/</span>
       <button id="norm" class="link" aria-label="正規化の切替" data-action="toggleNorm">正規化：なし</button><span class="sep hint">/</span>
@@ -997,7 +1001,7 @@ applyRuntimePlatform();
 <script>
 applyRuntimePlatform();
 
-const APP_VERSION = '20260923B-N/A-00-G';
+const APP_VERSION = '20260923C-N/A-00-G';
 
 const Life = (() => {
   let state = 0;
@@ -2421,7 +2425,8 @@ const AppState = {
   groupingMode: 'none',
   grouping: 0,
   showGrouping: false,
-  separator: ' ',
+  separator: '',
+  edgeText: '',
   testVector: 'empty',
   showTest: false,
   testVerifyArmed: false,
@@ -2829,6 +2834,20 @@ const Core = (() => {
     return applyGrouping(h, groupSize, separator);
   }
 
+  function applyEdgeText(value, edgeText = AppState.edgeText) {
+    const text = String(value ?? '');
+    const edge = String(edgeText ?? '');
+    return (!text || !edge) ? text : edge + text + edge;
+  }
+
+  function removeEdgeText(value, edgeText = AppState.edgeText) {
+    const text = String(value ?? '');
+    const edge = String(edgeText ?? '');
+    if (!text || !edge) return text;
+    if (!text.startsWith(edge) || !text.endsWith(edge) || text.length < edge.length * 2) return null;
+    return text.slice(edge.length, text.length - edge.length);
+  }
+
   const CRC_TABLE = (()=>{const t=new Uint32Array(256);for(let i=0;i<256;i++){let c=i;for(let j=0;j<8;j++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[i]=c>>>0;}return t;})();
   function crc32Hex(bytes){let c=0xFFFFFFFF;for(let i=0;i<bytes.length;i++){c=CRC_TABLE[(c^bytes[i])&0xFF]^(c>>>8);}return ((c^0xFFFFFFFF)>>>0).toString(16).padStart(8,'0');}
 
@@ -2992,7 +3011,7 @@ const Core = (() => {
     try{ return s.normalize(normMode); } catch{ return s; } 
   }
 
-  return { utf8Encode, utf8Decode, safeAsync, hexToBytes, getFileInfo, analyzeFileStructure, applyGrouping, removeGrouping, formatForDisplay, crc32Hex, md5Hex, sha224Hex, hmacMd5Hex, hmacSha224Hex, digestHex, hmacHex, countGraphemes, shannonEntropy, sanitizeText, normalizeText, HEX_LUT };
+  return { utf8Encode, utf8Decode, safeAsync, hexToBytes, getFileInfo, analyzeFileStructure, applyGrouping, removeGrouping, formatForDisplay, applyEdgeText, removeEdgeText, crc32Hex, md5Hex, sha224Hex, hmacMd5Hex, hmacSha224Hex, digestHex, hmacHex, countGraphemes, shannonEntropy, sanitizeText, normalizeText, HEX_LUT };
 })();
 
 const SysUtils = (() => {
@@ -4239,7 +4258,8 @@ const Base85Presentation = (() => {
     return {
       hexUpper: options?.hexUpper ?? AppState.hexUpper,
       grouping: options?.grouping ?? AppState.grouping,
-      separator: options?.separator ?? AppState.separator
+      separator: options?.separator ?? AppState.separator,
+      edgeText: options?.edgeText ?? AppState.edgeText
     };
   }
 
@@ -4285,35 +4305,50 @@ const Base85Presentation = (() => {
 
   function formatBtoa(value, cfg) {
     const parsed = parseBtoaEnvelope(value);
-    if (!parsed) return Core.formatForDisplay(String(value ?? ''), false, cfg.grouping, true, cfg.separator);
-    const payloadLines = parsed.payloadLines.map(line => Core.applyGrouping(line, cfg.grouping, cfg.separator));
-    return ['xbtoa Begin', ...payloadLines, buildBtoaTrailer(parsed, cfg.hexUpper)].join('\n');
+    if (!parsed) {
+      const visual = Core.formatForDisplay(String(value ?? ''), false, cfg.grouping, true, cfg.separator);
+      return Core.applyEdgeText(visual, cfg.edgeText);
+    }
+    const payload = parsed.payloadLines.map(line => Core.applyGrouping(line, cfg.grouping, cfg.separator)).join('\n');
+    const visualPayload = Core.applyEdgeText(payload, cfg.edgeText);
+    return ['xbtoa Begin', ...(visualPayload ? visualPayload.split('\n') : []), buildBtoaTrailer(parsed, cfg.hexUpper)].join('\n');
   }
 
   function unformatBtoa(value, cfg) {
     const parsed = parseBtoaEnvelope(value);
-    if (!parsed) return Core.removeGrouping(String(value ?? ''), cfg.grouping, cfg.separator);
-    const payloadLines = [];
-    for (const line of parsed.payloadLines) {
+    if (!parsed) {
+      const inner = Core.removeEdgeText(String(value ?? ''), cfg.edgeText);
+      return inner === null ? null : Core.removeGrouping(inner, cfg.grouping, cfg.separator);
+    }
+    const visualPayload = parsed.payloadLines.join('\n');
+    const payload = Core.removeEdgeText(visualPayload, cfg.edgeText);
+    if (payload === null) return null;
+    const payloadLines = payload ? payload.split('\n') : [];
+    const rawLines = [];
+    for (const line of payloadLines) {
       const rawLine = Core.removeGrouping(line, cfg.grouping, cfg.separator);
       if (rawLine === null) return null;
-      payloadLines.push(rawLine);
+      rawLines.push(rawLine);
     }
-    return ['xbtoa Begin', ...payloadLines, buildBtoaTrailer(parsed, false)].join('\n');
+    return ['xbtoa Begin', ...rawLines, buildBtoaTrailer(parsed, false)].join('\n');
   }
 
   function format(value, variant, options = null) {
     const cfg = normalizeOptions(options);
-    if (variant === 'Adobe ASCII85') return formatAdobe(value, cfg);
     if (variant === 'btoa ASCII85') return formatBtoa(value, cfg);
-    return Core.formatForDisplay(String(value ?? ''), false, cfg.grouping, true, cfg.separator);
+    const visual = variant === 'Adobe ASCII85'
+      ? formatAdobe(value, cfg)
+      : Core.formatForDisplay(String(value ?? ''), false, cfg.grouping, true, cfg.separator);
+    return Core.applyEdgeText(visual, cfg.edgeText);
   }
 
   function unformat(value, variant, options = null) {
     const cfg = normalizeOptions(options);
-    if (variant === 'Adobe ASCII85') return unformatAdobe(value, cfg);
-    if (variant === 'btoa ASCII85') return unformatBtoa(value, cfg);
-    return Core.removeGrouping(String(value ?? ''), cfg.grouping, cfg.separator);
+    if (variant === 'btoa ASCII85') return unformatBtoa(String(value ?? ''), cfg);
+    const inner = Core.removeEdgeText(String(value ?? ''), cfg.edgeText);
+    if (inner === null) return null;
+    if (variant === 'Adobe ASCII85') return unformatAdobe(inner, cfg);
+    return Core.removeGrouping(inner, cfg.grouping, cfg.separator);
   }
 
   return { format, unformat, parseBtoaEnvelope };
@@ -5000,7 +5035,8 @@ const OutputBaseFilter = (() => {
       base85Variant: context?.base85Variant || AppState.base85Variant,
       hexUpper: context?.hexUpper ?? AppState.hexUpper,
       grouping: context?.grouping ?? AppState.grouping,
-      separator: context?.separator ?? AppState.separator
+      separator: context?.separator ?? AppState.separator,
+      edgeText: context?.edgeText ?? AppState.edgeText
     };
   }
 
@@ -5107,15 +5143,14 @@ const OutputBaseFilter = (() => {
     if (finalOutputMode(cfg) === 'base85') {
       return Base85Presentation.format(value, cfg.base85Variant, cfg);
     }
-    return Core.formatForDisplay(value, cfg.hexUpper, cfg.grouping, cfg.outputOrder.length > 0, cfg.separator);
+    return Core.applyEdgeText(Core.formatForDisplay(value, cfg.hexUpper, cfg.grouping, cfg.outputOrder.length > 0, cfg.separator), cfg.edgeText);
   }
 
   function unformatDisplay(value, context = null) {
     const cfg = normalizeContext(context);
-    if (finalOutputMode(cfg) === 'base85') {
-      return Base85Presentation.unformat(value, cfg.base85Variant, cfg);
-    }
-    return Core.removeGrouping(String(value ?? ''), cfg.grouping, cfg.separator);
+    if (finalOutputMode(cfg) === 'base85') return Base85Presentation.unformat(value, cfg.base85Variant, cfg);
+    const inner = Core.removeEdgeText(String(value ?? ''), cfg.edgeText);
+    return inner === null ? null : Core.removeGrouping(inner, cfg.grouping, cfg.separator);
   }
 
   return Object.freeze({ ids, baseIds, bytesToHex, normalizeContext, traceApplyBytes, applyBytes, tryApplyBytes, appliedLabel, notAppliedLabel, errorLabel, describeOrder, describe, handoffLabel, formatDisplay, unformatDisplay });
@@ -8409,12 +8444,12 @@ const SelfTest = (() => {
       'UTF-8':47,
       BASE64:57,
       BASE85:144,
-      'BASE85 PRESENTATION':5,
+      'BASE85 PRESENTATION':14,
       FILE:13,
       WORKER:5,
-      FILTER:38,
-      SESSION:33,
-      REGRESSION:169,
+      FILTER:43,
+      SESSION:36,
+      REGRESSION:170,
       STREAM:768
     }),
     webCrypto:Object.freeze({ HASH:18, HMAC:6, 'HMAC BOUNDARY':24 })
@@ -8425,7 +8460,7 @@ const SelfTest = (() => {
     systemMonitor:13,
     workerGuard:8,
     workerContract:6,
-    session:33,
+    session:36,
     fileWorkflow:5,
     writable:11
   });
@@ -8964,11 +8999,24 @@ const SelfTest = (() => {
     const btoaHelloVisual = Base85Presentation.format(btoaHelloActual, 'btoa ASCII85', btoaVisualOptions);
     await add(report, 'BASE85 PRESENTATION', 'btoa Payload Grouping / Trailer Uppercase', btoaHelloVisual, 'xbtoa Begin\n87 cU RD ZB b;\nxbtoa End N 5 5 E 42 S 1F9 R A9F');
     await add(report, 'BASE85 PRESENTATION', 'btoa Visual Roundtrip', Base85Presentation.unformat(btoaHelloVisual, 'btoa ASCII85', btoaVisualOptions), btoaHelloActual);
+    const btoaEdgeOptions = { hexUpper:false, grouping:0, separator:' ', edgeText:'あ' };
+    const btoaHelloEdgeVisual = Base85Presentation.format(btoaHelloActual, 'btoa ASCII85', btoaEdgeOptions);
+    await add(report, 'BASE85 PRESENTATION', 'btoa Edge Payload Only', btoaHelloEdgeVisual, 'xbtoa Begin\nあ87cURDZBb;あ\nxbtoa End N 5 5 E 42 S 1f9 R a9f');
+    await add(report, 'BASE85 PRESENTATION', 'btoa Edge Payload Roundtrip', Base85Presentation.unformat(btoaHelloEdgeVisual, 'btoa ASCII85', btoaEdgeOptions), btoaHelloActual);
+    const btoaGroupedEdgeOptions = { hexUpper:true, grouping:2, separator:'あ', edgeText:'端' };
+    const btoaGroupedEdgeVisual = Base85Presentation.format(btoaHelloActual, 'btoa ASCII85', btoaGroupedEdgeOptions);
+    await add(report, 'BASE85 PRESENTATION', 'btoa Grouping + Edge Payload Only', btoaGroupedEdgeVisual, 'xbtoa Begin\n端87あcUあRDあZBあb;端\nxbtoa End N 5 5 E 42 S 1F9 R A9F');
+    await add(report, 'BASE85 PRESENTATION', 'btoa Grouping + Edge Roundtrip', Base85Presentation.unformat(btoaGroupedEdgeVisual, 'btoa ASCII85', btoaGroupedEdgeOptions), btoaHelloActual);
 
     const btoaLongActual = BaseCodec.encodeBase85(makeBytes(96), 'btoa ASCII85');
     const btoaLongVisualOptions = { hexUpper:false, grouping:4, separator:'+' };
     const btoaLongVisual = Base85Presentation.format(btoaLongActual, 'btoa ASCII85', btoaLongVisualOptions);
     await add(report, 'BASE85 PRESENTATION', 'btoa Multi-line Roundtrip / Separator +', Base85Presentation.unformat(btoaLongVisual, 'btoa ASCII85', btoaLongVisualOptions), btoaLongActual);
+    await add(report, 'BASE85 PRESENTATION', 'Adobe Edge Outer', Base85Presentation.format('<~87cURDZ~>', 'Adobe ASCII85', { grouping:0, separator:' ', edgeText:'あ' }), 'あ<~87cURDZ~>あ');
+    await add(report, 'BASE85 PRESENTATION', 'Adobe Edge Roundtrip', Base85Presentation.unformat('あ<~87cURDZ~>あ', 'Adobe ASCII85', { grouping:0, separator:' ', edgeText:'あ' }), '<~87cURDZ~>');
+    await add(report, 'BASE85 PRESENTATION', 'Edge Empty Payload', Base85Presentation.format('', 'Standard ASCII85', { grouping:0, separator:' ', edgeText:'あ' }), '');
+    await add(report, 'BASE85 PRESENTATION', 'Edge Collision Roundtrip', Base85Presentation.unformat('abab12abab', 'Standard ASCII85', { grouping:0, separator:' ', edgeText:'ab' }), 'ab12ab');
+    await add(report, 'BASE85 PRESENTATION', 'Edge Missing Rejected', Base85Presentation.unformat('87cURDZ', 'Standard ASCII85', { grouping:0, separator:' ', edgeText:'あ' }), null);
     await add(report, 'BASE85', 'ZeroMQ Vector', BaseCodec.encodeBase85(z85, 'ZeroMQ (Z85)'), 'HelloWorld');
     await add(report, 'BASE85', 'RFC 1924 Alphabet (Block)', BaseCodec.encodeBase85(block, 'RFC 1924 Alphabet (Block)'), '009C6');
 
@@ -9370,6 +9418,11 @@ const SelfTest = (() => {
       grouping:4,
       separator:'-'
     };
+    await add(report, 'FILTER', 'Edge Apply', Core.applyEdgeText('abc', 'あ'), 'あabcあ');
+    await add(report, 'FILTER', 'Edge Empty Payload', Core.applyEdgeText('', 'あ'), '');
+    await add(report, 'FILTER', 'Edge Remove', Core.removeEdgeText('あabcあ', 'あ'), 'abc');
+    await add(report, 'FILTER', 'Edge Collision', Core.removeEdgeText('abab12abab', 'ab'), 'ab12ab');
+    await add(report, 'FILTER', 'Edge Missing Reject', Core.removeEdgeText('abc', 'あ'), null);
     const groupedHex = Core.formatForDisplay(canonical, false, 4, false, '-');
     await add(
       report,
@@ -9527,6 +9580,15 @@ const SelfTest = (() => {
       else await addFailure(report, 'REGRESSION', 'Base Message State Recovery', stateRecovery?.detail || 'State recovery failed');
     } catch (e) {
       await addFailure(report, 'REGRESSION', 'Base Message State Recovery', e);
+    }
+
+    await step(control, 'REGRESSION', 'Grouping Control Interaction');
+    try {
+      const groupingControl = UI.runGroupingControlRegression();
+      if (groupingControl?.ok) await add(report, 'REGRESSION', 'Grouping Control Interaction', true, true);
+      else await addFailure(report, 'REGRESSION', 'Grouping Control Interaction', groupingControl?.detail || 'Grouping control interaction failed');
+    } catch (e) {
+      await addFailure(report, 'REGRESSION', 'Grouping Control Interaction', e);
     }
 
     await step(control, 'REGRESSION', 'File Workflow');
@@ -10942,6 +11004,8 @@ const UI = (() => {
     }
   };
 
+  let groupingControlRegression = null;
+
   function initDOM() {
     els.inputEl = document.getElementById('in');
     els.metaEl = document.getElementById('meta');
@@ -10955,6 +11019,8 @@ const UI = (() => {
     els.metaGrouping = document.getElementById('meta-grouping');
     els.metaSeparatorFull = document.getElementById('meta-separator-full');
     els.metaSeparatorValue = document.getElementById('meta-separator-value');
+    els.metaEdgeFull = document.getElementById('meta-edge-full');
+    els.metaEdgeValue = document.getElementById('meta-edge-value');
     els.metaOptions = document.getElementById('meta-options');
     els.metaIteration = document.getElementById('meta-iteration');
     els.metaStatus = document.getElementById('meta-status');
@@ -10967,6 +11033,7 @@ const UI = (() => {
     els.normBtn = document.getElementById('norm');
     els.sanitizeToggleBtn = document.getElementById('sanitizeToggle');
     els.copyModeToggleBtn = document.getElementById('copyModeToggle');
+    els.hexSep = document.getElementById('hexcaseSep');
     els.hexBtn = document.getElementById('hexcase');
     els.toastEl = document.getElementById('toast');
     els.testToggle = document.getElementById('testToggle');
@@ -10980,6 +11047,7 @@ const UI = (() => {
     els.groupingManualToggle = document.getElementById('groupingManualToggle');
     els.groupingOptionsContainer = document.getElementById('groupingOptionsContainer');
     els.sepIn = document.getElementById('sep-in');
+    els.edgeIn = document.getElementById('edge-in');
     els.internetSep = document.getElementById('internetSep');
     els.internetBtn = document.getElementById('internetToggle');
     els.zessBtn = document.getElementById('zessToggle');
@@ -11171,9 +11239,9 @@ function showToast(msg, duration = TOAST_DURATION) {
   })();
 
   const SessionRecord = (() => {
-    const SESSION_SCHEMA = 'SONY-HASH-SESSION/3';
-    const RECORD_SCHEMA = 'SONY-HASH-RECORD/7';
-    const SUMMARY_SCHEMA = 'SONY-HASH-SUMMARY/5';
+    const SESSION_SCHEMA = 'SONY-HASH-SESSION/4';
+    const RECORD_SCHEMA = 'SONY-HASH-RECORD/8';
+    const SUMMARY_SCHEMA = 'SONY-HASH-SUMMARY/6';
     const RESULT_IDS = Object.freeze(['CRC32','CRC64','MD5','SHA-1','SHA-224','SHA-256','SHA-384','SHA-512','Base64-Enc','Base64-Dec','Base85-Enc','Base85-Dec']);
     let sequenceSecond = '';
     let sequence = 0;
@@ -11255,7 +11323,7 @@ function showToast(msg, duration = TOAST_DURATION) {
         finalActual:trace.completedStages > 0 ? textValue(trace.value) : canonical,
         finalDisplay:trace.completedStages > 0
           ? OutputBaseFilter.formatDisplay(textValue(trace.value), { ...context, outputOrder:trace.completedOrder })
-          : Core.formatForDisplay(canonical, context.hexUpper, context.grouping, false, context.separator)
+          : Core.applyEdgeText(Core.formatForDisplay(canonical, context.hexUpper, context.grouping, false, context.separator), context.edgeText)
       };
     }
 
@@ -11263,7 +11331,7 @@ function showToast(msg, duration = TOAST_DURATION) {
       const effectiveHex = String(runtime?.effectiveHex || runtime?.hex || (HashOutputFilter.isHashResult(id, ui.raw) ? ui.raw : '') || '').toLowerCase();
       const rawHex = String(runtime?.rawHex || effectiveHex || '').toLowerCase();
       const surfaceHex = effectiveHex && /^[0-9a-f]+$/.test(effectiveHex)
-        ? Core.formatForDisplay(effectiveHex, context.hexUpper, context.grouping, false, context.separator)
+        ? Core.applyEdgeText(Core.formatForDisplay(effectiveHex, context.hexUpper, context.grouping, false, context.separator), context.edgeText)
         : '';
       const outputBase = traceForHex(effectiveHex, context);
       return {
@@ -11372,7 +11440,7 @@ function showToast(msg, duration = TOAST_DURATION) {
       const outputContext = Object.freeze({
         outputOrder:AppState.outputBaseOrder.slice(), handoff:AppState.outputBaseHandoff,
         base85Variant:AppState.base85Variant, hexUpper:AppState.hexUpper,
-        grouping:AppState.grouping, separator:AppState.separator
+        grouping:AppState.grouping, separator:AppState.separator, edgeText:AppState.edgeText
       });
       const uiResults = Object.fromEntries(RESULT_IDS.map(id => [id, captureUiResult(id)]));
       const autoTest = AutoTestReport.snapshot();
@@ -11400,6 +11468,7 @@ function showToast(msg, duration = TOAST_DURATION) {
           grouping:AppState.grouping,
           groupingOptionsOpen:AppState.showGrouping,
           separator:AppState.separator,
+          edgeText:AppState.edgeText,
           copyMode:AppState.copyMode,
           iterations:Number(AppState.iterations) || 1,
           iterMode:AppState.iterMode,
@@ -11475,6 +11544,7 @@ function showToast(msg, duration = TOAST_DURATION) {
         identity:{ id:identity.id, requestedAt, capturedAt, runtimeCapturedAt:runtime.capturedAt, captureLatencyMs:Math.max(0, (runtime.capturedAt || capturedAt) - requestedAt), type:running ? 'LIVE' : paused ? 'PAUSED' : 'FINAL' },
         app:main.app,
         settings:main.settings,
+        outputContext:main.outputContext,
         input:main.input,
         calculationSession:main.calculationSession,
         runtime,
@@ -11510,6 +11580,8 @@ function showToast(msg, duration = TOAST_DURATION) {
       if (!Number.isInteger(grouping) || grouping < 0 || grouping > GROUPING_MAX) issues.push('grouping value');
       if (groupingMode === 'none' && grouping !== 0) issues.push('grouping none');
       if (groupingMode === 'preset' && !GROUPING_PRESETS.includes(grouping)) issues.push('grouping preset');
+      if (typeof snapshot?.settings?.edgeText !== 'string') issues.push('edge text');
+      if (typeof snapshot?.outputContext?.edgeText !== 'string') issues.push('output edge text');
       for (const id of RESULT_IDS) {
         const result = snapshot?.results?.[id];
         if (!result) { issues.push(`result:${id}`); continue; }
@@ -11633,6 +11705,7 @@ function showToast(msg, duration = TOAST_DURATION) {
       if (Number(s.iterations) > 1) rows.push(['反復方式', iterModeLabel(s.iterMode)]);
       if (s.hexUpper) rows.push(['HEX表記', '大文字']);
       if (s.groupingMode === 'manual' || s.groupingMode === 'preset') rows.push(['区切り', `${s.grouping}文字`], ['区切り文字', JSON.stringify(s.separator)]);
+      if (s.edgeText) rows.push(['開始と終了文字', JSON.stringify(s.edgeText)]);
       if (s.copyMode === 'visual') rows.push(['コピー対象', '表示値']);
       if (s.base.base64Encode) rows.push(['Base64 Enc', '有効']);
       if (s.base.base64Decode) rows.push(['Base64 Dec', '有効'], ['Base64判定', s.base.base64Strict ? '厳格' : '寛容']);
@@ -12046,6 +12119,10 @@ function showToast(msg, duration = TOAST_DURATION) {
       } else if (structure.visible.some(line => line.startsWith('- **区切り：**') || line.startsWith('- **区切り文字：**'))) {
         issues.push('summary inactive grouping');
       }
+      const edgeLine = `- **開始と終了文字：** ${markdownInline(JSON.stringify(snapshot.settings.edgeText))}`;
+      if (snapshot.settings.edgeText) {
+        if (!structure.visible.includes(edgeLine)) issues.push('summary edge setting');
+      } else if (structure.visible.some(line => line.startsWith('- **開始と終了文字：**'))) issues.push('summary inactive edge');
       if (!markdown.endsWith('\n')) issues.push('summary final newline');
       return issues;
     }
@@ -12660,11 +12737,12 @@ function showToast(msg, duration = TOAST_DURATION) {
       return Base85Presentation.format(value, AppState.base85Variant, {
         hexUpper:AppState.hexUpper,
         grouping:AppState.grouping,
-        separator:AppState.separator
+        separator:AppState.separator,
+        edgeText:AppState.edgeText
       });
     }
     const skipCase = id.includes('Base');
-    return Core.formatForDisplay(value, AppState.hexUpper, AppState.grouping, skipCase);
+    return Core.applyEdgeText(Core.formatForDisplay(value, AppState.hexUpper, AppState.grouping, skipCase), AppState.edgeText);
   }
 
   function clearResultPayload(el) {
@@ -13054,6 +13132,7 @@ function showToast(msg, duration = TOAST_DURATION) {
       groupingMode:AppState.groupingMode,
       grouping:AppState.grouping,
       separator:AppState.separator,
+      edgeText:AppState.edgeText,
       status:AppState.currentStatus,
       outputBaseOrder:AppState.outputBaseOrder.slice(),
       outputBaseHandoff:AppState.outputBaseHandoff
@@ -13080,6 +13159,7 @@ function showToast(msg, duration = TOAST_DURATION) {
 
       AppState.grouping = 0;
       AppState.separator = ' ';
+      AppState.edgeText = '';
       AppState.outputBaseOrder = [];
 
       renderBaseMessageValue('Base64-Dec', { type:'base_message', value:'エラー', note:'デコードされません。' });
@@ -13096,6 +13176,11 @@ function showToast(msg, duration = TOAST_DURATION) {
       AppState.grouping = 2;
       reformatAll();
       const regrouped = testEl.textContent === 'He ll o';
+
+      AppState.edgeText = 'あ';
+      reformatAll();
+      const unicodeEdge = testEl.textContent === 'あHe ll oあ';
+      AppState.edgeText = '';
 
       AppState.grouping = 0;
       AppState.outputBaseHandoff = 'raw';
@@ -13139,9 +13224,9 @@ function showToast(msg, duration = TOAST_DURATION) {
         els.metaSeparatorFull?.textContent === separatorExpected;
 
       return {
-        ok:messageMarked && messageCleared && regrouped && appliedNoted && progressPunctuation &&
+        ok:messageMarked && messageCleared && regrouped && unicodeEdge && appliedNoted && progressPunctuation &&
           manualZeroLabel && separatorFull && separatorSelection && separatorClipped && metaNodesStable,
-        detail:`message=${messageMarked ? 1 : 0}, cleared=${messageCleared ? 1 : 0}, regrouped=${regrouped ? 1 : 0}, applied=${appliedNoted ? 1 : 0}, progress=${progressPunctuation ? 1 : 0}, manual0=${manualZeroLabel ? 1 : 0}, separator=${separatorFull ? 1 : 0}, selection=${separatorSelection ? 1 : 0}, clipping=${separatorClipped ? 1 : 0}, meta=${metaNodesStable ? 1 : 0}`
+        detail:`message=${messageMarked ? 1 : 0}, cleared=${messageCleared ? 1 : 0}, regrouped=${regrouped ? 1 : 0}, edge=${unicodeEdge ? 1 : 0}, applied=${appliedNoted ? 1 : 0}, progress=${progressPunctuation ? 1 : 0}, manual0=${manualZeroLabel ? 1 : 0}, separator=${separatorFull ? 1 : 0}, selection=${separatorSelection ? 1 : 0}, clipping=${separatorClipped ? 1 : 0}, meta=${metaNodesStable ? 1 : 0}`
       };
     } finally {
       testEl.remove();
@@ -13151,6 +13236,7 @@ function showToast(msg, duration = TOAST_DURATION) {
       AppState.groupingMode = previous.groupingMode;
       AppState.grouping = previous.grouping;
       AppState.separator = previous.separator;
+      AppState.edgeText = previous.edgeText;
       AppState.outputBaseOrder = previous.outputBaseOrder;
       AppState.outputBaseHandoff = previous.outputBaseHandoff;
       const restoreFile = !!AppState.currentFile;
@@ -13158,6 +13244,11 @@ function showToast(msg, duration = TOAST_DURATION) {
       const restoreIterations = Math.max(1, parseInt(els.iterIn?.value, 10) || 1);
       updateMeta(restoreCount, restoreFile, previous.status || '待機', restoreIterations);
     }
+  }
+
+  function runGroupingControlRegression() {
+    if (typeof groupingControlRegression !== 'function') return { ok:false, detail:'Grouping controls are not initialized' };
+    return groupingControlRegression();
   }
 
   async function runSessionRecordRegression() {
@@ -13238,6 +13329,7 @@ function showToast(msg, duration = TOAST_DURATION) {
     collision.settings.groupingMode = 'preset';
     collision.settings.grouping = 4;
     collision.settings.separator = '*_[x]<>\\';
+    collision.settings.edgeText = '開始<edge>終了';
     collision.settings.salt = { enabled:true, value:saltLiteral };
     collision.settings.hmac = { enabled:true, key:hmacLiteral };
     collision.settings.iterations = 1;
@@ -13256,7 +13348,8 @@ function showToast(msg, duration = TOAST_DURATION) {
     add('Session Record / Literal Canonical Preservation',
       parsedCollision.input?.entered === literal &&
       parsedCollision.settings?.salt?.value === saltLiteral &&
-      parsedCollision.settings?.hmac?.key === hmacLiteral,
+      parsedCollision.settings?.hmac?.key === hmacLiteral &&
+      parsedCollision.settings?.edgeText === collision.settings.edgeText,
       'Canonical data must preserve literal user values');
     add('Session Record / Literal HTML Preservation',
       collisionDoc.querySelector('[data-record-input="entered"] pre')?.textContent === literal,
@@ -13299,6 +13392,7 @@ function showToast(msg, duration = TOAST_DURATION) {
     minimal.settings.groupingMode = 'none';
     minimal.settings.grouping = 0;
     minimal.settings.separator = ' ';
+    minimal.settings.edgeText = '';
     minimal.settings.copyMode = 'actual';
     minimal.settings.iterations = 1;
     minimal.settings.iterMode = 'xor';
@@ -13315,7 +13409,7 @@ function showToast(msg, duration = TOAST_DURATION) {
     const minimalRecord = await SessionRecord.build(minimal);
     const minimalDoc = new DOMParser().parseFromString(minimalRecord.html, 'text/html');
     const minimalLabels = currentSettingLabels(minimalDoc);
-    const hiddenLabels = ['HEX表記','区切り','区切り文字','Salt','Salt 値','HMAC','HMAC Key','反復方式','Base64 Enc','Base64 Dec','Base64判定','Base85 Enc','Base85 Dec','Base85形式','Base自動判別','すべてBASE化','受け渡し','適用順序'];
+    const hiddenLabels = ['HEX表記','区切り','区切り文字','開始と終了文字','Salt','Salt 値','HMAC','HMAC Key','反復方式','Base64 Enc','Base64 Dec','Base64判定','Base85 Enc','Base85 Dec','Base85形式','Base自動判別','すべてBASE化','受け渡し','適用順序'];
     add('Session Record / Default Setting Visibility',
       hiddenLabels.every(label => !minimalLabels.has(label)),
       `Inactive/default settings leaked: ${hiddenLabels.filter(label => minimalLabels.has(label)).join(', ')}`);
@@ -13340,6 +13434,19 @@ function showToast(msg, duration = TOAST_DURATION) {
       manualZeroRecord.markdown.includes('- **区切り：** 0文字') &&
       manualZeroRecord.markdown.includes(`- **区切り文字：** ${JSON.stringify(manualZero.settings.separator)}`),
       'Manual 0 must remain visible in Markdown');
+
+    const edgeCase = clone(minimal);
+    edgeCase.identity.id = 'SELFTEST-EDGE';
+    edgeCase.settings.edgeText = 'あ<>あ';
+    edgeCase.outputContext.edgeText = edgeCase.settings.edgeText;
+    const edgeRecord = await SessionRecord.build(edgeCase);
+    const edgeDoc = new DOMParser().parseFromString(edgeRecord.html, 'text/html');
+    const edgeRoot = edgeDoc.querySelector('[data-record-settings="current"]');
+    add('Session Record / Edge Human Visibility', kvValue(edgeRoot, '開始と終了文字') === JSON.stringify(edgeCase.settings.edgeText), 'Edge must appear in human HTML');
+    add('Session Record / Edge Markdown Visibility', edgeRecord.markdown.includes('- **開始と終了文字：** "あ\\<\\>あ"'), 'Edge must appear in Markdown');
+    const invalidEdge = clone(minimal);
+    invalidEdge.settings.edgeText = null;
+    add('Session Record / Invalid Edge Rejected', SessionRecord.validateSnapshot(invalidEdge).includes('edge text'), 'edgeText must be a string');
 
     const invalidGroupingMode = clone(minimal);
     invalidGroupingMode.settings.groupingMode = 'invalid';
@@ -13716,8 +13823,15 @@ function showToast(msg, duration = TOAST_DURATION) {
     const encodingLabel = isFile ? '対象外（原データ）' : 'UTF-8';
     const hexLabel = AppState.hexUpper ? 'UPPERCASE' : 'lowercase';
     const copyLabel = ResultSurface.label();
-    const separatorLabel = JSON.stringify(AppState.separator);
-    const separatorBody = separatorLabel.length >= 2 ? separatorLabel.slice(1, -1) : separatorLabel;
+    const literalBody = value => {
+      const label = JSON.stringify(String(value ?? ''));
+      return label.length >= 2 ? label.slice(1, -1) : label;
+    };
+    const syncMetaLiteral = (fullEl, valueEl, value) => {
+      const body = literalBody(value);
+      if (valueEl) valueEl.textContent = body;
+      if (fullEl) fullEl.title = body;
+    };
     let activeOpts = [];
     if (AppState.salt) activeOpts.push('Salt適用');
     if (AppState.showHmac) activeOpts.push('HMAC稼働');
@@ -13737,8 +13851,8 @@ function showToast(msg, duration = TOAST_DURATION) {
     if (els.metaCopy) els.metaCopy.textContent = copyLabel;
     if (els.metaHex) els.metaHex.textContent = hexLabel;
     if (els.metaGrouping) els.metaGrouping.textContent = groupingStateLabel();
-    if (els.metaSeparatorValue) els.metaSeparatorValue.textContent = separatorBody;
-    if (els.metaSeparatorFull) els.metaSeparatorFull.title = separatorBody;
+    syncMetaLiteral(els.metaSeparatorFull, els.metaSeparatorValue, AppState.separator);
+    syncMetaLiteral(els.metaEdgeFull, els.metaEdgeValue, AppState.edgeText);
     if (els.metaOptions) els.metaOptions.textContent = optLabel;
     if (els.metaIteration) els.metaIteration.textContent = iterLabel;
     if (els.metaStatus) els.metaStatus.textContent = statusText;
@@ -14064,7 +14178,7 @@ function showToast(msg, duration = TOAST_DURATION) {
       }
     };
 
-    const commitGroupingState = (mode, value, close = true) => {
+    const commitGroupingState = (mode, value, close = true, selectionAction = false) => {
       let nextMode = mode;
       let nextGrouping = normalizeGroupingValue(value);
       if (nextMode === 'none') nextGrouping = 0;
@@ -14076,19 +14190,30 @@ function showToast(msg, duration = TOAST_DURATION) {
 
       const previousMode = AppState.groupingMode;
       const previousGrouping = AppState.grouping;
+      const previousSeparator = AppState.separator;
+      let nextSeparator = previousSeparator;
+      if (selectionAction) {
+        if (nextMode === 'none') nextSeparator = '';
+        else if (nextSeparator === '') nextSeparator = ' ';
+      }
+
       const numericChanged = nextGrouping !== previousGrouping;
-      const stateChanged = numericChanged || nextMode !== previousMode;
+      const modeChanged = nextMode !== previousMode;
+      const separatorChanged = nextSeparator !== previousSeparator;
+      const stateChanged = numericChanged || modeChanged || separatorChanged;
       if (!stateChanged && (!close || !AppState.showGrouping)) {
         syncGroupingControl();
         return false;
       }
 
-      if (AppState.copyMode === 'visual' && numericChanged && AppState.continuousCompareEnabled) disarmContinuousCompare(true);
+      if (AppState.copyMode === 'visual' && (numericChanged || (separatorChanged && (previousGrouping > 0 || nextGrouping > 0))) && AppState.continuousCompareEnabled) disarmContinuousCompare(true);
       AppState.groupingMode = nextMode;
       AppState.grouping = nextGrouping;
+      AppState.separator = nextSeparator;
+      if (els.sepIn && els.sepIn.value !== nextSeparator) els.sepIn.value = nextSeparator;
       if (close) AppState.showGrouping = false;
       syncGroupingControl();
-      if (numericChanged) reformatAll();
+      if (numericChanged || (separatorChanged && nextGrouping > 0)) reformatAll();
       refreshCurrentMeta();
       return true;
     };
@@ -14152,6 +14277,9 @@ function showToast(msg, duration = TOAST_DURATION) {
         : `すべてBASE化：${OutputBaseFilter.describe()} [+]`;
       if (AppState.showOutputBase) els.outputBaseOptionsContainer.classList.remove('hidden');
       else els.outputBaseOptionsContainer.classList.add('hidden');
+      const hideHexControl = AppState.showOutputBase || AppState.outputBaseOrder.length > 0;
+      if (els.hexSep) els.hexSep.hidden = hideHexControl;
+      if (els.hexBtn) els.hexBtn.hidden = hideHexControl;
       syncBaseDependentControls();
     };
 
@@ -14166,6 +14294,94 @@ function showToast(msg, duration = TOAST_DURATION) {
       const displayCount = isFile ? AppState.currentFile.size : Core.countGraphemes(els.inputEl.value);
       const iterations = Math.max(1, parseInt(els.iterIn.value, 10) || 1);
       updateMeta(displayCount, isFile, AppState.currentStatus || '待機', iterations);
+    };
+
+    groupingControlRegression = () => {
+      const previous = {
+        groupingMode:AppState.groupingMode,
+        grouping:AppState.grouping,
+        showGrouping:AppState.showGrouping,
+        separator:AppState.separator
+      };
+      const checks = [];
+      const record = (name, ok) => checks.push([name, !!ok]);
+      const click = selector => {
+        const el = document.querySelector(selector);
+        if (!el) throw new Error(`Missing control: ${selector}`);
+        el.click();
+      };
+      const inputSeparator = value => {
+        els.sepIn.value = value;
+        els.sepIn.dispatchEvent(new Event('input', { bubbles:true }));
+      };
+
+      try {
+        AppState.groupingMode = 'none';
+        AppState.grouping = 0;
+        AppState.showGrouping = false;
+        AppState.separator = '';
+        els.sepIn.value = '';
+        syncGroupingControl();
+        refreshCurrentMeta();
+
+        record('initial-none-empty', AppState.groupingMode === 'none' && AppState.grouping === 0 && AppState.separator === '' && els.sepIn.value === '');
+
+        click('[data-action="setGrouping"][data-grouping="2"]');
+        record('empty-to-preset-default-space', AppState.groupingMode === 'preset' && AppState.grouping === 2 && AppState.separator === ' ' && els.sepIn.value === ' ');
+
+        inputSeparator('|');
+        click('[data-action="setGrouping"][data-grouping="4"]');
+        record('preset-preserves-custom', AppState.grouping === 4 && AppState.separator === '|' && els.sepIn.value === '|');
+
+        inputSeparator('');
+        record('delete-does-not-refill', AppState.grouping === 4 && AppState.separator === '');
+        click('[data-action="setGrouping"][data-grouping="6"]');
+        record('empty-preset-to-preset-refills', AppState.grouping === 6 && AppState.separator === ' ' && els.sepIn.value === ' ');
+
+        click('[data-action="setGrouping"][data-grouping="0"]');
+        record('none-clears-separator', AppState.groupingMode === 'none' && AppState.grouping === 0 && AppState.separator === '' && els.sepIn.value === '');
+
+        inputSeparator('X');
+        click('[data-action="setGrouping"][data-grouping="0"]');
+        record('none-to-none-resets', AppState.groupingMode === 'none' && AppState.separator === '' && els.sepIn.value === '');
+
+        inputSeparator('Y');
+        click('[data-action="setGroupingManual"]');
+        record('manual-preserves-custom', AppState.groupingMode === 'manual' && AppState.grouping === 0 && AppState.separator === 'Y');
+
+        click('[data-action="setGrouping"][data-grouping="0"]');
+        click('[data-action="setGroupingManual"]');
+        record('manual-empty-default-space', AppState.groupingMode === 'manual' && AppState.grouping === 0 && AppState.separator === ' ' && els.sepIn.value === ' ');
+
+        click('[data-action="setGrouping"][data-grouping="0"]');
+        inputSeparator('Z');
+        AppState.showGrouping = true;
+        syncGroupingControl();
+        click('#groupingToggle');
+        record('collapse-does-not-reset', AppState.groupingMode === 'none' && AppState.showGrouping === false && AppState.separator === 'Z');
+
+        const toolbar = els.groupingToggle?.closest('.toolbar');
+        const order = toolbar ? Array.from(toolbar.children) : [];
+        const edgeIndex = order.indexOf(els.edgeIn);
+        const sepIndex = order.indexOf(els.sepIn);
+        const groupingIndex = order.indexOf(els.groupingToggle);
+        const optionsIndex = order.indexOf(els.groupingOptionsContainer);
+        const hexIndex = order.indexOf(els.hexBtn);
+        record('toolbar-order', edgeIndex >= 0 && sepIndex > edgeIndex && groupingIndex > sepIndex && optionsIndex > groupingIndex && hexIndex > optionsIndex);
+        record('placeholder-contract', els.edgeIn?.placeholder === 'なし' && els.sepIn?.placeholder === 'なし');
+
+        const failed = checks.filter(([, ok]) => !ok).map(([name]) => name);
+        return { ok:failed.length === 0, detail:failed.length ? failed.join(', ') : checks.map(([name]) => name).join(', ') };
+      } finally {
+        AppState.groupingMode = previous.groupingMode;
+        AppState.grouping = previous.grouping;
+        AppState.showGrouping = previous.showGrouping;
+        AppState.separator = previous.separator;
+        if (els.sepIn) els.sepIn.value = previous.separator;
+        syncGroupingControl();
+        reformatAll();
+        refreshCurrentMeta();
+      }
     };
 
     syncOutputBaseControls();
@@ -14310,7 +14526,8 @@ const captureCompareContext = () => ({
   copyMode: AppState.copyMode,
   hexUpper: AppState.hexUpper,
   grouping: AppState.grouping,
-  separator: AppState.separator
+  separator: AppState.separator,
+  edgeText: AppState.edgeText
 });
 
 const compareContextKey = context => JSON.stringify([
@@ -14321,7 +14538,8 @@ const compareContextKey = context => JSON.stringify([
   context.copyMode,
   context.copyMode === 'visual' ? context.hexUpper : false,
   context.copyMode === 'visual' ? context.grouping : 0,
-  context.copyMode === 'visual' && context.grouping > 0 ? context.separator : ''
+  context.copyMode === 'visual' && context.grouping > 0 ? context.separator : '',
+  context.copyMode === 'visual' ? context.edgeText : ''
 ]);
 
 async function armContinuousCompare() {
@@ -14371,6 +14589,13 @@ async function detectBase85Variants(input) {
       if (AppState.copyMode === 'visual' && AppState.grouping > 0 && AppState.continuousCompareEnabled) disarmContinuousCompare(true);
       AppState.separator = els.sepIn.value;
       if (AppState.grouping > 0) reformatAll();
+      refreshCurrentMeta();
+    });
+
+    on(els.edgeIn, 'input', () => {
+      if (AppState.copyMode === 'visual' && AppState.continuousCompareEnabled) disarmContinuousCompare(true);
+      AppState.edgeText = els.edgeIn.value;
+      reformatAll();
       refreshCurrentMeta();
     });
 
@@ -15335,12 +15560,12 @@ async function detectBase85Variants(input) {
 
             case 'setGrouping': {
                 const nextGrouping = parseInt(actionEl.dataset.grouping, 10) || 0;
-                commitGroupingState(nextGrouping === 0 ? 'none' : 'preset', nextGrouping, true);
+                commitGroupingState(nextGrouping === 0 ? 'none' : 'preset', nextGrouping, true, true);
                 break;
             }
 
             case 'setGroupingManual': {
-                commitGroupingState('manual', 0, true);
+                commitGroupingState('manual', 0, true, true);
                 break;
             }
 
@@ -15907,13 +16132,35 @@ async function detectBase85Variants(input) {
     if (!document.getElementById('internetToggle')) add('インターネット制御DOMがありません：#internetToggle');
     if (document.getElementById('geoToggle')) add('旧位置情報スイッチが残存：#geoToggle');
 
-    for (const id of ['groupingToggle','groupingManualControl','grouping-manual','grouping-manual-up','grouping-manual-down','groupingOptionsContainer','meta-grouping','meta-separator-full','meta-separator-value','meta-iteration','meta-status']) {
+    for (const id of ['groupingToggle','groupingManualControl','grouping-manual','grouping-manual-up','grouping-manual-down','groupingOptionsContainer','meta-grouping','meta-separator-full','meta-separator-value','sep-in','edge-in','meta-edge-full','meta-edge-value','meta-iteration','meta-status']) {
       if (!document.getElementById(id)) add(`区切り・状態表示 DOMがありません：#${id}`);
     }
 
-    for (const id of ['outputBaseToggle','outputBaseOptionsContainer','outputBaseHandoffToggle','outputBase64Toggle','outputBase85Toggle']) {
+    const edgeInput = document.getElementById('edge-in');
+    const separatorInput = document.getElementById('sep-in');
+    const groupingToggle = document.getElementById('groupingToggle');
+    const hexToggle = document.getElementById('hexcase');
+    if (edgeInput?.placeholder !== 'なし') add('開始と終了文字 placeholder契約が不正です');
+    if (separatorInput?.placeholder !== 'なし') add('区切り文字 placeholder契約が不正です');
+    if (separatorInput?.defaultValue !== '') add('区切り文字 初期値契約が不正です');
+    if (edgeInput && separatorInput && groupingToggle && hexToggle) {
+      const toolbarChildren = Array.from(edgeInput.closest('.toolbar')?.children || []);
+      const edgeIndex = toolbarChildren.indexOf(edgeInput);
+      const separatorIndex = toolbarChildren.indexOf(separatorInput);
+      const groupingIndex = toolbarChildren.indexOf(groupingToggle);
+      const optionsIndex = toolbarChildren.indexOf(document.getElementById('groupingOptionsContainer'));
+      const hexIndex = toolbarChildren.indexOf(hexToggle);
+      if (!(edgeIndex >= 0 && separatorIndex > edgeIndex && groupingIndex > separatorIndex && optionsIndex > groupingIndex && hexIndex > optionsIndex)) add('オプションUI順序契約が不正です');
+    }
+
+    for (const id of ['outputBaseToggle','outputBaseOptionsContainer','outputBaseHandoffToggle','outputBase64Toggle','outputBase85Toggle','hexcaseSep']) {
       if (!document.getElementById(id)) add(`すべてBASE化 DOMがありません：#${id}`);
     }
+    const hexCaseSep = document.getElementById('hexcaseSep');
+    const hexCaseControl = document.getElementById('hexcase');
+    const hexShouldBeHidden = AppState.showOutputBase || AppState.outputBaseOrder.length > 0;
+    if (hexCaseSep && hexCaseSep.hidden !== hexShouldBeHidden) add('すべてBASE化 HEX区切り表示契約が不正です');
+    if (hexCaseControl && hexCaseControl.hidden !== hexShouldBeHidden) add('すべてBASE化 HEX表示契約が不正です');
     for (const id of OutputBaseFilter.baseIds) if (!document.getElementById(id)) add(`UI BASE結果契約の不一致：${id}`);
     for (const id of OutputBaseFilter.ids) if (!document.getElementById(`note-${id}`)) add(`UI 結果注記契約の不一致：${id}`);
 
@@ -15922,9 +16169,10 @@ async function detectBase85Variants(input) {
       if (!result || result.dataset.alg !== id) add(`UI HASH結果契約の不一致：${id}`);
     }
     if (SessionRecord.RESULT_IDS.length !== 12) add('Session Record結果契約が不正です');
-    if (SessionRecord.SESSION_SCHEMA !== 'SONY-HASH-SESSION/3') add('Session schema契約が不正です');
-    if (SessionRecord.RECORD_SCHEMA !== 'SONY-HASH-RECORD/7') add('Record schema契約が不正です');
-    if (SessionRecord.SUMMARY_SCHEMA !== 'SONY-HASH-SUMMARY/5') add('Summary schema契約が不正です');
+    if (typeof AppState.edgeText !== 'string') add('開始と終了文字 State契約が不正です');
+    if (SessionRecord.SESSION_SCHEMA !== 'SONY-HASH-SESSION/4') add('Session schema契約が不正です');
+    if (SessionRecord.RECORD_SCHEMA !== 'SONY-HASH-RECORD/8') add('Record schema契約が不正です');
+    if (SessionRecord.SUMMARY_SCHEMA !== 'SONY-HASH-SUMMARY/6') add('Summary schema契約が不正です');
     if (typeof SessionRecord.validateSnapshot !== 'function') add('Session Snapshot Validatorがありません');
     if (typeof SessionRecord.validateRecord !== 'function') add('Session Record Validatorがありません');
     if (typeof SessionRecord.validateMarkdown !== 'function') add('Session Summary Validatorがありません');
@@ -15950,7 +16198,7 @@ async function detectBase85Variants(input) {
     attachEvents();
   }
 
-  return { init, validate, updateSysPanel, runResultStateRegression, runSessionRecordRegression, runFileWorkflowRegression, runFileHandleRegression, shutdown };
+  return { init, validate, updateSysPanel, runResultStateRegression, runGroupingControlRegression, runSessionRecordRegression, runFileWorkflowRegression, runFileHandleRegression, shutdown };
 })();
 
 const PresetLoader = (() => {
