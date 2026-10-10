@@ -294,7 +294,8 @@ applyRuntimePlatform();
   html.capacitor-android #adv-inputs{padding-bottom:var(--android-10px) !important;gap:var(--android-20px) !important}
   html.capacitor-android #compare-inputs{padding-bottom:var(--android-10px) !important;gap:var(--android-10px) !important}
   html.capacitor-android #salt-in,html.capacitor-android #hmac-in,html.capacitor-android #compare-in{min-width:var(--android-200px) !important}
-  html.capacitor-android #sep-in,html.capacitor-android #edge-in{width:var(--android-50px) !important}
+  html.capacitor-android #sep-in,html.capacitor-android #edge-in,html.capacitor-android #edge-start-in,html.capacitor-android #edge-end-in{width:var(--android-50px) !important}
+  html.capacitor-android .edge-split{gap:var(--android-4px)}
   html.capacitor-android .toolbar label.hint{margin-right:var(--android-neg4px) !important}
   html.capacitor-android .number-input{width:var(--android-64px);padding-right:var(--android-16px)}
   html.capacitor-android .hint{font-size:clamp(.6875em,var(--android-2_6vw),.8125em);margin-top:var(--android-6px)}
@@ -427,6 +428,11 @@ applyRuntimePlatform();
   .spinner-btn:hover { color: var(--fg-bright); }
   .spinner-btn:active { transform: scale(0.9); }
 
+  .edge-mode-toggle.link.hint{margin-left:0;margin-right:-4px;font-size:clamp(.6875em,2.6vw,.8125em);margin-top:6px}
+  .edge-control{display:inline-flex;align-items:center;min-width:0}
+  .edge-split{display:inline-flex;align-items:center;gap:6px}
+  .edge-split[hidden],.edge-control > [hidden]{display:none !important}
+  .edge-mode-toggle:focus-visible{outline:1px solid var(--fg-bright);outline-offset:2px}
   .grouping-manual-control{display:inline-flex;align-items:center;gap:4px}
   .grouping-manual-control[hidden]{display:none}
   .grouping-manual-control .link{margin-left:0}
@@ -584,7 +590,7 @@ applyRuntimePlatform();
   <main class="container" role="main">
     <section class="input-wrap" id="drop-zone">
       <textarea id="in" placeholder="ここに入力、またはファイルをドロップして計算します" autocomplete="one-time-code" spellcheck="false" autocorrect="off"></textarea>
-      <div id="meta" class="hint"><span id="meta-count">文字数 0</span>｜エントロピー（Entropy）：<span id="meta-entropy">—</span>｜文字コード：<span id="meta-encoding">UTF-8</span>｜正規化：<span id="meta-normalization">なし</span>｜不可視文字・改行整形：<span id="meta-sanitize">オフ</span>｜コピー：<span id="meta-copy">実値</span>｜HEX: <span id="meta-hex">lowercase</span>｜区切り：<span id="meta-grouping">区切りなし</span>｜区切り文字：<span id="meta-separator-full" class="meta-literal-full"><span id="meta-separator-value" class="meta-literal-value"></span></span>｜開始と終了文字：<span id="meta-edge-full" class="meta-literal-full"><span id="meta-edge-value" class="meta-literal-value"></span></span><span id="meta-options"></span><span id="meta-iteration"></span>｜ステータス：<span id="meta-status">待機</span></div>
+      <div id="meta" class="hint"><span id="meta-count">文字数 0</span>｜エントロピー（Entropy）：<span id="meta-entropy">—</span>｜文字コード：<span id="meta-encoding">UTF-8</span>｜正規化：<span id="meta-normalization">なし</span>｜不可視文字・改行整形：<span id="meta-sanitize">オフ</span>｜コピー：<span id="meta-copy">実値</span>｜HEX: <span id="meta-hex">lowercase</span>｜区切り：<span id="meta-grouping">区切りなし</span>｜区切り文字：<span id="meta-separator-full" class="meta-literal-full"><span id="meta-separator-value" class="meta-literal-value"></span></span>｜<span id="meta-edge-label">開始と終了文字：</span><span id="meta-edge-full" class="meta-literal-full"><span id="meta-edge-value" class="meta-literal-value"></span></span><span id="meta-options"></span><span id="meta-iteration"></span>｜ステータス：<span id="meta-status">待機</span></div>
       <input type="file" id="f-hidden" />
     </section>
     
@@ -613,8 +619,14 @@ applyRuntimePlatform();
 
     <div class="toolbar">
       <span class="hint">オプション：</span>
-      <label for="edge-in" class="hint" style="margin-right: -4px;">開始と終了文字：</label>
-      <input type="text" id="edge-in" class="text-input" value="" style="width: 50px;" placeholder="なし" autocomplete="off" spellcheck="false">
+      <button type="button" id="edgeModeToggle" class="link hint edge-mode-toggle" data-action="toggleEdgeMode" aria-pressed="false" aria-controls="edge-control">開始と終了文字：</button>
+      <span id="edge-control" class="edge-control">
+        <input type="text" id="edge-in" class="text-input" value="" style="width: 50px;" placeholder="なし" aria-label="開始と終了の共通文字" autocomplete="off" spellcheck="false">
+        <span id="edge-split" class="edge-split" hidden>
+          <input type="text" id="edge-start-in" class="text-input" value="" style="width: 50px;" placeholder="なし" aria-label="開始文字" autocomplete="off" spellcheck="false">
+          <input type="text" id="edge-end-in" class="text-input" value="" style="width: 50px;" placeholder="なし" aria-label="終了文字" autocomplete="off" spellcheck="false">
+        </span>
+      </span>
 
       <span class="sep hint">/</span>
       <label for="sep-in" class="hint" style="margin-right: -4px;">区切り文字：</label>
@@ -1001,7 +1013,7 @@ applyRuntimePlatform();
 <script>
 applyRuntimePlatform();
 
-const APP_VERSION = '20260923C-57f418f-01-G';
+const APP_VERSION = '20261010A-N/A-00-G';
 
 const Life = (() => {
   let state = 0;
@@ -2414,6 +2426,13 @@ const VisualTheme = (() => {
 const GROUPING_PRESETS = Object.freeze([2,4,6,8,10,12,14,16,32,64]);
 const GROUPING_MAX = 65535;
 
+function normalizeEdgeSettings(mode, start = '', end = start) {
+  const shared = start === end ? start : (start || end);
+  return mode === 'split'
+    ? { edgeMode:'split', edgeText:shared, edgeStart:start, edgeEnd:end }
+    : { edgeMode:'shared', edgeText:shared, edgeStart:shared, edgeEnd:shared };
+}
+
 const AppState = {
   showTheme: false,
   visualSystem: VisualTheme.defaults.system,
@@ -2427,6 +2446,9 @@ const AppState = {
   showGrouping: false,
   separator: '',
   edgeText: '',
+  edgeMode: 'shared',
+  edgeStart: '',
+  edgeEnd: '',
   testVector: 'empty',
   showTest: false,
   testVerifyArmed: false,
@@ -2469,6 +2491,18 @@ const AppState = {
   calculationSessionConfig: null
 };
 
+
+function resolveEdgeContext(context = null) {
+  const explicitOldEdge = context !== null && Object.prototype.hasOwnProperty.call(context, 'edgeText');
+  const edgeMode = context?.edgeMode ?? (explicitOldEdge ? 'shared' : AppState.edgeMode);
+  const edgeText = context?.edgeText ?? AppState.edgeText;
+  return {
+    edgeMode,
+    edgeText,
+    edgeStart:edgeMode === 'split' ? (context?.edgeStart ?? AppState.edgeStart) : edgeText,
+    edgeEnd:edgeMode === 'split' ? (context?.edgeEnd ?? AppState.edgeEnd) : edgeText
+  };
+}
 
 const Core = (() => {
   const subtle = crypto?.subtle;
@@ -2834,18 +2868,27 @@ const Core = (() => {
     return applyGrouping(h, groupSize, separator);
   }
 
-  function applyEdgeText(value, edgeText = AppState.edgeText) {
+  function applyEdgePair(value, start = '', end = '') {
     const text = String(value ?? '');
-    const edge = String(edgeText ?? '');
-    return (!text || !edge) ? text : edge + text + edge;
+    if (!text) return text;
+    return String(start ?? '') + text + String(end ?? '');
+  }
+
+  function removeEdgePair(value, start = '', end = '') {
+    const text = String(value ?? '');
+    if (!text) return text;
+    const left = String(start ?? '');
+    const right = String(end ?? '');
+    if (text.length < left.length + right.length || !text.startsWith(left) || !text.endsWith(right)) return null;
+    return text.slice(left.length, text.length - right.length);
+  }
+
+  function applyEdgeText(value, edgeText = AppState.edgeText) {
+    return applyEdgePair(value, edgeText, edgeText);
   }
 
   function removeEdgeText(value, edgeText = AppState.edgeText) {
-    const text = String(value ?? '');
-    const edge = String(edgeText ?? '');
-    if (!text || !edge) return text;
-    if (!text.startsWith(edge) || !text.endsWith(edge) || text.length < edge.length * 2) return null;
-    return text.slice(edge.length, text.length - edge.length);
+    return removeEdgePair(value, edgeText, edgeText);
   }
 
   const CRC_TABLE = (()=>{const t=new Uint32Array(256);for(let i=0;i<256;i++){let c=i;for(let j=0;j<8;j++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[i]=c>>>0;}return t;})();
@@ -3011,7 +3054,7 @@ const Core = (() => {
     try{ return s.normalize(normMode); } catch{ return s; } 
   }
 
-  return { utf8Encode, utf8Decode, safeAsync, hexToBytes, getFileInfo, analyzeFileStructure, applyGrouping, removeGrouping, formatForDisplay, applyEdgeText, removeEdgeText, crc32Hex, md5Hex, sha224Hex, hmacMd5Hex, hmacSha224Hex, digestHex, hmacHex, countGraphemes, shannonEntropy, sanitizeText, normalizeText, HEX_LUT };
+  return { utf8Encode, utf8Decode, safeAsync, hexToBytes, getFileInfo, analyzeFileStructure, applyGrouping, removeGrouping, formatForDisplay, applyEdgeText, removeEdgeText, applyEdgePair, removeEdgePair, crc32Hex, md5Hex, sha224Hex, hmacMd5Hex, hmacSha224Hex, digestHex, hmacHex, countGraphemes, shannonEntropy, sanitizeText, normalizeText, HEX_LUT };
 })();
 
 const SysUtils = (() => {
@@ -4259,7 +4302,7 @@ const Base85Presentation = (() => {
       hexUpper: options?.hexUpper ?? AppState.hexUpper,
       grouping: options?.grouping ?? AppState.grouping,
       separator: options?.separator ?? AppState.separator,
-      edgeText: options?.edgeText ?? AppState.edgeText
+      ...resolveEdgeContext(options)
     };
   }
 
@@ -4307,21 +4350,21 @@ const Base85Presentation = (() => {
     const parsed = parseBtoaEnvelope(value);
     if (!parsed) {
       const visual = Core.formatForDisplay(String(value ?? ''), false, cfg.grouping, true, cfg.separator);
-      return Core.applyEdgeText(visual, cfg.edgeText);
+      return Core.applyEdgePair(visual, cfg.edgeStart, cfg.edgeEnd);
     }
     const payload = parsed.payloadLines.map(line => Core.applyGrouping(line, cfg.grouping, cfg.separator)).join('\n');
-    const visualPayload = Core.applyEdgeText(payload, cfg.edgeText);
+    const visualPayload = Core.applyEdgePair(payload, cfg.edgeStart, cfg.edgeEnd);
     return ['xbtoa Begin', ...(visualPayload ? visualPayload.split('\n') : []), buildBtoaTrailer(parsed, cfg.hexUpper)].join('\n');
   }
 
   function unformatBtoa(value, cfg) {
     const parsed = parseBtoaEnvelope(value);
     if (!parsed) {
-      const inner = Core.removeEdgeText(String(value ?? ''), cfg.edgeText);
+      const inner = Core.removeEdgePair(String(value ?? ''), cfg.edgeStart, cfg.edgeEnd);
       return inner === null ? null : Core.removeGrouping(inner, cfg.grouping, cfg.separator);
     }
     const visualPayload = parsed.payloadLines.join('\n');
-    const payload = Core.removeEdgeText(visualPayload, cfg.edgeText);
+    const payload = Core.removeEdgePair(visualPayload, cfg.edgeStart, cfg.edgeEnd);
     if (payload === null) return null;
     const payloadLines = payload ? payload.split('\n') : [];
     const rawLines = [];
@@ -4339,13 +4382,13 @@ const Base85Presentation = (() => {
     const visual = variant === 'Adobe ASCII85'
       ? formatAdobe(value, cfg)
       : Core.formatForDisplay(String(value ?? ''), false, cfg.grouping, true, cfg.separator);
-    return Core.applyEdgeText(visual, cfg.edgeText);
+    return Core.applyEdgePair(visual, cfg.edgeStart, cfg.edgeEnd);
   }
 
   function unformat(value, variant, options = null) {
     const cfg = normalizeOptions(options);
     if (variant === 'btoa ASCII85') return unformatBtoa(String(value ?? ''), cfg);
-    const inner = Core.removeEdgeText(String(value ?? ''), cfg.edgeText);
+    const inner = Core.removeEdgePair(String(value ?? ''), cfg.edgeStart, cfg.edgeEnd);
     if (inner === null) return null;
     if (variant === 'Adobe ASCII85') return unformatAdobe(inner, cfg);
     return Core.removeGrouping(inner, cfg.grouping, cfg.separator);
@@ -5036,7 +5079,7 @@ const OutputBaseFilter = (() => {
       hexUpper: context?.hexUpper ?? AppState.hexUpper,
       grouping: context?.grouping ?? AppState.grouping,
       separator: context?.separator ?? AppState.separator,
-      edgeText: context?.edgeText ?? AppState.edgeText
+      ...resolveEdgeContext(context)
     };
   }
 
@@ -5143,13 +5186,13 @@ const OutputBaseFilter = (() => {
     if (finalOutputMode(cfg) === 'base85') {
       return Base85Presentation.format(value, cfg.base85Variant, cfg);
     }
-    return Core.applyEdgeText(Core.formatForDisplay(value, cfg.hexUpper, cfg.grouping, cfg.outputOrder.length > 0, cfg.separator), cfg.edgeText);
+    return Core.applyEdgePair(Core.formatForDisplay(value, cfg.hexUpper, cfg.grouping, cfg.outputOrder.length > 0, cfg.separator), cfg.edgeStart, cfg.edgeEnd);
   }
 
   function unformatDisplay(value, context = null) {
     const cfg = normalizeContext(context);
     if (finalOutputMode(cfg) === 'base85') return Base85Presentation.unformat(value, cfg.base85Variant, cfg);
-    const inner = Core.removeEdgeText(String(value ?? ''), cfg.edgeText);
+    const inner = Core.removeEdgePair(String(value ?? ''), cfg.edgeStart, cfg.edgeEnd);
     return inner === null ? null : Core.removeGrouping(inner, cfg.grouping, cfg.separator);
   }
 
@@ -8444,11 +8487,11 @@ const SelfTest = (() => {
       'UTF-8':47,
       BASE64:57,
       BASE85:144,
-      'BASE85 PRESENTATION':14,
+      'BASE85 PRESENTATION':18,
       FILE:13,
       WORKER:5,
-      FILTER:43,
-      SESSION:36,
+      FILTER:58,
+      SESSION:44,
       REGRESSION:170,
       STREAM:768
     }),
@@ -8460,7 +8503,7 @@ const SelfTest = (() => {
     systemMonitor:13,
     workerGuard:8,
     workerContract:6,
-    session:36,
+    session:44,
     fileWorkflow:5,
     writable:11
   });
@@ -8990,12 +9033,13 @@ const SelfTest = (() => {
     await add(report, 'BASE85', 'btoa Zero Shorthand Envelope', BaseCodec.encodeBase85(zeros, 'btoa ASCII85'), 'xbtoa Begin\nz\nxbtoa End N 4 4 E 0 S 4 R 0');
     await add(report, 'BASE85', 'btoa Space Shorthand Envelope', BaseCodec.encodeBase85(spaces, 'btoa ASCII85'), 'xbtoa Begin\ny\nxbtoa End N 4 4 E 0 S 84 R 1e0');
 
-    const adobeVisual = Base85Presentation.format('<~87cURDZ~>', 'Adobe ASCII85', { hexUpper:true, grouping:2, separator:'|' });
+    const adobeVisualOptions = { hexUpper:true, grouping:2, separator:'|', edgeText:'' };
+    const adobeVisual = Base85Presentation.format('<~87cURDZ~>', 'Adobe ASCII85', adobeVisualOptions);
     await add(report, 'BASE85 PRESENTATION', 'Adobe Wrapper Grouping', adobeVisual, '<~87|cU|RD|Z~>');
-    await add(report, 'BASE85 PRESENTATION', 'Adobe Visual Roundtrip', Base85Presentation.unformat(adobeVisual, 'Adobe ASCII85', { hexUpper:true, grouping:2, separator:'|' }), '<~87cURDZ~>');
+    await add(report, 'BASE85 PRESENTATION', 'Adobe Visual Roundtrip', Base85Presentation.unformat(adobeVisual, 'Adobe ASCII85', adobeVisualOptions), '<~87cURDZ~>');
 
     const btoaHelloActual = BaseCodec.encodeBase85(hello, 'btoa ASCII85');
-    const btoaVisualOptions = { hexUpper:true, grouping:2, separator:' ' };
+    const btoaVisualOptions = { hexUpper:true, grouping:2, separator:' ', edgeText:'' };
     const btoaHelloVisual = Base85Presentation.format(btoaHelloActual, 'btoa ASCII85', btoaVisualOptions);
     await add(report, 'BASE85 PRESENTATION', 'btoa Payload Grouping / Trailer Uppercase', btoaHelloVisual, 'xbtoa Begin\n87 cU RD ZB b;\nxbtoa End N 5 5 E 42 S 1F9 R A9F');
     await add(report, 'BASE85 PRESENTATION', 'btoa Visual Roundtrip', Base85Presentation.unformat(btoaHelloVisual, 'btoa ASCII85', btoaVisualOptions), btoaHelloActual);
@@ -9014,6 +9058,12 @@ const SelfTest = (() => {
     await add(report, 'BASE85 PRESENTATION', 'btoa Multi-line Roundtrip / Separator +', Base85Presentation.unformat(btoaLongVisual, 'btoa ASCII85', btoaLongVisualOptions), btoaLongActual);
     await add(report, 'BASE85 PRESENTATION', 'Adobe Edge Outer', Base85Presentation.format('<~87cURDZ~>', 'Adobe ASCII85', { grouping:0, separator:' ', edgeText:'あ' }), 'あ<~87cURDZ~>あ');
     await add(report, 'BASE85 PRESENTATION', 'Adobe Edge Roundtrip', Base85Presentation.unformat('あ<~87cURDZ~>あ', 'Adobe ASCII85', { grouping:0, separator:' ', edgeText:'あ' }), '<~87cURDZ~>');
+    const splitEdgeOptions = { grouping:0, separator:' ', edgeMode:'split', edgeStart:'[', edgeEnd:']' };
+    await add(report, 'BASE85 PRESENTATION', 'Adobe Split Edge', Base85Presentation.format('<~87cURDZ~>', 'Adobe ASCII85', splitEdgeOptions), '[<~87cURDZ~>]');
+    await add(report, 'BASE85 PRESENTATION', 'Adobe Split Roundtrip', Base85Presentation.unformat('[<~87cURDZ~>]', 'Adobe ASCII85', splitEdgeOptions), '<~87cURDZ~>');
+    const splitBtoa = Base85Presentation.format(btoaHelloActual, 'btoa ASCII85', splitEdgeOptions);
+    await add(report, 'BASE85 PRESENTATION', 'btoa Split Payload', splitBtoa, 'xbtoa Begin\n[87cURDZBb;]\nxbtoa End N 5 5 E 42 S 1f9 R a9f');
+    await add(report, 'BASE85 PRESENTATION', 'btoa Split Roundtrip', Base85Presentation.unformat(splitBtoa, 'btoa ASCII85', splitEdgeOptions), btoaHelloActual);
     await add(report, 'BASE85 PRESENTATION', 'Edge Empty Payload', Base85Presentation.format('', 'Standard ASCII85', { grouping:0, separator:' ', edgeText:'あ' }), '');
     await add(report, 'BASE85 PRESENTATION', 'Edge Collision Roundtrip', Base85Presentation.unformat('abab12abab', 'Standard ASCII85', { grouping:0, separator:' ', edgeText:'ab' }), 'ab12ab');
     await add(report, 'BASE85 PRESENTATION', 'Edge Missing Rejected', Base85Presentation.unformat('87cURDZ', 'Standard ASCII85', { grouping:0, separator:' ', edgeText:'あ' }), null);
@@ -9317,7 +9367,8 @@ const SelfTest = (() => {
       copyMode:'visual',
       hexUpper:false,
       grouping:4,
-      separator:'-'
+      separator:'-',
+      edgeText:''
     };
     try {
       const actual = HashOutputFilter.apply('SHA-256', canonical, visualContext);
@@ -9337,7 +9388,8 @@ const SelfTest = (() => {
       copyMode:'visual',
       hexUpper:true,
       grouping:2,
-      separator:'|'
+      separator:'|',
+      edgeText:''
     };
     try {
       const actual = HashOutputFilter.apply('SHA-256', canonical, btoaVisualContext);
@@ -9423,6 +9475,25 @@ const SelfTest = (() => {
     await add(report, 'FILTER', 'Edge Remove', Core.removeEdgeText('あabcあ', 'あ'), 'abc');
     await add(report, 'FILTER', 'Edge Collision', Core.removeEdgeText('abab12abab', 'ab'), 'ab12ab');
     await add(report, 'FILTER', 'Edge Missing Reject', Core.removeEdgeText('abc', 'あ'), null);
+    await add(report, 'FILTER', 'Split Edge Apply', Core.applyEdgePair('abc', '[', ']'), '[abc]');
+    await add(report, 'FILTER', 'Split Edge Remove', Core.removeEdgePair('[abc]', '[', ']'), 'abc');
+    await add(report, 'FILTER', 'Split Edge Missing Reject', Core.removeEdgePair('[abc}', '[', ']'), null);
+    await add(report, 'FILTER', 'Split Edge Start Only', Core.applyEdgePair('abc', 'あ', ''), 'あabc');
+    await add(report, 'FILTER', 'Split Edge End Only', Core.applyEdgePair('abc', '', 'い'), 'abcい');
+    await add(report, 'FILTER', 'Split Edge Empty Payload', Core.applyEdgePair('', '[', ']'), '');
+    await add(report, 'FILTER', 'Legacy Edge Context', resolveEdgeContext({ edgeText:'あ' }).edgeStart, 'あ');
+    const edgeExpanded = normalizeEdgeSettings('split', 'A');
+    const edgeDifferent = normalizeEdgeSettings('shared', 'A', 'B');
+    const edgePromoted = normalizeEdgeSettings('shared', '', 'B');
+    const edgeCollapsed = normalizeEdgeSettings('split', edgeDifferent.edgeText);
+    await add(report, 'FILTER', '開始・終了文字 / 共通文字の展開', JSON.stringify(edgeExpanded), JSON.stringify({ edgeMode:'split', edgeText:'A', edgeStart:'A', edgeEnd:'A' }));
+    await add(report, 'FILTER', '開始・終了文字 / 同値の統合', normalizeEdgeSettings('shared', 'A', 'A').edgeText, 'A');
+    await add(report, 'FILTER', '開始・終了文字 / 異値の統合', edgeDifferent.edgeText, 'A');
+    await add(report, 'FILTER', '開始・終了文字 / 開始値なし', edgePromoted.edgeText, 'B');
+    await add(report, 'FILTER', '開始・終了文字 / 終了値なし', normalizeEdgeSettings('shared', 'A', '').edgeText, 'A');
+    await add(report, 'FILTER', '開始・終了文字 / 両方なし', normalizeEdgeSettings('shared', '', '').edgeText, '');
+    await add(report, 'FILTER', '開始・終了文字 / 複数文字', normalizeEdgeSettings('shared', 'AB', 'CD').edgeText, 'AB');
+    await add(report, 'FILTER', '開始・終了文字 / 古い終了値の破棄', `${edgeCollapsed.edgeStart}・${edgeCollapsed.edgeEnd}`, 'A・A');
     const groupedHex = Core.formatForDisplay(canonical, false, 4, false, '-');
     await add(
       report,
@@ -11019,6 +11090,7 @@ const UI = (() => {
     els.metaGrouping = document.getElementById('meta-grouping');
     els.metaSeparatorFull = document.getElementById('meta-separator-full');
     els.metaSeparatorValue = document.getElementById('meta-separator-value');
+    els.metaEdgeLabel = document.getElementById('meta-edge-label');
     els.metaEdgeFull = document.getElementById('meta-edge-full');
     els.metaEdgeValue = document.getElementById('meta-edge-value');
     els.metaOptions = document.getElementById('meta-options');
@@ -11047,7 +11119,12 @@ const UI = (() => {
     els.groupingManualToggle = document.getElementById('groupingManualToggle');
     els.groupingOptionsContainer = document.getElementById('groupingOptionsContainer');
     els.sepIn = document.getElementById('sep-in');
+    els.edgeModeToggle = document.getElementById('edgeModeToggle');
+    els.edgeControl = document.getElementById('edge-control');
+    els.edgeSplit = document.getElementById('edge-split');
     els.edgeIn = document.getElementById('edge-in');
+    els.edgeStartIn = document.getElementById('edge-start-in');
+    els.edgeEndIn = document.getElementById('edge-end-in');
     els.internetSep = document.getElementById('internetSep');
     els.internetBtn = document.getElementById('internetToggle');
     els.zessBtn = document.getElementById('zessToggle');
@@ -11323,7 +11400,7 @@ function showToast(msg, duration = TOAST_DURATION) {
         finalActual:trace.completedStages > 0 ? textValue(trace.value) : canonical,
         finalDisplay:trace.completedStages > 0
           ? OutputBaseFilter.formatDisplay(textValue(trace.value), { ...context, outputOrder:trace.completedOrder })
-          : Core.applyEdgeText(Core.formatForDisplay(canonical, context.hexUpper, context.grouping, false, context.separator), context.edgeText)
+          : Core.applyEdgePair(Core.formatForDisplay(canonical, context.hexUpper, context.grouping, false, context.separator), context.edgeStart, context.edgeEnd)
       };
     }
 
@@ -11331,7 +11408,7 @@ function showToast(msg, duration = TOAST_DURATION) {
       const effectiveHex = String(runtime?.effectiveHex || runtime?.hex || (HashOutputFilter.isHashResult(id, ui.raw) ? ui.raw : '') || '').toLowerCase();
       const rawHex = String(runtime?.rawHex || effectiveHex || '').toLowerCase();
       const surfaceHex = effectiveHex && /^[0-9a-f]+$/.test(effectiveHex)
-        ? Core.applyEdgeText(Core.formatForDisplay(effectiveHex, context.hexUpper, context.grouping, false, context.separator), context.edgeText)
+        ? Core.applyEdgePair(Core.formatForDisplay(effectiveHex, context.hexUpper, context.grouping, false, context.separator), context.edgeStart, context.edgeEnd)
         : '';
       const outputBase = traceForHex(effectiveHex, context);
       return {
@@ -11440,7 +11517,7 @@ function showToast(msg, duration = TOAST_DURATION) {
       const outputContext = Object.freeze({
         outputOrder:AppState.outputBaseOrder.slice(), handoff:AppState.outputBaseHandoff,
         base85Variant:AppState.base85Variant, hexUpper:AppState.hexUpper,
-        grouping:AppState.grouping, separator:AppState.separator, edgeText:AppState.edgeText
+        grouping:AppState.grouping, separator:AppState.separator, ...resolveEdgeContext()
       });
       const uiResults = Object.fromEntries(RESULT_IDS.map(id => [id, captureUiResult(id)]));
       const autoTest = AutoTestReport.snapshot();
@@ -11469,6 +11546,9 @@ function showToast(msg, duration = TOAST_DURATION) {
           groupingOptionsOpen:AppState.showGrouping,
           separator:AppState.separator,
           edgeText:AppState.edgeText,
+          edgeMode:AppState.edgeMode,
+          edgeStart:AppState.edgeStart,
+          edgeEnd:AppState.edgeEnd,
           copyMode:AppState.copyMode,
           iterations:Number(AppState.iterations) || 1,
           iterMode:AppState.iterMode,
@@ -11582,6 +11662,22 @@ function showToast(msg, duration = TOAST_DURATION) {
       if (groupingMode === 'preset' && !GROUPING_PRESETS.includes(grouping)) issues.push('grouping preset');
       if (typeof snapshot?.settings?.edgeText !== 'string') issues.push('edge text');
       if (typeof snapshot?.outputContext?.edgeText !== 'string') issues.push('output edge text');
+      for (const [kind, edge] of [['settings', snapshot?.settings], ['output', snapshot?.outputContext]]) {
+        if (edge?.edgeMode !== undefined) {
+          if (!['shared','split'].includes(edge.edgeMode)) issues.push(`${kind} edge mode`);
+          if (typeof edge.edgeStart !== 'string') issues.push(`${kind} edge start`);
+          if (typeof edge.edgeEnd !== 'string') issues.push(`${kind} edge end`);
+          if (['shared','split'].includes(edge.edgeMode) &&
+              typeof edge.edgeText === 'string' &&
+              typeof edge.edgeStart === 'string' &&
+              typeof edge.edgeEnd === 'string') {
+            const expected = normalizeEdgeSettings(edge.edgeMode, edge.edgeStart, edge.edgeEnd);
+            if (edge.edgeText !== expected.edgeText ||
+                edge.edgeStart !== expected.edgeStart ||
+                edge.edgeEnd !== expected.edgeEnd) issues.push(`${kind === 'settings' ? '設定' : '出力'} 開始・終了文字の整合性`);
+          }
+        }
+      }
       for (const id of RESULT_IDS) {
         const result = snapshot?.results?.[id];
         if (!result) { issues.push(`result:${id}`); continue; }
@@ -11705,7 +11801,9 @@ function showToast(msg, duration = TOAST_DURATION) {
       if (Number(s.iterations) > 1) rows.push(['反復方式', iterModeLabel(s.iterMode)]);
       if (s.hexUpper) rows.push(['HEX表記', '大文字']);
       if (s.groupingMode === 'manual' || s.groupingMode === 'preset') rows.push(['区切り', `${s.grouping}文字`], ['区切り文字', JSON.stringify(s.separator)]);
-      if (s.edgeText) rows.push(['開始と終了文字', JSON.stringify(s.edgeText)]);
+      if (s.edgeMode === 'split') {
+        rows.push(['開始文字', JSON.stringify(s.edgeStart)], ['終了文字', JSON.stringify(s.edgeEnd)]);
+      } else if (s.edgeText) rows.push(['開始と終了文字', JSON.stringify(s.edgeText)]);
       if (s.copyMode === 'visual') rows.push(['コピー対象', '表示値']);
       if (s.base.base64Encode) rows.push(['Base64 Enc', '有効']);
       if (s.base.base64Decode) rows.push(['Base64 Dec', '有効'], ['Base64判定', s.base.base64Strict ? '厳格' : '寛容']);
@@ -12119,8 +12217,14 @@ function showToast(msg, duration = TOAST_DURATION) {
       } else if (structure.visible.some(line => line.startsWith('- **区切り：**') || line.startsWith('- **区切り文字：**'))) {
         issues.push('summary inactive grouping');
       }
+      const splitEdge = snapshot.settings.edgeMode === 'split';
       const edgeLine = `- **開始と終了文字：** ${markdownInline(JSON.stringify(snapshot.settings.edgeText))}`;
-      if (snapshot.settings.edgeText) {
+      if (splitEdge) {
+        for (const [label, value] of [['開始文字', snapshot.settings.edgeStart], ['終了文字', snapshot.settings.edgeEnd]]) {
+          if (!structure.visible.includes(`- **${label}：** ${markdownInline(JSON.stringify(value))}`)) issues.push(`summary ${label}`);
+        }
+        if (structure.visible.includes(edgeLine)) issues.push('summary inactive shared edge');
+      } else if (snapshot.settings.edgeText) {
         if (!structure.visible.includes(edgeLine)) issues.push('summary edge setting');
       } else if (structure.visible.some(line => line.startsWith('- **開始と終了文字：**'))) issues.push('summary inactive edge');
       if (!markdown.endsWith('\n')) issues.push('summary final newline');
@@ -12731,16 +12835,17 @@ function showToast(msg, duration = TOAST_DURATION) {
   }
 
   function formatSurfaceValue(id, value) {
+    const edge = resolveEdgeContext();
     if (id === 'Base85-Enc') {
       return Base85Presentation.format(value, AppState.base85Variant, {
         hexUpper:AppState.hexUpper,
         grouping:AppState.grouping,
         separator:AppState.separator,
-        edgeText:AppState.edgeText
+        ...edge
       });
     }
     const skipCase = id.includes('Base');
-    return Core.applyEdgeText(Core.formatForDisplay(value, AppState.hexUpper, AppState.grouping, skipCase), AppState.edgeText);
+    return Core.applyEdgePair(Core.formatForDisplay(value, AppState.hexUpper, AppState.grouping, skipCase), edge.edgeStart, edge.edgeEnd);
   }
 
   function clearResultPayload(el) {
@@ -13131,6 +13236,9 @@ function showToast(msg, duration = TOAST_DURATION) {
       grouping:AppState.grouping,
       separator:AppState.separator,
       edgeText:AppState.edgeText,
+      edgeMode:AppState.edgeMode,
+      edgeStart:AppState.edgeStart,
+      edgeEnd:AppState.edgeEnd,
       status:AppState.currentStatus,
       outputBaseOrder:AppState.outputBaseOrder.slice(),
       outputBaseHandoff:AppState.outputBaseHandoff
@@ -13158,6 +13266,7 @@ function showToast(msg, duration = TOAST_DURATION) {
       AppState.grouping = 0;
       AppState.separator = ' ';
       AppState.edgeText = '';
+      AppState.edgeMode = 'shared';
       AppState.outputBaseOrder = [];
 
       renderBaseMessageValue('Base64-Dec', { type:'base_message', value:'エラー', note:'デコードされません。' });
@@ -13234,6 +13343,9 @@ function showToast(msg, duration = TOAST_DURATION) {
       AppState.grouping = previous.grouping;
       AppState.separator = previous.separator;
       AppState.edgeText = previous.edgeText;
+      AppState.edgeMode = previous.edgeMode;
+      AppState.edgeStart = previous.edgeStart;
+      AppState.edgeEnd = previous.edgeEnd;
       AppState.outputBaseOrder = previous.outputBaseOrder;
       AppState.outputBaseHandoff = previous.outputBaseHandoff;
       const restoreFile = !!AppState.currentFile;
@@ -13326,7 +13438,8 @@ function showToast(msg, duration = TOAST_DURATION) {
     collision.settings.groupingMode = 'preset';
     collision.settings.grouping = 4;
     collision.settings.separator = '*_[x]<>\\';
-    collision.settings.edgeText = '開始<edge>終了';
+    Object.assign(collision.settings, normalizeEdgeSettings('shared', '開始<edge>終了'));
+    Object.assign(collision.outputContext, normalizeEdgeSettings('shared', '開始<edge>終了'));
     collision.settings.salt = { enabled:true, value:saltLiteral };
     collision.settings.hmac = { enabled:true, key:hmacLiteral };
     collision.settings.iterations = 1;
@@ -13390,6 +13503,10 @@ function showToast(msg, duration = TOAST_DURATION) {
     minimal.settings.grouping = 0;
     minimal.settings.separator = ' ';
     minimal.settings.edgeText = '';
+    minimal.settings.edgeMode = 'shared';
+    minimal.settings.edgeStart = '';
+    minimal.settings.edgeEnd = '';
+    Object.assign(minimal.outputContext, { edgeMode:'shared', edgeText:'', edgeStart:'', edgeEnd:'' });
     minimal.settings.copyMode = 'actual';
     minimal.settings.iterations = 1;
     minimal.settings.iterMode = 'xor';
@@ -13434,8 +13551,8 @@ function showToast(msg, duration = TOAST_DURATION) {
 
     const edgeCase = clone(minimal);
     edgeCase.identity.id = 'SELFTEST-EDGE';
-    edgeCase.settings.edgeText = 'あ<>あ';
-    edgeCase.outputContext.edgeText = edgeCase.settings.edgeText;
+    Object.assign(edgeCase.settings, normalizeEdgeSettings('shared', 'あ<>あ'));
+    Object.assign(edgeCase.outputContext, normalizeEdgeSettings('shared', 'あ<>あ'));
     const edgeRecord = await SessionRecord.build(edgeCase);
     const edgeDoc = new DOMParser().parseFromString(edgeRecord.html, 'text/html');
     const edgeRoot = edgeDoc.querySelector('[data-record-settings="current"]');
@@ -13444,6 +13561,36 @@ function showToast(msg, duration = TOAST_DURATION) {
     const invalidEdge = clone(minimal);
     invalidEdge.settings.edgeText = null;
     add('Session Record / Invalid Edge Rejected', SessionRecord.validateSnapshot(invalidEdge).includes('edge text'), 'edgeText must be a string');
+    const splitCase = clone(minimal);
+    splitCase.identity.id = 'SELFTEST-EDGE-SPLIT';
+    Object.assign(splitCase.settings, normalizeEdgeSettings('split', '[', ']'));
+    Object.assign(splitCase.outputContext, normalizeEdgeSettings('split', '[', ']'));
+    const splitRecord = await SessionRecord.build(splitCase);
+    const splitDoc = new DOMParser().parseFromString(splitRecord.html, 'text/html');
+    const splitRoot = splitDoc.querySelector('[data-record-settings="current"]');
+    add('Session Record / Split Edge Human Visibility', kvValue(splitRoot, '開始文字') === '"["' && kvValue(splitRoot, '終了文字') === '"]"');
+    add('Session Record / Split Edge Markdown Visibility', splitRecord.markdown.split('\n').some(line => line.startsWith('- **開始文字：** ') && line.includes('[')) && splitRecord.markdown.split('\n').some(line => line.startsWith('- **終了文字：** ') && line.includes(']')));
+    add('Session Record / Split Edge Validation', splitRecord.validation.length === 0 && splitRecord.markdownValidation.length === 0);
+    const invalidSplit = clone(splitCase);
+    invalidSplit.settings.edgeStart = null;
+    add('Session Record / Invalid Split Edge Rejected', SessionRecord.validateSnapshot(invalidSplit).includes('settings edge start'));
+    const inconsistentShared = clone(minimal);
+    inconsistentShared.settings.edgeEnd = '残存';
+    add('セッション記録 / 共通文字の不整合を拒否', SessionRecord.validateSnapshot(inconsistentShared).includes('設定 開始・終了文字の整合性'));
+    const inconsistentSplit = clone(splitCase);
+    inconsistentSplit.settings.edgeText = ']';
+    add('セッション記録 / 分離文字の不整合を拒否', SessionRecord.validateSnapshot(inconsistentSplit).includes('設定 開始・終了文字の整合性'));
+    const inconsistentOutput = clone(splitCase);
+    inconsistentOutput.outputContext.edgeStart = '';
+    add('セッション記録 / 出力文字の不整合を拒否', SessionRecord.validateSnapshot(inconsistentOutput).includes('出力 開始・終了文字の整合性'));
+    const legacyEdge = clone(minimal);
+    delete legacyEdge.settings.edgeMode;
+    delete legacyEdge.settings.edgeStart;
+    delete legacyEdge.settings.edgeEnd;
+    delete legacyEdge.outputContext.edgeMode;
+    delete legacyEdge.outputContext.edgeStart;
+    delete legacyEdge.outputContext.edgeEnd;
+    add('セッション記録 / 旧形式の受理', SessionRecord.validateSnapshot(legacyEdge).length === 0);
 
     const invalidGroupingMode = clone(minimal);
     invalidGroupingMode.settings.groupingMode = 'invalid';
@@ -13848,7 +13995,24 @@ function showToast(msg, duration = TOAST_DURATION) {
     if (els.metaHex) els.metaHex.textContent = hexLabel;
     if (els.metaGrouping) els.metaGrouping.textContent = groupingStateLabel();
     syncMetaLiteral(els.metaSeparatorFull, els.metaSeparatorValue, AppState.separator);
-    syncMetaLiteral(els.metaEdgeFull, els.metaEdgeValue, AppState.edgeText);
+    if (els.metaEdgeLabel) els.metaEdgeLabel.textContent = AppState.edgeMode === 'split' ? '開始・終了文字：' : '開始と終了文字：';
+    if (els.metaEdgeValue) {
+      if (AppState.edgeMode === 'split') {
+        if (els.metaEdgeValue.childNodes.length !== 3) {
+          const start = document.createElement('span');
+          const end = document.createElement('span');
+          start.className = 'meta-literal-value';
+          end.className = 'meta-literal-value';
+          els.metaEdgeValue.classList.remove('meta-literal-value');
+          els.metaEdgeValue.replaceChildren(start, '・', end);
+        }
+        els.metaEdgeValue.firstChild.textContent = literalBody(AppState.edgeStart);
+        els.metaEdgeValue.lastChild.textContent = literalBody(AppState.edgeEnd);
+      } else {
+        els.metaEdgeValue.classList.add('meta-literal-value');
+        syncMetaLiteral(els.metaEdgeFull, els.metaEdgeValue, AppState.edgeText);
+      }
+    }
     if (els.metaOptions) els.metaOptions.textContent = optLabel;
     if (els.metaIteration) els.metaIteration.textContent = iterLabel;
     if (els.metaStatus) els.metaStatus.textContent = statusText;
@@ -14358,13 +14522,13 @@ function showToast(msg, duration = TOAST_DURATION) {
 
         const toolbar = els.groupingToggle?.closest('.toolbar');
         const order = toolbar ? Array.from(toolbar.children) : [];
-        const edgeIndex = order.indexOf(els.edgeIn);
+        const edgeIndex = order.indexOf(els.edgeControl);
         const sepIndex = order.indexOf(els.sepIn);
         const groupingIndex = order.indexOf(els.groupingToggle);
         const optionsIndex = order.indexOf(els.groupingOptionsContainer);
         const hexIndex = order.indexOf(els.hexBtn);
         record('toolbar-order', edgeIndex >= 0 && sepIndex > edgeIndex && groupingIndex > sepIndex && optionsIndex > groupingIndex && hexIndex > optionsIndex);
-        record('placeholder-contract', els.edgeIn?.placeholder === 'なし' && els.sepIn?.placeholder === 'なし');
+        record('placeholder-contract', els.edgeIn?.placeholder === 'なし' && els.edgeStartIn?.placeholder === 'なし' && els.edgeEndIn?.placeholder === 'なし' && els.sepIn?.placeholder === 'なし');
 
         const failed = checks.filter(([, ok]) => !ok).map(([name]) => name);
         return { ok:failed.length === 0, detail:failed.length ? failed.join(', ') : checks.map(([name]) => name).join(', ') };
@@ -14523,7 +14687,7 @@ const captureCompareContext = () => ({
   hexUpper: AppState.hexUpper,
   grouping: AppState.grouping,
   separator: AppState.separator,
-  edgeText: AppState.edgeText
+  ...resolveEdgeContext()
 });
 
 const compareContextKey = context => JSON.stringify([
@@ -14535,7 +14699,9 @@ const compareContextKey = context => JSON.stringify([
   context.copyMode === 'visual' ? context.hexUpper : false,
   context.copyMode === 'visual' ? context.grouping : 0,
   context.copyMode === 'visual' && context.grouping > 0 ? context.separator : '',
-  context.copyMode === 'visual' ? context.edgeText : ''
+  context.copyMode === 'visual' ? context.edgeMode : 'shared',
+  context.copyMode === 'visual' ? context.edgeStart : '',
+  context.copyMode === 'visual' ? context.edgeEnd : ''
 ]);
 
 async function armContinuousCompare() {
@@ -14588,11 +14754,38 @@ async function detectBase85Variants(input) {
       refreshCurrentMeta();
     });
 
-    on(els.edgeIn, 'input', () => {
+    const syncEdgeControls = () => {
+      const split = AppState.edgeMode === 'split';
+      if (els.edgeModeToggle) {
+        els.edgeModeToggle.textContent = split ? '開始・終了文字：' : '開始と終了文字：';
+        els.edgeModeToggle.setAttribute('aria-pressed', String(split));
+      }
+      if (els.edgeIn) els.edgeIn.hidden = split;
+      if (els.edgeSplit) els.edgeSplit.hidden = !split;
+      if (els.edgeIn) els.edgeIn.value = AppState.edgeText;
+      if (els.edgeStartIn) els.edgeStartIn.value = AppState.edgeStart;
+      if (els.edgeEndIn) els.edgeEndIn.value = AppState.edgeEnd;
+    };
+    const refreshEdgeDisplay = () => {
       if (AppState.copyMode === 'visual' && AppState.continuousCompareEnabled) disarmContinuousCompare(true);
-      AppState.edgeText = els.edgeIn.value;
       reformatAll();
       refreshCurrentMeta();
+    };
+    syncEdgeControls();
+    const setEdgeSettings = (mode, start, end = start) => {
+      Object.assign(AppState, normalizeEdgeSettings(mode, start, end));
+    };
+    on(els.edgeIn, 'input', () => {
+      setEdgeSettings('shared', els.edgeIn.value);
+      refreshEdgeDisplay();
+    });
+    on(els.edgeStartIn, 'input', () => {
+      setEdgeSettings('split', els.edgeStartIn.value, AppState.edgeEnd);
+      refreshEdgeDisplay();
+    });
+    on(els.edgeEndIn, 'input', () => {
+      setEdgeSettings('split', AppState.edgeStart, els.edgeEndIn.value);
+      refreshEdgeDisplay();
     });
 
     const syncTestOptionControls = setup => {
@@ -15406,6 +15599,16 @@ async function detectBase85Variants(input) {
         if (!actionEl) return;
         const action = actionEl.dataset.action;
         switch(action) {
+            case 'toggleEdgeMode': {
+                if (AppState.edgeMode === 'shared') {
+                    setEdgeSettings('split', AppState.edgeText);
+                } else {
+                    setEdgeSettings('shared', AppState.edgeStart, AppState.edgeEnd);
+                }
+                syncEdgeControls();
+                refreshEdgeDisplay();
+                break;
+            }
             case 'toggleTheme': {
                 AppState.showTheme = !AppState.showTheme;
                 syncVisualThemeControls();
@@ -16128,7 +16331,7 @@ async function detectBase85Variants(input) {
     if (!document.getElementById('internetToggle')) add('インターネット制御DOMがありません：#internetToggle');
     if (document.getElementById('geoToggle')) add('旧位置情報スイッチが残存：#geoToggle');
 
-    for (const id of ['groupingToggle','groupingManualControl','grouping-manual','grouping-manual-up','grouping-manual-down','groupingOptionsContainer','meta-grouping','meta-separator-full','meta-separator-value','sep-in','edge-in','meta-edge-full','meta-edge-value','meta-iteration','meta-status']) {
+    for (const id of ['groupingToggle','groupingManualControl','grouping-manual','grouping-manual-up','grouping-manual-down','groupingOptionsContainer','meta-grouping','meta-separator-full','meta-separator-value','sep-in','edge-in','edgeModeToggle','edge-control','edge-split','edge-start-in','edge-end-in','meta-edge-label','meta-edge-full','meta-edge-value','meta-iteration','meta-status']) {
       if (!document.getElementById(id)) add(`区切り・状態表示 DOMがありません：#${id}`);
     }
 
@@ -16137,11 +16340,12 @@ async function detectBase85Variants(input) {
     const groupingToggle = document.getElementById('groupingToggle');
     const hexToggle = document.getElementById('hexcase');
     if (edgeInput?.placeholder !== 'なし') add('開始と終了文字 placeholder契約が不正です');
+    if (document.getElementById('edge-start-in')?.placeholder !== 'なし' || document.getElementById('edge-end-in')?.placeholder !== 'なし') add('開始・終了文字 placeholder契約が不正です');
     if (separatorInput?.placeholder !== 'なし') add('区切り文字 placeholder契約が不正です');
     if (separatorInput?.defaultValue !== '') add('区切り文字 初期値契約が不正です');
     if (edgeInput && separatorInput && groupingToggle && hexToggle) {
       const toolbarChildren = Array.from(edgeInput.closest('.toolbar')?.children || []);
-      const edgeIndex = toolbarChildren.indexOf(edgeInput);
+      const edgeIndex = toolbarChildren.indexOf(document.getElementById('edge-control'));
       const separatorIndex = toolbarChildren.indexOf(separatorInput);
       const groupingIndex = toolbarChildren.indexOf(groupingToggle);
       const optionsIndex = toolbarChildren.indexOf(document.getElementById('groupingOptionsContainer'));
@@ -16166,6 +16370,7 @@ async function detectBase85Variants(input) {
     }
     if (SessionRecord.RESULT_IDS.length !== 12) add('Session Record結果契約が不正です');
     if (typeof AppState.edgeText !== 'string') add('開始と終了文字 State契約が不正です');
+    if (!['shared','split'].includes(AppState.edgeMode) || typeof AppState.edgeStart !== 'string' || typeof AppState.edgeEnd !== 'string') add('開始・終了文字 State契約が不正です');
     if (SessionRecord.SESSION_SCHEMA !== 'SONY-HASH-SESSION/4') add('Session schema契約が不正です');
     if (SessionRecord.RECORD_SCHEMA !== 'SONY-HASH-RECORD/8') add('Record schema契約が不正です');
     if (SessionRecord.SUMMARY_SCHEMA !== 'SONY-HASH-SUMMARY/6') add('Summary schema契約が不正です');
